@@ -1,0 +1,49 @@
+[package]
+name = "mielin-mesh-wire"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "QUIC-based wire protocol for agent migration and mesh communication with compression and security"
+keywords = ["quic", "protocol", "networking", "migration", "distributed"]
+
+[dependencies]
+tokio.workspace = true
+quinn.workspace = true
+serde.workspace = true
+oxicode.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+rustls.workspace = true
+rcgen.workspace = true
+rand.workspace = true
+lz4_flex.workspace = true
+zstd.workspace = true
+libm.workspace = true
+hex.workspace = true
+
+# WebSocket support
+tokio-tungstenite = "0.28"
+futures.workspace = true
+
+# ACME / Let's Encrypt integration
+instant-acme = "0.8"  # Updated from 0.7 with API migration completed
+base64 = "0.22"
+reqwest.workspace = true
+x509-parser = "0.18.0"
+ring.workspace = true
+rustls-pemfile = "2.2"
+
+mielin-mesh-core.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+proptest.workspace = true
+criterion.workspace = true
+tracing-subscriber.workspace = true
+futures.workspace = true
+
+[[bench]]
+name = "wire"
+harness = false

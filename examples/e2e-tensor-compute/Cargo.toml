@@ -1,0 +1,22 @@
+[package]
+name = "e2e-tensor-compute"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+mielin-tensor = { path = "../../mielin-tensor", features = ["parallel"] }
+mielin-hal = { path = "../../mielin-hal" }
+
+# Async runtime
+tokio.workspace = true
+
+# Error handling
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true

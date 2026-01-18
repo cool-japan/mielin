@@ -1,0 +1,29 @@
+[package]
+name = "e2e-mesh-cluster"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+mielin-mesh-core = { path = "../../mielin-mesh/core" }
+mielin-mesh-wire = { path = "../../mielin-mesh/wire" }
+
+# Async runtime
+tokio.workspace = true
+
+# CLI
+clap.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Utilities
+uuid.workspace = true

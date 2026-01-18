@@ -1,0 +1,150 @@
+//! Memory profiling for agents
+
+use crate::CellError;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// Memory profiler for tracking allocations
+#[derive(Debug)]
+pub struct MemoryProfiler {
+    #[allow(dead_code)]
+    agent_id: [u8; 16],
+    allocations: HashMap<usize, AllocationRecord>,
+    snapshots: Vec<MemorySnapshot>,
+    total_allocated: u64,
+    total_deallocated: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AllocationRecord {
+    pub address: usize,
+    pub size: usize,
+    pub timestamp: u64,
+    pub stack_trace: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemorySnapshot {
+    pub timestamp: u64,
+    pub total_allocated: u64,
+    pub active_allocations: usize,
+    pub largest_allocation: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfilingReport {
+    pub total_allocated: u64,
+    pub total_deallocated: u64,
+    pub peak_memory: u64,
+    pub allocation_count: usize,
+    pub deallocation_count: usize,
+    pub leaked_bytes: u64,
+    pub snapshots: Vec<MemorySnapshot>,
+}
+
+impl MemoryProfiler {
+    pub fn new(agent_id: [u8; 16]) -> Self {
+        Self {
+            agent_id,
+            allocations: HashMap::new(),
+            snapshots: Vec::new(),
+            total_allocated: 0,
+            total_deallocated: 0,
+        }
+    }
+
+    pub fn record_allocation(&mut self, address: usize, size: usize) -> Result<(), CellError> {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| CellError::InvalidState("Time error".to_string()))?
+            .as_secs();
+
+        self.allocations.insert(
+            address,
+            AllocationRecord {
+                address,
+                size,
+                timestamp,
+                stack_trace: Vec::new(),
+            },
+        );
+
+        self.total_allocated += size as u64;
+        Ok(())
+    }
+
+    pub fn record_deallocation(&mut self, address: usize) -> Result<(), CellError> {
+        if let Some(record) = self.allocations.remove(&address) {
+            self.total_deallocated += record.size as u64;
+        }
+        Ok(())
+    }
+
+    pub fn take_snapshot(&mut self) -> Result<(), CellError> {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| CellError::InvalidState("Time error".to_string()))?
+            .as_secs();
+
+        let largest = self.allocations.values().map(|a| a.size).max().unwrap_or(0);
+
+        self.snapshots.push(MemorySnapshot {
+            timestamp,
+            total_allocated: self.total_allocated - self.total_deallocated,
+            active_allocations: self.allocations.len(),
+            largest_allocation: largest,
+        });
+
+        Ok(())
+    }
+
+    pub fn generate_report(&self) -> ProfilingReport {
+        let peak_memory = self
+            .snapshots
+            .iter()
+            .map(|s| s.total_allocated)
+            .max()
+            .unwrap_or(0);
+
+        let leaked_bytes: u64 = self.allocations.values().map(|a| a.size as u64).sum();
+
+        ProfilingReport {
+            total_allocated: self.total_allocated,
+            total_deallocated: self.total_deallocated,
+            peak_memory,
+            allocation_count: self.total_allocated as usize,
+            deallocation_count: self.total_deallocated as usize,
+            leaked_bytes,
+            snapshots: self.snapshots.clone(),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.allocations.clear();
+        self.snapshots.clear();
+        self.total_allocated = 0;
+        self.total_deallocated = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_memory_profiler() {
+        let agent_id = [1u8; 16];
+        let mut profiler = MemoryProfiler::new(agent_id);
+
+        profiler.record_allocation(0x1000, 100).expect("Failed");
+        profiler.record_allocation(0x2000, 200).expect("Failed");
+
+        profiler.take_snapshot().expect("Failed");
+
+        profiler.record_deallocation(0x1000).expect("Failed");
+
+        let report = profiler.generate_report();
+        assert_eq!(report.total_allocated, 300);
+        assert_eq!(report.total_deallocated, 100);
+    }
+}

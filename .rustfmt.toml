@@ -1,0 +1,12 @@
+# Rustfmt configuration for MielinOS
+# Only stable features for use with stable Rust
+
+edition = "2021"
+max_width = 100
+hard_tabs = false
+tab_spaces = 4
+use_field_init_shorthand = true
+reorder_imports = true
+reorder_modules = true
+remove_nested_parens = true
+chain_width = 60

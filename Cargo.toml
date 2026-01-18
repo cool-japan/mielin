@@ -1,0 +1,165 @@
+[workspace]
+resolver = "2"
+members = [
+    "mielin",
+    "mielin-kernel",
+    "mielin-hal",
+    "mielin-rt",
+    "mielin-mesh/core",
+    "mielin-mesh/wire",
+    "mielin-cells",
+    "mielin-wasm",
+    "mielin-tensor",
+    "mielin-cli",
+    "mielin-tests",
+    "examples/*",
+    "benches",
+]
+exclude = [
+    "mielin-kernel/fuzz",
+    "examples/e2e-*",
+]
+
+# Default members excludes kernel (requires bootloader) and counter-agent (WASM-only)
+default-members = [
+    "mielin",
+    "mielin-hal",
+    "mielin-rt",
+    "mielin-mesh/core",
+    "mielin-mesh/wire",
+    "mielin-cells",
+    "mielin-wasm",
+    "mielin-tensor",
+    "mielin-cli",
+    "benches",
+]
+
+[workspace.package]
+version = "0.1.0-rc.1"
+edition = "2021"
+authors = ["MielinOS Contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cool-japan/mielin"
+
+[workspace.dependencies]
+# Internal crates
+mielin = { version = "0.1.0-rc.1", path = "mielin" }
+mielin-hal = { version = "0.1.0-rc.1", path = "mielin-hal" }
+mielin-kernel = { version = "0.1.0-rc.1", path = "mielin-kernel", default-features = false }
+mielin-rt = { version = "0.1.0-rc.1", path = "mielin-rt" }
+mielin-mesh-core = { version = "0.1.0-rc.1", path = "mielin-mesh/core" }
+mielin-mesh-wire = { version = "0.1.0-rc.1", path = "mielin-mesh/wire" }
+mielin-cells = { version = "0.1.0-rc.1", path = "mielin-cells" }
+mielin-wasm = { version = "0.1.0-rc.1", path = "mielin-wasm" }
+mielin-tensor = { version = "0.1.0-rc.1", path = "mielin-tensor" }
+mielin-cli = { version = "0.1.0-rc.1", path = "mielin-cli" }
+
+# Core async runtime
+tokio = { version = "1.49", features = ["full"] }
+async-trait = "0.1.89"
+
+# Serialization
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+oxicode = { version = "0.1.1", features = ["serde"] }
+
+# Networking
+quinn = "0.11.9"
+tokio-util = "0.7.18"
+
+# WebAssembly
+wasmtime = "40.0.2"
+wit-bindgen = "0.51.0"
+
+# Cryptography & Security
+ring = "0.17.14"
+uuid = { version = "1.19.0", features = ["v4", "serde"] }
+rustls = { version = "0.23.36", default-features = false, features = ["ring", "std"] }
+rcgen = "0.14.6"
+
+# Error handling
+anyhow = "1.0.100"
+thiserror = "2.0.17"
+
+# Logging
+tracing = "0.1.44"
+tracing-subscriber = "0.3.22"
+
+# Testing
+rstest = "0.26.1"
+criterion = { version = "0.8.1", features = ["html_reports"] }
+proptest = "1.9.0"
+serial_test = "3.3.1"
+
+# Utilities
+bitflags = "2.10.0"
+clap = "4.5.54"
+wat = "1.244.0"
+lz4_flex = "0.12"
+zstd = "0.13"
+libm = "0.2"
+hex = "0.4"
+futures = "0.3"
+
+# CLI-specific utilities
+clap_complete = "4.5.65"
+dirs = "6.0.0"
+rustyline = "17.0.2"
+regex = "1.12.2"
+chrono = { version = "0.4.43", features = ["serde"] }
+comfy-table = "7.2.2"
+tabled = "0.20.0"
+
+# Serialization formats
+serde_yaml = "0.9.34"
+toml = "0.9.11"
+
+# Random number generation
+rand = "0.9"
+
+# Scripting
+rhai = "1.23.6"
+
+# HTTP client for remote operations
+reqwest = { version = "0.13.1", features = ["json", "rustls"], default-features = false }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+panic = "abort"
+
+# Release profile optimized for speed over size
+[profile.release-speed]
+inherits = "release"
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+# Release profile for embedded/size-constrained targets
+[profile.release-embedded]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Profile for debugging release builds
+[profile.release-debug]
+inherits = "release"
+debug = true
+strip = false
+
+# Profile for benchmarking (optimized but with debug info)
+[profile.bench]
+inherits = "release"
+debug = true
+strip = false
+lto = "thin"

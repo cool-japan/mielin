@@ -1,0 +1,54 @@
+[package]
+name = "e2e-full-stack"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "End-to-end full-stack example demonstrating all MielinOS components"
+publish = false
+
+keywords = ["mielin", "distributed", "ai", "mesh", "tensor", "full-stack"]
+categories = ["network-programming", "science", "simulation", "wasm"]
+
+[[bin]]
+name = "e2e-full-stack"
+path = "src/main.rs"
+
+[dependencies]
+# MielinOS Core Crates
+mielin-hal = { path = "../../mielin-hal" }
+mielin-cells = { path = "../../mielin-cells" }
+mielin-mesh-core = { path = "../../mielin-mesh/core" }
+mielin-mesh-wire = { path = "../../mielin-mesh/wire" }
+mielin-tensor = { path = "../../mielin-tensor" }
+mielin-kernel = { path = "../../mielin-kernel", features = ["std"] }
+
+# Async Runtime
+tokio.workspace = true
+async-trait.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+oxicode.workspace = true
+
+# Error Handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Utilities
+uuid.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+chrono.workspace = true
+
+[features]
+default = []
+cuda = []
+metal = []
+
+[lints.rust]
+# Warn on all warnings
+warnings = "warn"

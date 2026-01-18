@@ -1,0 +1,13 @@
+//! Auto-generated module structure
+
+pub mod functions;
+pub mod functions_2;
+pub mod poolallocator_traits;
+pub mod poolconfig_traits;
+pub mod poolconfigerror_traits;
+pub mod poolerror_traits;
+pub mod types;
+
+// Re-export all types
+pub use functions::*;
+pub use types::*;

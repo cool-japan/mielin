@@ -1,0 +1,29 @@
+[package]
+name = "mielin-hal"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Hardware abstraction layer providing unified interfaces across x86_64, AArch64, RISC-V, and ARM Cortex-M architectures"
+keywords = ["hardware", "hal", "embedded", "no-std", "cross-platform"]
+
+[dependencies]
+bitflags.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+proptest.workspace = true
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+# Arm-specific HAL dependencies will go here
+
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+# RISC-V specific HAL dependencies will go here
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+# x86_64 specific HAL dependencies will go here
+
+[[bench]]
+name = "capability_detection"
+harness = false

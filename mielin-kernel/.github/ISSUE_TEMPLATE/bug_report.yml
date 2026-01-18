@@ -1,0 +1,160 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in MielinOS kernel
+title: "[BUG] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below to help us understand and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: When I call allocate_pages(10), the kernel panics with...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: The function should allocate 10 pages and return a valid address.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+      placeholder: The kernel panics with "out of memory" even though 100 pages are free.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Please provide detailed steps to reproduce the issue.
+      placeholder: |
+        1. Initialize kernel with kernel_init()
+        2. Call allocate_pages(10)
+        3. Observe panic
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Minimal Reproducible Example
+      description: If possible, provide a minimal code example that reproduces the issue.
+      render: rust
+      placeholder: |
+        use mielin_kernel::memory;
+
+        fn main() {
+            memory::init().unwrap();
+            let addr = memory::allocate_pages(10).unwrap(); // Panics here
+        }
+
+  - type: dropdown
+    id: version
+    attributes:
+      label: MielinOS Version
+      description: Which version of MielinOS are you using?
+      options:
+        - main (latest)
+        - v0.3.x
+        - v0.2.x
+        - v0.1.x
+        - other (please specify in description)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: architecture
+    attributes:
+      label: Architecture
+      description: Which architecture are you running on?
+      options:
+        - x86_64
+        - aarch64 (ARM 64-bit)
+        - riscv64
+        - cortex-m
+        - other (please specify)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Where are you running the kernel?
+      options:
+        - QEMU
+        - Real hardware
+        - Unit tests
+        - Other emulator
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware Details (if applicable)
+      description: If running on real hardware, please specify the model.
+      placeholder: Raspberry Pi 4, BeagleBone Black, etc.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Messages / Logs
+      description: Please paste any relevant error messages or logs.
+      render: text
+      placeholder: |
+        thread 'main' panicked at 'out of memory', src/memory.rs:123:5
+        stack backtrace:
+        ...
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this bug?
+      options:
+        - Critical (kernel crash, data loss)
+        - High (major functionality broken)
+        - Medium (workaround available)
+        - Low (minor inconvenience)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm the following before submitting.
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate.
+          required: true
+        - label: I have tested on the latest version from main branch.
+          required: false
+        - label: I have included a minimal reproducible example.
+          required: false
+        - label: I have included relevant logs or error messages.
+          required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here.
+      placeholder: This only happens when running with more than 8 CPUs...

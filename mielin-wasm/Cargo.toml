@@ -1,0 +1,32 @@
+[package]
+name = "mielin-wasm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WebAssembly sandboxing and execution runtime for agent cells using Wasmtime"
+keywords = ["wasm", "webassembly", "sandbox", "runtime", "wasmtime"]
+
+[features]
+default = []
+persistent-cache = []
+
+[dependencies]
+wasmtime.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+
+mielin-cells.workspace = true
+mielin-hal.workspace = true
+mielin-tensor.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+wat.workspace = true
+tempfile = "3.24"
+criterion.workspace = true
+
+[[bench]]
+name = "wasm_benchmarks"
+harness = false

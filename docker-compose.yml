@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  # Development environment
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mielin-dev
+    volumes:
+      - .:/mielin
+      - cargo-cache:/usr/local/cargo/registry
+      - target-cache:/mielin/target
+    working_dir: /mielin
+    command: bash
+    stdin_open: true
+    tty: true
+    environment:
+      - RUST_BACKTRACE=1
+      - RUST_LOG=debug
+
+  # Core node (cloud server - bootstrap node)
+  core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mielin-core
+    hostname: core
+    command: /app/node --role core --port 8080
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+    ports:
+      - "8080:8080"
+    networks:
+      - mielin-mesh
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Relay node (edge gateway)
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mielin-relay
+    hostname: relay
+    command: /app/node --role relay --port 8080 --connect core:8080
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+    ports:
+      - "8081:8080"
+    networks:
+      - mielin-mesh
+    depends_on:
+      core:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Edge node (IoT device)
+  edge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mielin-edge
+    hostname: edge
+    command: /app/node --role edge --port 8080 --connect relay:8080 --agent
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+    ports:
+      - "8082:8080"
+    networks:
+      - mielin-mesh
+    depends_on:
+      relay:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Benchmarking service
+  bench:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mielin-bench
+    volumes:
+      - .:/mielin
+      - bench-results:/mielin/target/criterion
+    working_dir: /mielin
+    command: cargo bench -p benches
+    environment:
+      - RUST_BACKTRACE=1
+
+volumes:
+  cargo-cache:
+  target-cache:
+  bench-results:
+
+networks:
+  mielin-mesh:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

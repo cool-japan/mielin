@@ -1,0 +1,31 @@
+[package]
+name = "mielin-tests"
+description = "Comprehensive integration tests for MielinOS"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+# MielinOS crates under test
+mielin-cells = { path = "../mielin-cells" }
+mielin-hal = { path = "../mielin-hal" }
+mielin-kernel = { path = "../mielin-kernel", features = ["std"] }
+mielin-mesh-core = { path = "../mielin-mesh/core" }
+mielin-tensor = { path = "../mielin-tensor" }
+
+# Test dependencies
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration_tests.rs"

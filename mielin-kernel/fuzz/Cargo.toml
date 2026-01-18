@@ -1,0 +1,30 @@
+[package]
+name = "mielin-kernel-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.mielin-kernel]
+path = ".."
+
+[[bin]]
+name = "memory_allocator"
+path = "fuzz_targets/memory_allocator.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "scheduler"
+path = "fuzz_targets/scheduler.rs"
+test = false
+doc = false
+bench = false

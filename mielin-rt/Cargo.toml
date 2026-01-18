@@ -1,0 +1,33 @@
+[package]
+name = "mielin-rt"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Lightweight embedded runtime for Cortex-M and resource-constrained IoT devices"
+keywords = ["embedded", "cortex-m", "iot", "real-time", "no-std"]
+categories = ["embedded", "no-std", "hardware-support"]
+# Disable automatic example discovery - all examples are no_std and conflict with std tests
+autoexamples = false
+
+[dependencies]
+mielin-kernel.workspace = true
+mielin-hal.workspace = true
+
+# Embedded-specific dependencies
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.5"
+embedded-hal = "1.0.0"
+heapless = "0.9.2"
+libm.workspace = true
+
+[dev-dependencies]
+panic-halt = "1.0.0"
+
+[features]
+# Platform-specific GPIO implementations
+stm32f4 = []
+nrf52 = []
+rp2040 = []
+esp32 = []

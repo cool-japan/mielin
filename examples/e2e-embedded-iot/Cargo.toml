@@ -1,0 +1,23 @@
+[package]
+name = "e2e-embedded-iot"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+mielin-rt = { path = "../../mielin-rt" }
+mielin-cells = { path = "../../mielin-cells" }
+
+# Error handling
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Utilities
+uuid.workspace = true
+rand.workspace = true

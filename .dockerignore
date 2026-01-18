@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (keep for reference)
+# *.md
+
+# CI/CD (not needed in container)
+.github/
+
+# Scripts (not needed in production)
+scripts/
+
+# Temporary files
+/tmp/
+*.tmp
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local

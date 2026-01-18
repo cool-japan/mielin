@@ -1,0 +1,2396 @@
+//! Metrics Collection for Mesh Network Monitoring
+//!
+//! Provides comprehensive metrics collection for:
+//! - Node health and status
+//! - Message throughput and latency
+//! - Gossip protocol performance
+//! - DHT operations and routing
+//! - Resource utilization
+
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime};
+
+use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
+
+use crate::NodeId;
+
+/// Counter for monotonically increasing values
+#[derive(Debug, Default)]
+pub struct Counter {
+    value: AtomicU64,
+}
+
+impl Counter {
+    /// Create a new counter starting at 0
+    pub const fn new() -> Self {
+        Self {
+            value: AtomicU64::new(0),
+        }
+    }
+
+    /// Increment the counter by 1
+    pub fn inc(&self) {
+        self.value.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Increment the counter by n
+    pub fn add(&self, n: u64) {
+        self.value.fetch_add(n, Ordering::Relaxed);
+    }
+
+    /// Get the current value
+    pub fn get(&self) -> u64 {
+        self.value.load(Ordering::Relaxed)
+    }
+
+    /// Reset the counter to 0
+    pub fn reset(&self) {
+        self.value.store(0, Ordering::Relaxed);
+    }
+}
+
+/// Gauge for values that can go up and down
+#[derive(Debug, Default)]
+pub struct Gauge {
+    value: AtomicU64,
+}
+
+impl Gauge {
+    /// Create a new gauge starting at 0
+    pub const fn new() -> Self {
+        Self {
+            value: AtomicU64::new(0),
+        }
+    }
+
+    /// Set the gauge value
+    pub fn set(&self, value: u64) {
+        self.value.store(value, Ordering::Relaxed);
+    }
+
+    /// Increment the gauge by 1
+    pub fn inc(&self) {
+        self.value.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Decrement the gauge by 1
+    pub fn dec(&self) {
+        self.value.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    /// Get the current value
+    pub fn get(&self) -> u64 {
+        self.value.load(Ordering::Relaxed)
+    }
+}
+
+/// Histogram for tracking distributions
+#[derive(Debug)]
+pub struct Histogram {
+    /// Bucket boundaries (upper bounds)
+    buckets: Vec<u64>,
+    /// Count per bucket
+    counts: Vec<AtomicU64>,
+    /// Sum of all observations
+    sum: AtomicU64,
+    /// Count of all observations
+    count: AtomicU64,
+}
+
+impl Default for Histogram {
+    fn default() -> Self {
+        Self::new_latency()
+    }
+}
+
+impl Histogram {
+    /// Create a histogram with default latency buckets (in microseconds)
+    pub fn new_latency() -> Self {
+        Self::new(vec![
+            100,       // 100us
+            500,       // 500us
+            1_000,     // 1ms
+            5_000,     // 5ms
+            10_000,    // 10ms
+            50_000,    // 50ms
+            100_000,   // 100ms
+            500_000,   // 500ms
+            1_000_000, // 1s
+        ])
+    }
+
+    /// Create a histogram with default size buckets (in bytes)
+    pub fn new_size() -> Self {
+        Self::new(vec![
+            64,       // 64B
+            256,      // 256B
+            1024,     // 1KB
+            4096,     // 4KB
+            16384,    // 16KB
+            65536,    // 64KB
+            262144,   // 256KB
+            1048576,  // 1MB
+            16777216, // 16MB
+        ])
+    }
+
+    /// Create a histogram with custom bucket boundaries
+    pub fn new(buckets: Vec<u64>) -> Self {
+        let counts = buckets.iter().map(|_| AtomicU64::new(0)).collect();
+        Self {
+            buckets,
+            counts,
+            sum: AtomicU64::new(0),
+            count: AtomicU64::new(0),
+        }
+    }
+
+    /// Observe a value
+    pub fn observe(&self, value: u64) {
+        self.sum.fetch_add(value, Ordering::Relaxed);
+        self.count.fetch_add(1, Ordering::Relaxed);
+
+        // Find the bucket for this value
+        for (i, &bound) in self.buckets.iter().enumerate() {
+            if value <= bound {
+                self.counts[i].fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+        }
+        // Value exceeds all buckets - add to last bucket
+        if let Some(last) = self.counts.last() {
+            last.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// Get histogram statistics
+    pub fn stats(&self) -> HistogramStats {
+        let count = self.count.load(Ordering::Relaxed);
+        let sum = self.sum.load(Ordering::Relaxed);
+        let mean = if count > 0 { sum / count } else { 0 };
+
+        let bucket_counts: Vec<_> = self
+            .counts
+            .iter()
+            .map(|c| c.load(Ordering::Relaxed))
+            .collect();
+
+        HistogramStats {
+            count,
+            sum,
+            mean,
+            buckets: self.buckets.clone(),
+            bucket_counts,
+        }
+    }
+
+    /// Reset the histogram
+    pub fn reset(&self) {
+        self.sum.store(0, Ordering::Relaxed);
+        self.count.store(0, Ordering::Relaxed);
+        for c in &self.counts {
+            c.store(0, Ordering::Relaxed);
+        }
+    }
+}
+
+/// Histogram statistics snapshot
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistogramStats {
+    pub count: u64,
+    pub sum: u64,
+    pub mean: u64,
+    pub buckets: Vec<u64>,
+    pub bucket_counts: Vec<u64>,
+}
+
+impl HistogramStats {
+    /// Calculate percentile (approximate)
+    pub fn percentile(&self, p: f64) -> u64 {
+        if self.count == 0 {
+            return 0;
+        }
+
+        let target = (self.count as f64 * p / 100.0).ceil() as u64;
+        let mut cumulative = 0u64;
+
+        for (i, &count) in self.bucket_counts.iter().enumerate() {
+            cumulative += count;
+            if cumulative >= target {
+                return self.buckets[i];
+            }
+        }
+
+        *self.buckets.last().unwrap_or(&0)
+    }
+}
+
+/// Exponential moving average for rate tracking
+#[derive(Debug)]
+pub struct RateTracker {
+    /// Current rate (events per second)
+    rate: AtomicU64,
+    /// Event count in current window
+    window_count: AtomicU64,
+    /// Last update time
+    last_update: RwLock<Instant>,
+    /// Smoothing factor (0-1, higher = more responsive)
+    alpha: f64,
+}
+
+impl RateTracker {
+    /// Create a new rate tracker with given smoothing factor
+    pub fn new(alpha: f64) -> Self {
+        Self {
+            rate: AtomicU64::new(0),
+            window_count: AtomicU64::new(0),
+            last_update: RwLock::new(Instant::now()),
+            alpha: alpha.clamp(0.0, 1.0),
+        }
+    }
+
+    /// Record an event
+    pub fn record(&self) {
+        self.window_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Update the rate (call periodically)
+    pub async fn update(&self) {
+        let mut last = self.last_update.write().await;
+        let elapsed = last.elapsed();
+        *last = Instant::now();
+        drop(last);
+
+        let count = self.window_count.swap(0, Ordering::Relaxed);
+        let elapsed_secs = elapsed.as_secs_f64();
+
+        if elapsed_secs > 0.0 {
+            let new_rate = (count as f64 / elapsed_secs) as u64;
+            let current = self.rate.load(Ordering::Relaxed);
+            let smoothed =
+                ((self.alpha * new_rate as f64) + ((1.0 - self.alpha) * current as f64)) as u64;
+            self.rate.store(smoothed, Ordering::Relaxed);
+        }
+    }
+
+    /// Get the current rate (events per second)
+    pub fn rate(&self) -> u64 {
+        self.rate.load(Ordering::Relaxed)
+    }
+}
+
+/// Per-node metrics
+#[derive(Debug)]
+pub struct NodeMetrics {
+    /// Node identifier
+    pub node_id: NodeId,
+    /// Messages sent
+    pub messages_sent: Counter,
+    /// Messages received
+    pub messages_received: Counter,
+    /// Bytes sent
+    pub bytes_sent: Counter,
+    /// Bytes received
+    pub bytes_received: Counter,
+    /// Active connections
+    pub active_connections: Gauge,
+    /// Message latency histogram (microseconds)
+    pub message_latency: Histogram,
+    /// Message size histogram (bytes)
+    pub message_size: Histogram,
+    /// Failed operations
+    pub failures: Counter,
+    /// Last activity time
+    pub last_activity: RwLock<SystemTime>,
+}
+
+impl NodeMetrics {
+    /// Create new node metrics
+    pub fn new(node_id: NodeId) -> Self {
+        Self {
+            node_id,
+            messages_sent: Counter::new(),
+            messages_received: Counter::new(),
+            bytes_sent: Counter::new(),
+            bytes_received: Counter::new(),
+            active_connections: Gauge::new(),
+            message_latency: Histogram::new_latency(),
+            message_size: Histogram::new_size(),
+            failures: Counter::new(),
+            last_activity: RwLock::new(SystemTime::now()),
+        }
+    }
+
+    /// Record a sent message
+    pub async fn record_send(&self, bytes: u64, latency_us: u64) {
+        self.messages_sent.inc();
+        self.bytes_sent.add(bytes);
+        self.message_latency.observe(latency_us);
+        self.message_size.observe(bytes);
+        *self.last_activity.write().await = SystemTime::now();
+    }
+
+    /// Record a received message
+    pub async fn record_receive(&self, bytes: u64) {
+        self.messages_received.inc();
+        self.bytes_received.add(bytes);
+        self.message_size.observe(bytes);
+        *self.last_activity.write().await = SystemTime::now();
+    }
+
+    /// Get summary statistics
+    pub async fn summary(&self) -> NodeMetricsSummary {
+        let latency_stats = self.message_latency.stats();
+        NodeMetricsSummary {
+            node_id: self.node_id,
+            messages_sent: self.messages_sent.get(),
+            messages_received: self.messages_received.get(),
+            bytes_sent: self.bytes_sent.get(),
+            bytes_received: self.bytes_received.get(),
+            active_connections: self.active_connections.get(),
+            avg_latency_us: latency_stats.mean,
+            p99_latency_us: latency_stats.percentile(99.0),
+            failures: self.failures.get(),
+            last_activity: *self.last_activity.read().await,
+        }
+    }
+}
+
+/// Node metrics summary snapshot
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeMetricsSummary {
+    pub node_id: NodeId,
+    pub messages_sent: u64,
+    pub messages_received: u64,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub active_connections: u64,
+    pub avg_latency_us: u64,
+    pub p99_latency_us: u64,
+    pub failures: u64,
+    pub last_activity: SystemTime,
+}
+
+/// Gossip protocol metrics
+#[derive(Debug, Default)]
+pub struct GossipMetrics {
+    /// Heartbeats sent
+    pub heartbeats_sent: Counter,
+    /// Heartbeats received
+    pub heartbeats_received: Counter,
+    /// Membership updates
+    pub membership_updates: Counter,
+    /// State syncs completed
+    pub state_syncs: Counter,
+    /// Failed gossip rounds
+    pub failed_rounds: Counter,
+    /// Current membership count
+    pub member_count: Gauge,
+    /// Suspect nodes
+    pub suspect_count: Gauge,
+    /// Dead nodes
+    pub dead_count: Gauge,
+    /// Gossip round duration (microseconds)
+    pub round_duration: Histogram,
+}
+
+impl GossipMetrics {
+    /// Create new gossip metrics
+    pub fn new() -> Self {
+        Self {
+            heartbeats_sent: Counter::new(),
+            heartbeats_received: Counter::new(),
+            membership_updates: Counter::new(),
+            state_syncs: Counter::new(),
+            failed_rounds: Counter::new(),
+            member_count: Gauge::new(),
+            suspect_count: Gauge::new(),
+            dead_count: Gauge::new(),
+            round_duration: Histogram::new_latency(),
+        }
+    }
+
+    /// Get summary
+    pub fn summary(&self) -> GossipMetricsSummary {
+        let round_stats = self.round_duration.stats();
+        GossipMetricsSummary {
+            heartbeats_sent: self.heartbeats_sent.get(),
+            heartbeats_received: self.heartbeats_received.get(),
+            membership_updates: self.membership_updates.get(),
+            state_syncs: self.state_syncs.get(),
+            failed_rounds: self.failed_rounds.get(),
+            member_count: self.member_count.get(),
+            suspect_count: self.suspect_count.get(),
+            dead_count: self.dead_count.get(),
+            avg_round_duration_us: round_stats.mean,
+        }
+    }
+}
+
+/// Gossip metrics summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GossipMetricsSummary {
+    pub heartbeats_sent: u64,
+    pub heartbeats_received: u64,
+    pub membership_updates: u64,
+    pub state_syncs: u64,
+    pub failed_rounds: u64,
+    pub member_count: u64,
+    pub suspect_count: u64,
+    pub dead_count: u64,
+    pub avg_round_duration_us: u64,
+}
+
+/// DHT operation metrics
+#[derive(Debug, Default)]
+pub struct DhtMetrics {
+    /// GET operations
+    pub gets: Counter,
+    /// PUT operations
+    pub puts: Counter,
+    /// Routing table lookups
+    pub lookups: Counter,
+    /// Successful lookups
+    pub lookup_successes: Counter,
+    /// Cache hits
+    pub cache_hits: Counter,
+    /// Cache misses
+    pub cache_misses: Counter,
+    /// Routing table size
+    pub routing_table_size: Gauge,
+    /// Lookup latency histogram
+    pub lookup_latency: Histogram,
+}
+
+impl DhtMetrics {
+    /// Create new DHT metrics
+    pub fn new() -> Self {
+        Self {
+            gets: Counter::new(),
+            puts: Counter::new(),
+            lookups: Counter::new(),
+            lookup_successes: Counter::new(),
+            cache_hits: Counter::new(),
+            cache_misses: Counter::new(),
+            routing_table_size: Gauge::new(),
+            lookup_latency: Histogram::new_latency(),
+        }
+    }
+
+    /// Get cache hit rate (0.0 - 1.0)
+    pub fn cache_hit_rate(&self) -> f64 {
+        let hits = self.cache_hits.get();
+        let misses = self.cache_misses.get();
+        let total = hits + misses;
+        if total == 0 {
+            0.0
+        } else {
+            hits as f64 / total as f64
+        }
+    }
+
+    /// Get lookup success rate (0.0 - 1.0)
+    pub fn lookup_success_rate(&self) -> f64 {
+        let successes = self.lookup_successes.get();
+        let total = self.lookups.get();
+        if total == 0 {
+            0.0
+        } else {
+            successes as f64 / total as f64
+        }
+    }
+
+    /// Get summary
+    pub fn summary(&self) -> DhtMetricsSummary {
+        let latency_stats = self.lookup_latency.stats();
+        DhtMetricsSummary {
+            gets: self.gets.get(),
+            puts: self.puts.get(),
+            lookups: self.lookups.get(),
+            lookup_success_rate: self.lookup_success_rate(),
+            cache_hit_rate: self.cache_hit_rate(),
+            routing_table_size: self.routing_table_size.get(),
+            avg_lookup_latency_us: latency_stats.mean,
+            p95_lookup_latency_us: latency_stats.percentile(95.0),
+        }
+    }
+}
+
+/// DHT metrics summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DhtMetricsSummary {
+    pub gets: u64,
+    pub puts: u64,
+    pub lookups: u64,
+    pub lookup_success_rate: f64,
+    pub cache_hit_rate: f64,
+    pub routing_table_size: u64,
+    pub avg_lookup_latency_us: u64,
+    pub p95_lookup_latency_us: u64,
+}
+
+/// Central metrics registry
+pub struct MetricsRegistry {
+    /// Local node metrics
+    local_metrics: Arc<NodeMetrics>,
+    /// Peer node metrics
+    peer_metrics: Arc<RwLock<HashMap<NodeId, Arc<NodeMetrics>>>>,
+    /// Gossip protocol metrics
+    gossip_metrics: Arc<GossipMetrics>,
+    /// DHT metrics
+    dht_metrics: Arc<DhtMetrics>,
+    /// Message rate tracker
+    message_rate: Arc<RateTracker>,
+    /// Registry creation time
+    created_at: Instant,
+}
+
+impl MetricsRegistry {
+    /// Create a new metrics registry
+    pub fn new(local_node_id: NodeId) -> Self {
+        Self {
+            local_metrics: Arc::new(NodeMetrics::new(local_node_id)),
+            peer_metrics: Arc::new(RwLock::new(HashMap::new())),
+            gossip_metrics: Arc::new(GossipMetrics::new()),
+            dht_metrics: Arc::new(DhtMetrics::new()),
+            message_rate: Arc::new(RateTracker::new(0.3)),
+            created_at: Instant::now(),
+        }
+    }
+
+    /// Get local node metrics
+    pub fn local(&self) -> &Arc<NodeMetrics> {
+        &self.local_metrics
+    }
+
+    /// Get gossip metrics
+    pub fn gossip(&self) -> &Arc<GossipMetrics> {
+        &self.gossip_metrics
+    }
+
+    /// Get DHT metrics
+    pub fn dht(&self) -> &Arc<DhtMetrics> {
+        &self.dht_metrics
+    }
+
+    /// Get or create peer metrics
+    pub async fn peer(&self, node_id: NodeId) -> Arc<NodeMetrics> {
+        let peers = self.peer_metrics.read().await;
+        if let Some(metrics) = peers.get(&node_id) {
+            return Arc::clone(metrics);
+        }
+        drop(peers);
+
+        let mut peers = self.peer_metrics.write().await;
+        peers
+            .entry(node_id)
+            .or_insert_with(|| Arc::new(NodeMetrics::new(node_id)))
+            .clone()
+    }
+
+    /// Record a message (updates rate tracker)
+    pub fn record_message(&self) {
+        self.message_rate.record();
+    }
+
+    /// Get current message rate
+    pub fn message_rate(&self) -> u64 {
+        self.message_rate.rate()
+    }
+
+    /// Update rate tracker (call periodically)
+    pub async fn update_rates(&self) {
+        self.message_rate.update().await;
+    }
+
+    /// Get uptime duration
+    pub fn uptime(&self) -> Duration {
+        self.created_at.elapsed()
+    }
+
+    /// Get full metrics summary
+    pub async fn summary(&self) -> MetricsSummary {
+        let peers = self.peer_metrics.read().await;
+        let mut peer_summaries = Vec::with_capacity(peers.len());
+        for metrics in peers.values() {
+            peer_summaries.push(metrics.summary().await);
+        }
+
+        MetricsSummary {
+            uptime_secs: self.uptime().as_secs(),
+            local: self.local_metrics.summary().await,
+            peers: peer_summaries,
+            gossip: self.gossip_metrics.summary(),
+            dht: self.dht_metrics.summary(),
+            message_rate: self.message_rate(),
+        }
+    }
+
+    /// Remove stale peer metrics (no activity for given duration)
+    pub async fn cleanup_stale_peers(&self, max_age: Duration) {
+        let now = SystemTime::now();
+        let mut peers = self.peer_metrics.write().await;
+
+        let stale: Vec<_> = {
+            let mut stale = Vec::new();
+            for (id, metrics) in peers.iter() {
+                let last = *metrics.last_activity.read().await;
+                if let Ok(elapsed) = now.duration_since(last) {
+                    if elapsed > max_age {
+                        stale.push(*id);
+                    }
+                }
+            }
+            stale
+        };
+
+        for id in stale {
+            peers.remove(&id);
+        }
+    }
+
+    /// Reset all metrics
+    pub async fn reset(&self) {
+        self.local_metrics.messages_sent.reset();
+        self.local_metrics.messages_received.reset();
+        self.local_metrics.bytes_sent.reset();
+        self.local_metrics.bytes_received.reset();
+        self.local_metrics.failures.reset();
+        self.local_metrics.message_latency.reset();
+        self.local_metrics.message_size.reset();
+
+        self.peer_metrics.write().await.clear();
+
+        self.gossip_metrics.heartbeats_sent.reset();
+        self.gossip_metrics.heartbeats_received.reset();
+        self.gossip_metrics.membership_updates.reset();
+        self.gossip_metrics.state_syncs.reset();
+        self.gossip_metrics.failed_rounds.reset();
+        self.gossip_metrics.round_duration.reset();
+
+        self.dht_metrics.gets.reset();
+        self.dht_metrics.puts.reset();
+        self.dht_metrics.lookups.reset();
+        self.dht_metrics.lookup_successes.reset();
+        self.dht_metrics.cache_hits.reset();
+        self.dht_metrics.cache_misses.reset();
+        self.dht_metrics.lookup_latency.reset();
+    }
+}
+
+/// Full metrics summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsSummary {
+    pub uptime_secs: u64,
+    pub local: NodeMetricsSummary,
+    pub peers: Vec<NodeMetricsSummary>,
+    pub gossip: GossipMetricsSummary,
+    pub dht: DhtMetricsSummary,
+    pub message_rate: u64,
+}
+
+// =============================================================================
+// Peer Connection Metrics
+// =============================================================================
+
+/// Peer connection state
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConnectionState {
+    /// Not connected
+    Disconnected,
+    /// Attempting to connect
+    Connecting,
+    /// Connected and healthy
+    Connected,
+    /// Connection degraded (high latency, packet loss)
+    Degraded,
+    /// Reconnecting after failure
+    Reconnecting,
+}
+
+/// Metrics for peer connections
+#[derive(Debug)]
+pub struct PeerConnectionMetrics {
+    /// Total connection attempts
+    pub connection_attempts: Counter,
+    /// Successful connections
+    pub connections_established: Counter,
+    /// Connection failures
+    pub connection_failures: Counter,
+    /// Disconnections (clean)
+    pub disconnections: Counter,
+    /// Reconnection attempts
+    pub reconnect_attempts: Counter,
+    /// Successful reconnections
+    pub reconnections_succeeded: Counter,
+    /// Current connected peers
+    pub connected_peers: Gauge,
+    /// Current connecting peers
+    pub connecting_peers: Gauge,
+    /// Connection duration histogram (seconds)
+    pub connection_duration: Histogram,
+    /// Time to establish connection (milliseconds)
+    pub connection_time: Histogram,
+    /// Per-peer connection state
+    peer_states: RwLock<HashMap<NodeId, PeerConnectionState>>,
+}
+
+/// Per-peer connection tracking
+#[derive(Debug, Clone)]
+pub struct PeerConnectionState {
+    pub peer_id: NodeId,
+    pub state: ConnectionState,
+    pub connected_at: Option<Instant>,
+    pub last_activity: Instant,
+    pub connection_count: u64,
+    pub failure_count: u64,
+    pub total_connected_duration: Duration,
+}
+
+impl PeerConnectionState {
+    /// Create new peer connection state
+    pub fn new(peer_id: NodeId) -> Self {
+        Self {
+            peer_id,
+            state: ConnectionState::Disconnected,
+            connected_at: None,
+            last_activity: Instant::now(),
+            connection_count: 0,
+            failure_count: 0,
+            total_connected_duration: Duration::ZERO,
+        }
+    }
+
+    /// Mark peer as connecting
+    pub fn connecting(&mut self) {
+        self.state = ConnectionState::Connecting;
+        self.last_activity = Instant::now();
+    }
+
+    /// Mark peer as connected
+    pub fn connected(&mut self) {
+        if self.state != ConnectionState::Connected {
+            self.state = ConnectionState::Connected;
+            self.connected_at = Some(Instant::now());
+            self.connection_count += 1;
+        }
+        self.last_activity = Instant::now();
+    }
+
+    /// Mark peer as disconnected
+    pub fn disconnected(&mut self) {
+        if let Some(connected_at) = self.connected_at.take() {
+            self.total_connected_duration += connected_at.elapsed();
+        }
+        self.state = ConnectionState::Disconnected;
+        self.last_activity = Instant::now();
+    }
+
+    /// Mark connection failure
+    pub fn failed(&mut self) {
+        self.connected_at = None;
+        self.state = ConnectionState::Disconnected;
+        self.failure_count += 1;
+        self.last_activity = Instant::now();
+    }
+
+    /// Get connection uptime if connected
+    pub fn connection_uptime(&self) -> Option<Duration> {
+        self.connected_at.map(|t| t.elapsed())
+    }
+
+    /// Get average connection duration
+    pub fn avg_connection_duration(&self) -> Duration {
+        if self.connection_count == 0 {
+            Duration::ZERO
+        } else {
+            self.total_connected_duration / self.connection_count as u32
+        }
+    }
+}
+
+impl Default for PeerConnectionMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PeerConnectionMetrics {
+    /// Create new peer connection metrics
+    pub fn new() -> Self {
+        Self {
+            connection_attempts: Counter::new(),
+            connections_established: Counter::new(),
+            connection_failures: Counter::new(),
+            disconnections: Counter::new(),
+            reconnect_attempts: Counter::new(),
+            reconnections_succeeded: Counter::new(),
+            connected_peers: Gauge::new(),
+            connecting_peers: Gauge::new(),
+            connection_duration: Histogram::new(vec![
+                1, 5, 10, 30, 60, 300, 600, 1800, 3600, // seconds
+            ]),
+            connection_time: Histogram::new(vec![
+                10, 50, 100, 250, 500, 1000, 2000, 5000, // milliseconds
+            ]),
+            peer_states: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Record connection attempt
+    pub async fn record_connect_attempt(&self, peer_id: NodeId) {
+        self.connection_attempts.inc();
+        self.connecting_peers.inc();
+
+        let mut states = self.peer_states.write().await;
+        states
+            .entry(peer_id)
+            .or_insert_with(|| PeerConnectionState::new(peer_id))
+            .connecting();
+    }
+
+    /// Record successful connection
+    pub async fn record_connected(&self, peer_id: NodeId, connection_time_ms: u64) {
+        self.connections_established.inc();
+        self.connecting_peers.dec();
+        self.connected_peers.inc();
+        self.connection_time.observe(connection_time_ms);
+
+        let mut states = self.peer_states.write().await;
+        states
+            .entry(peer_id)
+            .or_insert_with(|| PeerConnectionState::new(peer_id))
+            .connected();
+    }
+
+    /// Record connection failure
+    pub async fn record_connection_failed(&self, peer_id: NodeId) {
+        self.connection_failures.inc();
+        self.connecting_peers.dec();
+
+        let mut states = self.peer_states.write().await;
+        states
+            .entry(peer_id)
+            .or_insert_with(|| PeerConnectionState::new(peer_id))
+            .failed();
+    }
+
+    /// Record disconnection
+    pub async fn record_disconnected(&self, peer_id: NodeId) {
+        self.disconnections.inc();
+        self.connected_peers.dec();
+
+        let mut states = self.peer_states.write().await;
+        if let Some(state) = states.get_mut(&peer_id) {
+            if let Some(connected_at) = state.connected_at {
+                self.connection_duration
+                    .observe(connected_at.elapsed().as_secs());
+            }
+            state.disconnected();
+        }
+    }
+
+    /// Record reconnection attempt
+    pub async fn record_reconnect_attempt(&self, peer_id: NodeId) {
+        self.reconnect_attempts.inc();
+        self.connecting_peers.inc();
+
+        let mut states = self.peer_states.write().await;
+        if let Some(state) = states.get_mut(&peer_id) {
+            state.state = ConnectionState::Reconnecting;
+        }
+    }
+
+    /// Record successful reconnection
+    pub async fn record_reconnected(&self, peer_id: NodeId, connection_time_ms: u64) {
+        self.reconnections_succeeded.inc();
+        self.connecting_peers.dec();
+        self.connected_peers.inc();
+        self.connection_time.observe(connection_time_ms);
+
+        let mut states = self.peer_states.write().await;
+        states
+            .entry(peer_id)
+            .or_insert_with(|| PeerConnectionState::new(peer_id))
+            .connected();
+    }
+
+    /// Get peer connection state
+    pub async fn peer_state(&self, peer_id: &NodeId) -> Option<PeerConnectionState> {
+        self.peer_states.read().await.get(peer_id).cloned()
+    }
+
+    /// Get all connected peers
+    pub async fn connected_peer_ids(&self) -> Vec<NodeId> {
+        self.peer_states
+            .read()
+            .await
+            .iter()
+            .filter(|(_, s)| s.state == ConnectionState::Connected)
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// Get summary
+    pub fn summary(&self) -> PeerConnectionSummary {
+        let duration_stats = self.connection_duration.stats();
+        let time_stats = self.connection_time.stats();
+
+        PeerConnectionSummary {
+            connection_attempts: self.connection_attempts.get(),
+            connections_established: self.connections_established.get(),
+            connection_failures: self.connection_failures.get(),
+            disconnections: self.disconnections.get(),
+            reconnect_attempts: self.reconnect_attempts.get(),
+            reconnections_succeeded: self.reconnections_succeeded.get(),
+            connected_peers: self.connected_peers.get(),
+            avg_connection_duration_secs: duration_stats.mean,
+            avg_connection_time_ms: time_stats.mean,
+            p99_connection_time_ms: time_stats.percentile(99.0),
+        }
+    }
+}
+
+/// Peer connection metrics summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerConnectionSummary {
+    pub connection_attempts: u64,
+    pub connections_established: u64,
+    pub connection_failures: u64,
+    pub disconnections: u64,
+    pub reconnect_attempts: u64,
+    pub reconnections_succeeded: u64,
+    pub connected_peers: u64,
+    pub avg_connection_duration_secs: u64,
+    pub avg_connection_time_ms: u64,
+    pub p99_connection_time_ms: u64,
+}
+
+// =============================================================================
+// Message Throughput Metrics
+// =============================================================================
+
+/// Message type for throughput tracking
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MessageType {
+    /// Gossip heartbeat
+    Heartbeat,
+    /// Gossip membership update
+    MembershipUpdate,
+    /// Gossip state sync
+    StateSync,
+    /// DHT lookup request
+    DhtLookup,
+    /// DHT lookup response
+    DhtLookupResponse,
+    /// DHT store request
+    DhtStore,
+    /// Migration data transfer
+    MigrationData,
+    /// Agent communication
+    AgentMessage,
+    /// Control message
+    Control,
+    /// Unknown/other
+    Other,
+}
+
+impl std::fmt::Display for MessageType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Heartbeat => write!(f, "heartbeat"),
+            Self::MembershipUpdate => write!(f, "membership_update"),
+            Self::StateSync => write!(f, "state_sync"),
+            Self::DhtLookup => write!(f, "dht_lookup"),
+            Self::DhtLookupResponse => write!(f, "dht_lookup_response"),
+            Self::DhtStore => write!(f, "dht_store"),
+            Self::MigrationData => write!(f, "migration_data"),
+            Self::AgentMessage => write!(f, "agent_message"),
+            Self::Control => write!(f, "control"),
+            Self::Other => write!(f, "other"),
+        }
+    }
+}
+
+/// Per-message-type throughput tracking
+#[derive(Debug)]
+struct MessageTypeMetrics {
+    /// Messages sent
+    sent_count: Counter,
+    /// Messages received
+    received_count: Counter,
+    /// Bytes sent
+    bytes_sent: Counter,
+    /// Bytes received
+    bytes_received: Counter,
+    /// Send rate tracker
+    send_rate: RateTracker,
+    /// Receive rate tracker
+    receive_rate: RateTracker,
+}
+
+impl MessageTypeMetrics {
+    fn new() -> Self {
+        Self {
+            sent_count: Counter::new(),
+            received_count: Counter::new(),
+            bytes_sent: Counter::new(),
+            bytes_received: Counter::new(),
+            send_rate: RateTracker::new(0.3),
+            receive_rate: RateTracker::new(0.3),
+        }
+    }
+}
+
+/// Message throughput metrics
+#[derive(Debug)]
+pub struct ThroughputMetrics {
+    /// Per-type metrics
+    type_metrics: RwLock<HashMap<MessageType, MessageTypeMetrics>>,
+    /// Total bytes sent
+    total_bytes_sent: Counter,
+    /// Total bytes received
+    total_bytes_received: Counter,
+    /// Total messages sent
+    total_messages_sent: Counter,
+    /// Total messages received
+    total_messages_received: Counter,
+    /// Bandwidth limit (bytes/sec, 0 = unlimited)
+    bandwidth_limit: AtomicU64,
+    /// Current bandwidth usage (bytes/sec)
+    current_bandwidth: AtomicU64,
+    /// Bandwidth utilization histogram (percentage)
+    bandwidth_utilization: Histogram,
+    /// Window start for bandwidth calculation
+    window_start: RwLock<Instant>,
+    /// Bytes in current window
+    window_bytes: AtomicU64,
+}
+
+impl Default for ThroughputMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ThroughputMetrics {
+    /// Create new throughput metrics
+    pub fn new() -> Self {
+        Self {
+            type_metrics: RwLock::new(HashMap::new()),
+            total_bytes_sent: Counter::new(),
+            total_bytes_received: Counter::new(),
+            total_messages_sent: Counter::new(),
+            total_messages_received: Counter::new(),
+            bandwidth_limit: AtomicU64::new(0),
+            current_bandwidth: AtomicU64::new(0),
+            bandwidth_utilization: Histogram::new(vec![10, 25, 50, 75, 90, 95, 99, 100]),
+            window_start: RwLock::new(Instant::now()),
+            window_bytes: AtomicU64::new(0),
+        }
+    }
+
+    /// Set bandwidth limit (bytes/sec)
+    pub fn set_bandwidth_limit(&self, limit: u64) {
+        self.bandwidth_limit.store(limit, Ordering::Relaxed);
+    }
+
+    /// Get bandwidth limit
+    pub fn bandwidth_limit(&self) -> u64 {
+        self.bandwidth_limit.load(Ordering::Relaxed)
+    }
+
+    /// Record sent message
+    pub async fn record_send(&self, msg_type: MessageType, bytes: u64) {
+        self.total_bytes_sent.add(bytes);
+        self.total_messages_sent.inc();
+        self.window_bytes.fetch_add(bytes, Ordering::Relaxed);
+
+        let mut metrics = self.type_metrics.write().await;
+        let type_metrics = metrics
+            .entry(msg_type)
+            .or_insert_with(MessageTypeMetrics::new);
+        type_metrics.sent_count.inc();
+        type_metrics.bytes_sent.add(bytes);
+        type_metrics.send_rate.record();
+    }
+
+    /// Record received message
+    pub async fn record_receive(&self, msg_type: MessageType, bytes: u64) {
+        self.total_bytes_received.add(bytes);
+        self.total_messages_received.inc();
+        self.window_bytes.fetch_add(bytes, Ordering::Relaxed);
+
+        let mut metrics = self.type_metrics.write().await;
+        let type_metrics = metrics
+            .entry(msg_type)
+            .or_insert_with(MessageTypeMetrics::new);
+        type_metrics.received_count.inc();
+        type_metrics.bytes_received.add(bytes);
+        type_metrics.receive_rate.record();
+    }
+
+    /// Update bandwidth calculation (call periodically)
+    pub async fn update_bandwidth(&self) {
+        let mut window_start = self.window_start.write().await;
+        let elapsed = window_start.elapsed();
+        *window_start = Instant::now();
+        drop(window_start);
+
+        let bytes = self.window_bytes.swap(0, Ordering::Relaxed);
+        let elapsed_secs = elapsed.as_secs_f64();
+
+        if elapsed_secs > 0.0 {
+            let bandwidth = (bytes as f64 / elapsed_secs) as u64;
+            self.current_bandwidth.store(bandwidth, Ordering::Relaxed);
+
+            // Calculate utilization if limit is set
+            let limit = self.bandwidth_limit.load(Ordering::Relaxed);
+            if limit > 0 {
+                let utilization = ((bandwidth as f64 / limit as f64) * 100.0) as u64;
+                self.bandwidth_utilization.observe(utilization.min(100));
+            }
+        }
+
+        // Update per-type rates
+        let mut metrics = self.type_metrics.write().await;
+        for type_metrics in metrics.values_mut() {
+            type_metrics.send_rate.update().await;
+            type_metrics.receive_rate.update().await;
+        }
+    }
+
+    /// Get current bandwidth (bytes/sec)
+    pub fn current_bandwidth(&self) -> u64 {
+        self.current_bandwidth.load(Ordering::Relaxed)
+    }
+
+    /// Get throughput for specific message type
+    pub async fn type_throughput(&self, msg_type: MessageType) -> Option<MessageTypeThroughput> {
+        let metrics = self.type_metrics.read().await;
+        metrics.get(&msg_type).map(|m| MessageTypeThroughput {
+            msg_type,
+            sent_count: m.sent_count.get(),
+            received_count: m.received_count.get(),
+            bytes_sent: m.bytes_sent.get(),
+            bytes_received: m.bytes_received.get(),
+            send_rate: m.send_rate.rate(),
+            receive_rate: m.receive_rate.rate(),
+        })
+    }
+
+    /// Get summary
+    pub async fn summary(&self) -> ThroughputSummary {
+        let metrics = self.type_metrics.read().await;
+        let mut per_type = Vec::with_capacity(metrics.len());
+
+        for (msg_type, m) in metrics.iter() {
+            per_type.push(MessageTypeThroughput {
+                msg_type: *msg_type,
+                sent_count: m.sent_count.get(),
+                received_count: m.received_count.get(),
+                bytes_sent: m.bytes_sent.get(),
+                bytes_received: m.bytes_received.get(),
+                send_rate: m.send_rate.rate(),
+                receive_rate: m.receive_rate.rate(),
+            });
+        }
+
+        let util_stats = self.bandwidth_utilization.stats();
+
+        ThroughputSummary {
+            total_bytes_sent: self.total_bytes_sent.get(),
+            total_bytes_received: self.total_bytes_received.get(),
+            total_messages_sent: self.total_messages_sent.get(),
+            total_messages_received: self.total_messages_received.get(),
+            current_bandwidth: self.current_bandwidth.load(Ordering::Relaxed),
+            bandwidth_limit: self.bandwidth_limit.load(Ordering::Relaxed),
+            avg_bandwidth_utilization: util_stats.mean,
+            per_type,
+        }
+    }
+}
+
+/// Per-message-type throughput
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageTypeThroughput {
+    pub msg_type: MessageType,
+    pub sent_count: u64,
+    pub received_count: u64,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub send_rate: u64,
+    pub receive_rate: u64,
+}
+
+/// Throughput summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThroughputSummary {
+    pub total_bytes_sent: u64,
+    pub total_bytes_received: u64,
+    pub total_messages_sent: u64,
+    pub total_messages_received: u64,
+    pub current_bandwidth: u64,
+    pub bandwidth_limit: u64,
+    pub avg_bandwidth_utilization: u64,
+    pub per_type: Vec<MessageTypeThroughput>,
+}
+
+// =============================================================================
+// Migration Metrics (Aggregate)
+// =============================================================================
+
+/// Aggregate migration metrics for success rate tracking
+#[derive(Debug)]
+pub struct MigrationSuccessMetrics {
+    /// Total migrations attempted
+    pub total_migrations: Counter,
+    /// Successful migrations
+    pub successful_migrations: Counter,
+    /// Failed migrations
+    pub failed_migrations: Counter,
+    /// Cancelled migrations
+    pub cancelled_migrations: Counter,
+    /// Migrations by strategy
+    precopy_count: Counter,
+    postcopy_count: Counter,
+    hybrid_count: Counter,
+    /// Migration duration histogram (milliseconds)
+    pub migration_duration: Histogram,
+    /// Migration downtime histogram (milliseconds)
+    pub migration_downtime: Histogram,
+    /// Data transferred histogram (bytes)
+    pub data_transferred: Histogram,
+    /// Active migrations
+    pub active_migrations: Gauge,
+    /// Recent migration results
+    recent_results: RwLock<Vec<MigrationResult>>,
+    /// Max recent results to keep
+    max_recent: usize,
+}
+
+/// Individual migration result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MigrationResult {
+    pub agent_id: [u8; 16],
+    pub source_node: NodeId,
+    pub target_node: NodeId,
+    pub strategy: String,
+    pub success: bool,
+    pub duration_ms: u64,
+    pub downtime_ms: u64,
+    pub bytes_transferred: u64,
+    pub timestamp: SystemTime,
+    pub error: Option<String>,
+}
+
+impl Default for MigrationSuccessMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MigrationSuccessMetrics {
+    /// Create new migration metrics
+    pub fn new() -> Self {
+        Self {
+            total_migrations: Counter::new(),
+            successful_migrations: Counter::new(),
+            failed_migrations: Counter::new(),
+            cancelled_migrations: Counter::new(),
+            precopy_count: Counter::new(),
+            postcopy_count: Counter::new(),
+            hybrid_count: Counter::new(),
+            migration_duration: Histogram::new(vec![
+                100, 500, 1000, 2000, 5000, 10000, 30000, 60000, // milliseconds
+            ]),
+            migration_downtime: Histogram::new(vec![
+                10, 50, 100, 250, 500, 1000, 2000, 5000, // milliseconds
+            ]),
+            data_transferred: Histogram::new_size(),
+            active_migrations: Gauge::new(),
+            recent_results: RwLock::new(Vec::new()),
+            max_recent: 100,
+        }
+    }
+
+    /// Record migration start
+    pub fn record_start(&self, strategy: &str) {
+        self.total_migrations.inc();
+        self.active_migrations.inc();
+
+        match strategy {
+            "precopy" | "PreCopy" => self.precopy_count.inc(),
+            "postcopy" | "PostCopy" => self.postcopy_count.inc(),
+            "hybrid" | "Hybrid" => self.hybrid_count.inc(),
+            _ => {}
+        }
+    }
+
+    /// Record migration completion
+    pub async fn record_complete(&self, result: MigrationResult) {
+        self.active_migrations.dec();
+
+        if result.success {
+            self.successful_migrations.inc();
+        } else {
+            self.failed_migrations.inc();
+        }
+
+        self.migration_duration.observe(result.duration_ms);
+        self.migration_downtime.observe(result.downtime_ms);
+        self.data_transferred.observe(result.bytes_transferred);
+
+        // Store recent result
+        let mut recent = self.recent_results.write().await;
+        recent.push(result);
+        if recent.len() > self.max_recent {
+            recent.remove(0);
+        }
+    }
+
+    /// Record migration cancellation
+    pub fn record_cancelled(&self) {
+        self.active_migrations.dec();
+        self.cancelled_migrations.inc();
+    }
+
+    /// Get success rate (0.0 - 1.0)
+    pub fn success_rate(&self) -> f64 {
+        let total = self.total_migrations.get();
+        let success = self.successful_migrations.get();
+        if total == 0 {
+            0.0
+        } else {
+            success as f64 / total as f64
+        }
+    }
+
+    /// Get recent migration results
+    pub async fn recent_results(&self) -> Vec<MigrationResult> {
+        self.recent_results.read().await.clone()
+    }
+
+    /// Get summary
+    pub fn summary(&self) -> MigrationSuccessSummary {
+        let duration_stats = self.migration_duration.stats();
+        let downtime_stats = self.migration_downtime.stats();
+
+        MigrationSuccessSummary {
+            total_migrations: self.total_migrations.get(),
+            successful_migrations: self.successful_migrations.get(),
+            failed_migrations: self.failed_migrations.get(),
+            cancelled_migrations: self.cancelled_migrations.get(),
+            success_rate: self.success_rate(),
+            active_migrations: self.active_migrations.get(),
+            precopy_count: self.precopy_count.get(),
+            postcopy_count: self.postcopy_count.get(),
+            hybrid_count: self.hybrid_count.get(),
+            avg_duration_ms: duration_stats.mean,
+            p99_duration_ms: duration_stats.percentile(99.0),
+            avg_downtime_ms: downtime_stats.mean,
+            p99_downtime_ms: downtime_stats.percentile(99.0),
+        }
+    }
+}
+
+/// Migration success summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MigrationSuccessSummary {
+    pub total_migrations: u64,
+    pub successful_migrations: u64,
+    pub failed_migrations: u64,
+    pub cancelled_migrations: u64,
+    pub success_rate: f64,
+    pub active_migrations: u64,
+    pub precopy_count: u64,
+    pub postcopy_count: u64,
+    pub hybrid_count: u64,
+    pub avg_duration_ms: u64,
+    pub p99_duration_ms: u64,
+    pub avg_downtime_ms: u64,
+    pub p99_downtime_ms: u64,
+}
+
+// =============================================================================
+// Operation Latency Metrics
+// =============================================================================
+
+/// Operation type for latency tracking
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OperationType {
+    /// DHT get operation
+    DhtGet,
+    /// DHT put operation
+    DhtPut,
+    /// DHT lookup (routing)
+    DhtLookup,
+    /// Gossip round
+    GossipRound,
+    /// State sync
+    StateSync,
+    /// Agent lookup in registry
+    AgentLookup,
+    /// Agent registration
+    AgentRegister,
+    /// Migration prepare
+    MigrationPrepare,
+    /// Migration transfer
+    MigrationTransfer,
+    /// Migration complete
+    MigrationComplete,
+    /// Peer connection
+    PeerConnect,
+    /// Message send
+    MessageSend,
+    /// Message receive processing
+    MessageProcess,
+}
+
+impl std::fmt::Display for OperationType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DhtGet => write!(f, "dht_get"),
+            Self::DhtPut => write!(f, "dht_put"),
+            Self::DhtLookup => write!(f, "dht_lookup"),
+            Self::GossipRound => write!(f, "gossip_round"),
+            Self::StateSync => write!(f, "state_sync"),
+            Self::AgentLookup => write!(f, "agent_lookup"),
+            Self::AgentRegister => write!(f, "agent_register"),
+            Self::MigrationPrepare => write!(f, "migration_prepare"),
+            Self::MigrationTransfer => write!(f, "migration_transfer"),
+            Self::MigrationComplete => write!(f, "migration_complete"),
+            Self::PeerConnect => write!(f, "peer_connect"),
+            Self::MessageSend => write!(f, "message_send"),
+            Self::MessageProcess => write!(f, "message_process"),
+        }
+    }
+}
+
+/// Per-operation latency tracking
+#[derive(Debug)]
+struct OperationMetrics {
+    /// Operation count
+    count: Counter,
+    /// Success count
+    success_count: Counter,
+    /// Failure count
+    failure_count: Counter,
+    /// Latency histogram (microseconds)
+    latency: Histogram,
+}
+
+impl OperationMetrics {
+    fn new() -> Self {
+        Self {
+            count: Counter::new(),
+            success_count: Counter::new(),
+            failure_count: Counter::new(),
+            latency: Histogram::new_latency(),
+        }
+    }
+}
+
+/// Operation latency metrics
+#[derive(Debug)]
+pub struct OperationLatencyMetrics {
+    /// Per-operation metrics
+    operations: RwLock<HashMap<OperationType, OperationMetrics>>,
+    /// Overall latency (all operations)
+    overall_latency: Histogram,
+    /// Total operations
+    total_operations: Counter,
+    /// SLA threshold (microseconds)
+    sla_threshold_us: AtomicU64,
+    /// SLA violations
+    sla_violations: Counter,
+}
+
+impl Default for OperationLatencyMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OperationLatencyMetrics {
+    /// Create new operation latency metrics
+    pub fn new() -> Self {
+        Self {
+            operations: RwLock::new(HashMap::new()),
+            overall_latency: Histogram::new_latency(),
+            total_operations: Counter::new(),
+            sla_threshold_us: AtomicU64::new(100_000), // 100ms default
+            sla_violations: Counter::new(),
+        }
+    }
+
+    /// Set SLA threshold (microseconds)
+    pub fn set_sla_threshold(&self, threshold_us: u64) {
+        self.sla_threshold_us.store(threshold_us, Ordering::Relaxed);
+    }
+
+    /// Record operation completion
+    pub async fn record(&self, op_type: OperationType, latency_us: u64, success: bool) {
+        self.total_operations.inc();
+        self.overall_latency.observe(latency_us);
+
+        // Check SLA
+        let threshold = self.sla_threshold_us.load(Ordering::Relaxed);
+        if latency_us > threshold {
+            self.sla_violations.inc();
+        }
+
+        let mut operations = self.operations.write().await;
+        let op_metrics = operations
+            .entry(op_type)
+            .or_insert_with(OperationMetrics::new);
+
+        op_metrics.count.inc();
+        op_metrics.latency.observe(latency_us);
+
+        if success {
+            op_metrics.success_count.inc();
+        } else {
+            op_metrics.failure_count.inc();
+        }
+    }
+
+    /// Record operation with timer
+    pub fn start_timer(&self) -> OperationTimer {
+        OperationTimer {
+            start: Instant::now(),
+        }
+    }
+
+    /// Get latency stats for specific operation
+    pub async fn operation_stats(&self, op_type: OperationType) -> Option<OperationLatencyStats> {
+        let operations = self.operations.read().await;
+        operations.get(&op_type).map(|m| {
+            let stats = m.latency.stats();
+            OperationLatencyStats {
+                op_type,
+                count: m.count.get(),
+                success_count: m.success_count.get(),
+                failure_count: m.failure_count.get(),
+                avg_latency_us: stats.mean,
+                p50_latency_us: stats.percentile(50.0),
+                p95_latency_us: stats.percentile(95.0),
+                p99_latency_us: stats.percentile(99.0),
+            }
+        })
+    }
+
+    /// Get SLA compliance rate (0.0 - 1.0)
+    pub fn sla_compliance_rate(&self) -> f64 {
+        let total = self.total_operations.get();
+        let violations = self.sla_violations.get();
+        if total == 0 {
+            1.0
+        } else {
+            1.0 - (violations as f64 / total as f64)
+        }
+    }
+
+    /// Get summary
+    pub async fn summary(&self) -> OperationLatencySummary {
+        let operations = self.operations.read().await;
+        let mut per_operation = Vec::with_capacity(operations.len());
+
+        for (op_type, m) in operations.iter() {
+            let stats = m.latency.stats();
+            per_operation.push(OperationLatencyStats {
+                op_type: *op_type,
+                count: m.count.get(),
+                success_count: m.success_count.get(),
+                failure_count: m.failure_count.get(),
+                avg_latency_us: stats.mean,
+                p50_latency_us: stats.percentile(50.0),
+                p95_latency_us: stats.percentile(95.0),
+                p99_latency_us: stats.percentile(99.0),
+            });
+        }
+
+        let overall_stats = self.overall_latency.stats();
+
+        OperationLatencySummary {
+            total_operations: self.total_operations.get(),
+            sla_threshold_us: self.sla_threshold_us.load(Ordering::Relaxed),
+            sla_violations: self.sla_violations.get(),
+            sla_compliance_rate: self.sla_compliance_rate(),
+            overall_avg_latency_us: overall_stats.mean,
+            overall_p99_latency_us: overall_stats.percentile(99.0),
+            per_operation,
+        }
+    }
+}
+
+/// Operation timer for measuring latency
+#[derive(Debug)]
+pub struct OperationTimer {
+    start: Instant,
+}
+
+impl OperationTimer {
+    /// Get elapsed time in microseconds
+    pub fn elapsed_us(&self) -> u64 {
+        self.start.elapsed().as_micros() as u64
+    }
+
+    /// Get elapsed time in milliseconds
+    pub fn elapsed_ms(&self) -> u64 {
+        self.start.elapsed().as_millis() as u64
+    }
+}
+
+/// Per-operation latency stats
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OperationLatencyStats {
+    pub op_type: OperationType,
+    pub count: u64,
+    pub success_count: u64,
+    pub failure_count: u64,
+    pub avg_latency_us: u64,
+    pub p50_latency_us: u64,
+    pub p95_latency_us: u64,
+    pub p99_latency_us: u64,
+}
+
+/// Operation latency summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OperationLatencySummary {
+    pub total_operations: u64,
+    pub sla_threshold_us: u64,
+    pub sla_violations: u64,
+    pub sla_compliance_rate: f64,
+    pub overall_avg_latency_us: u64,
+    pub overall_p99_latency_us: u64,
+    pub per_operation: Vec<OperationLatencyStats>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_counter() {
+        let counter = Counter::new();
+        assert_eq!(counter.get(), 0);
+
+        counter.inc();
+        assert_eq!(counter.get(), 1);
+
+        counter.add(5);
+        assert_eq!(counter.get(), 6);
+
+        counter.reset();
+        assert_eq!(counter.get(), 0);
+    }
+
+    #[test]
+    fn test_gauge() {
+        let gauge = Gauge::new();
+        assert_eq!(gauge.get(), 0);
+
+        gauge.set(10);
+        assert_eq!(gauge.get(), 10);
+
+        gauge.inc();
+        assert_eq!(gauge.get(), 11);
+
+        gauge.dec();
+        assert_eq!(gauge.get(), 10);
+    }
+
+    #[test]
+    fn test_histogram() {
+        let hist = Histogram::new(vec![10, 50, 100, 500]);
+
+        hist.observe(5);
+        hist.observe(25);
+        hist.observe(75);
+        hist.observe(200);
+        hist.observe(1000);
+
+        let stats = hist.stats();
+        assert_eq!(stats.count, 5);
+        assert_eq!(stats.sum, 1305);
+        assert_eq!(stats.mean, 261);
+    }
+
+    #[test]
+    fn test_histogram_percentile() {
+        let hist = Histogram::new(vec![10, 50, 100, 500, 1000]);
+
+        // Add 100 observations
+        for i in 0..100 {
+            hist.observe(i * 10);
+        }
+
+        let stats = hist.stats();
+        assert!(stats.percentile(50.0) > 0);
+        assert!(stats.percentile(99.0) >= stats.percentile(50.0));
+    }
+
+    #[test]
+    fn test_histogram_empty_percentile() {
+        let hist = Histogram::new(vec![10, 50, 100]);
+        let stats = hist.stats();
+        assert_eq!(stats.percentile(50.0), 0);
+    }
+
+    #[tokio::test]
+    async fn test_rate_tracker() {
+        let tracker = RateTracker::new(0.5);
+
+        // Record some events
+        for _ in 0..100 {
+            tracker.record();
+        }
+
+        // Update should calculate rate
+        tracker.update().await;
+
+        // Rate should be non-zero (events happened in short time)
+        // Note: Rate calculation depends on timing, so we just check it's accessible
+        let _rate = tracker.rate();
+    }
+
+    #[tokio::test]
+    async fn test_node_metrics() {
+        let node_id = NodeId::new_v4();
+        let metrics = NodeMetrics::new(node_id);
+
+        metrics.record_send(1024, 5000).await;
+        metrics.record_receive(512).await;
+        metrics.failures.inc();
+
+        let summary = metrics.summary().await;
+        assert_eq!(summary.messages_sent, 1);
+        assert_eq!(summary.messages_received, 1);
+        assert_eq!(summary.bytes_sent, 1024);
+        assert_eq!(summary.bytes_received, 512);
+        assert_eq!(summary.failures, 1);
+    }
+
+    #[test]
+    fn test_gossip_metrics() {
+        let metrics = GossipMetrics::new();
+
+        metrics.heartbeats_sent.inc();
+        metrics.heartbeats_sent.inc();
+        metrics.heartbeats_received.inc();
+        metrics.member_count.set(5);
+        metrics.suspect_count.set(1);
+
+        let summary = metrics.summary();
+        assert_eq!(summary.heartbeats_sent, 2);
+        assert_eq!(summary.heartbeats_received, 1);
+        assert_eq!(summary.member_count, 5);
+        assert_eq!(summary.suspect_count, 1);
+    }
+
+    #[test]
+    fn test_dht_metrics() {
+        let metrics = DhtMetrics::new();
+
+        // Simulate some operations
+        metrics.lookups.add(100);
+        metrics.lookup_successes.add(90);
+        metrics.cache_hits.add(60);
+        metrics.cache_misses.add(40);
+
+        assert!((metrics.lookup_success_rate() - 0.9).abs() < 0.001);
+        assert!((metrics.cache_hit_rate() - 0.6).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_dht_metrics_zero_division() {
+        let metrics = DhtMetrics::new();
+
+        // No operations yet
+        assert_eq!(metrics.lookup_success_rate(), 0.0);
+        assert_eq!(metrics.cache_hit_rate(), 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_metrics_registry() {
+        let node_id = NodeId::new_v4();
+        let registry = MetricsRegistry::new(node_id);
+
+        // Record local metrics
+        registry.local().messages_sent.inc();
+        registry.local().bytes_sent.add(1024);
+
+        // Record gossip metrics
+        registry.gossip().heartbeats_sent.inc();
+
+        // Record DHT metrics
+        registry.dht().gets.inc();
+
+        // Record message for rate tracking
+        registry.record_message();
+
+        // Get summary
+        let summary = registry.summary().await;
+        assert_eq!(summary.local.messages_sent, 1);
+        assert_eq!(summary.local.bytes_sent, 1024);
+        assert_eq!(summary.gossip.heartbeats_sent, 1);
+        assert_eq!(summary.dht.gets, 1);
+    }
+
+    #[tokio::test]
+    async fn test_peer_metrics() {
+        let local_id = NodeId::new_v4();
+        let peer_id = NodeId::new_v4();
+        let registry = MetricsRegistry::new(local_id);
+
+        // Get peer metrics (creates new)
+        let peer = registry.peer(peer_id).await;
+        peer.messages_sent.inc();
+
+        // Get same peer metrics (returns existing)
+        let peer2 = registry.peer(peer_id).await;
+        assert_eq!(peer2.messages_sent.get(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_metrics_reset() {
+        let node_id = NodeId::new_v4();
+        let registry = MetricsRegistry::new(node_id);
+
+        registry.local().messages_sent.add(100);
+        registry.gossip().heartbeats_sent.add(50);
+        registry.dht().gets.add(25);
+
+        registry.reset().await;
+
+        assert_eq!(registry.local().messages_sent.get(), 0);
+        assert_eq!(registry.gossip().heartbeats_sent.get(), 0);
+        assert_eq!(registry.dht().gets.get(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_uptime() {
+        let node_id = NodeId::new_v4();
+        let registry = MetricsRegistry::new(node_id);
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        let uptime = registry.uptime();
+        assert!(uptime.as_millis() >= 10);
+    }
+
+    #[test]
+    fn test_histogram_latency_buckets() {
+        let hist = Histogram::new_latency();
+        assert!(!hist.buckets.is_empty());
+        assert!(hist.buckets.iter().all(|&b| b > 0));
+    }
+
+    #[test]
+    fn test_histogram_size_buckets() {
+        let hist = Histogram::new_size();
+        assert!(!hist.buckets.is_empty());
+        assert!(hist.buckets.iter().all(|&b| b > 0));
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_stale_peers() {
+        let local_id = NodeId::new_v4();
+        let peer_id = NodeId::new_v4();
+        let registry = MetricsRegistry::new(local_id);
+
+        // Add a peer
+        let peer = registry.peer(peer_id).await;
+        peer.messages_sent.inc();
+
+        // Set last_activity to long ago
+        *peer.last_activity.write().await = SystemTime::UNIX_EPOCH;
+
+        // Cleanup with 1 hour max age should remove it
+        registry
+            .cleanup_stale_peers(Duration::from_secs(3600))
+            .await;
+
+        let summary = registry.summary().await;
+        assert!(summary.peers.is_empty());
+    }
+
+    #[test]
+    fn test_histogram_observe_above_max_bucket() {
+        let hist = Histogram::new(vec![10, 50, 100]);
+
+        // Observe value above max bucket
+        hist.observe(500);
+
+        let stats = hist.stats();
+        assert_eq!(stats.count, 1);
+        assert_eq!(stats.sum, 500);
+    }
+
+    // =========================================================================
+    // Peer Connection Metrics Tests
+    // =========================================================================
+
+    #[test]
+    fn test_peer_connection_state_new() {
+        let peer_id = NodeId::new_v4();
+        let state = PeerConnectionState::new(peer_id);
+
+        assert_eq!(state.peer_id, peer_id);
+        assert_eq!(state.state, ConnectionState::Disconnected);
+        assert!(state.connected_at.is_none());
+        assert_eq!(state.connection_count, 0);
+        assert_eq!(state.failure_count, 0);
+    }
+
+    #[test]
+    fn test_peer_connection_state_lifecycle() {
+        let peer_id = NodeId::new_v4();
+        let mut state = PeerConnectionState::new(peer_id);
+
+        // Connecting
+        state.connecting();
+        assert_eq!(state.state, ConnectionState::Connecting);
+
+        // Connected
+        state.connected();
+        assert_eq!(state.state, ConnectionState::Connected);
+        assert!(state.connected_at.is_some());
+        assert_eq!(state.connection_count, 1);
+
+        // Disconnected
+        state.disconnected();
+        assert_eq!(state.state, ConnectionState::Disconnected);
+        assert!(state.connected_at.is_none());
+        assert!(state.total_connected_duration >= Duration::ZERO);
+    }
+
+    #[test]
+    fn test_peer_connection_state_failure() {
+        let peer_id = NodeId::new_v4();
+        let mut state = PeerConnectionState::new(peer_id);
+
+        state.connecting();
+        state.failed();
+
+        assert_eq!(state.state, ConnectionState::Disconnected);
+        assert_eq!(state.failure_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_peer_connection_metrics_creation() {
+        let metrics = PeerConnectionMetrics::new();
+
+        assert_eq!(metrics.connection_attempts.get(), 0);
+        assert_eq!(metrics.connections_established.get(), 0);
+        assert_eq!(metrics.connected_peers.get(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_peer_connection_metrics_connect_flow() {
+        let metrics = PeerConnectionMetrics::new();
+        let peer_id = NodeId::new_v4();
+
+        // Record connection attempt
+        metrics.record_connect_attempt(peer_id).await;
+        assert_eq!(metrics.connection_attempts.get(), 1);
+        assert_eq!(metrics.connecting_peers.get(), 1);
+
+        // Record successful connection
+        metrics.record_connected(peer_id, 50).await;
+        assert_eq!(metrics.connections_established.get(), 1);
+        assert_eq!(metrics.connecting_peers.get(), 0);
+        assert_eq!(metrics.connected_peers.get(), 1);
+
+        // Verify peer state
+        let state = metrics.peer_state(&peer_id).await.unwrap();
+        assert_eq!(state.state, ConnectionState::Connected);
+    }
+
+    #[tokio::test]
+    async fn test_peer_connection_metrics_disconnect() {
+        let metrics = PeerConnectionMetrics::new();
+        let peer_id = NodeId::new_v4();
+
+        metrics.record_connect_attempt(peer_id).await;
+        metrics.record_connected(peer_id, 50).await;
+        metrics.record_disconnected(peer_id).await;
+
+        assert_eq!(metrics.disconnections.get(), 1);
+        assert_eq!(metrics.connected_peers.get(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_peer_connection_metrics_failure() {
+        let metrics = PeerConnectionMetrics::new();
+        let peer_id = NodeId::new_v4();
+
+        metrics.record_connect_attempt(peer_id).await;
+        metrics.record_connection_failed(peer_id).await;
+
+        assert_eq!(metrics.connection_failures.get(), 1);
+        assert_eq!(metrics.connecting_peers.get(), 0);
+
+        let state = metrics.peer_state(&peer_id).await.unwrap();
+        assert_eq!(state.failure_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_peer_connection_metrics_reconnect() {
+        let metrics = PeerConnectionMetrics::new();
+        let peer_id = NodeId::new_v4();
+
+        // Initial connection
+        metrics.record_connect_attempt(peer_id).await;
+        metrics.record_connected(peer_id, 50).await;
+        metrics.record_disconnected(peer_id).await;
+
+        // Reconnection
+        metrics.record_reconnect_attempt(peer_id).await;
+        assert_eq!(metrics.reconnect_attempts.get(), 1);
+
+        metrics.record_reconnected(peer_id, 30).await;
+        assert_eq!(metrics.reconnections_succeeded.get(), 1);
+        assert_eq!(metrics.connected_peers.get(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_peer_connection_metrics_connected_peers() {
+        let metrics = PeerConnectionMetrics::new();
+        let peer1 = NodeId::new_v4();
+        let peer2 = NodeId::new_v4();
+
+        metrics.record_connect_attempt(peer1).await;
+        metrics.record_connected(peer1, 50).await;
+        metrics.record_connect_attempt(peer2).await;
+        metrics.record_connected(peer2, 60).await;
+
+        let connected = metrics.connected_peer_ids().await;
+        assert_eq!(connected.len(), 2);
+        assert!(connected.contains(&peer1));
+        assert!(connected.contains(&peer2));
+    }
+
+    #[test]
+    fn test_peer_connection_summary() {
+        let metrics = PeerConnectionMetrics::new();
+        metrics.connection_attempts.add(10);
+        metrics.connections_established.add(8);
+        metrics.connection_failures.add(2);
+
+        let summary = metrics.summary();
+        assert_eq!(summary.connection_attempts, 10);
+        assert_eq!(summary.connections_established, 8);
+        assert_eq!(summary.connection_failures, 2);
+    }
+
+    // =========================================================================
+    // Message Throughput Metrics Tests
+    // =========================================================================
+
+    #[test]
+    fn test_message_type_display() {
+        assert_eq!(format!("{}", MessageType::Heartbeat), "heartbeat");
+        assert_eq!(format!("{}", MessageType::DhtLookup), "dht_lookup");
+        assert_eq!(format!("{}", MessageType::MigrationData), "migration_data");
+    }
+
+    #[tokio::test]
+    async fn test_throughput_metrics_creation() {
+        let metrics = ThroughputMetrics::new();
+
+        assert_eq!(metrics.total_bytes_sent.get(), 0);
+        assert_eq!(metrics.total_messages_sent.get(), 0);
+        assert_eq!(metrics.bandwidth_limit(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_throughput_metrics_record_send() {
+        let metrics = ThroughputMetrics::new();
+
+        metrics.record_send(MessageType::Heartbeat, 100).await;
+        metrics.record_send(MessageType::Heartbeat, 100).await;
+        metrics.record_send(MessageType::DhtLookup, 500).await;
+
+        assert_eq!(metrics.total_bytes_sent.get(), 700);
+        assert_eq!(metrics.total_messages_sent.get(), 3);
+
+        let heartbeat = metrics
+            .type_throughput(MessageType::Heartbeat)
+            .await
+            .unwrap();
+        assert_eq!(heartbeat.sent_count, 2);
+        assert_eq!(heartbeat.bytes_sent, 200);
+    }
+
+    #[tokio::test]
+    async fn test_throughput_metrics_record_receive() {
+        let metrics = ThroughputMetrics::new();
+
+        metrics.record_receive(MessageType::StateSync, 1000).await;
+
+        assert_eq!(metrics.total_bytes_received.get(), 1000);
+        assert_eq!(metrics.total_messages_received.get(), 1);
+
+        let state_sync = metrics
+            .type_throughput(MessageType::StateSync)
+            .await
+            .unwrap();
+        assert_eq!(state_sync.received_count, 1);
+        assert_eq!(state_sync.bytes_received, 1000);
+    }
+
+    #[tokio::test]
+    async fn test_throughput_metrics_bandwidth_limit() {
+        let metrics = ThroughputMetrics::new();
+
+        metrics.set_bandwidth_limit(1_000_000); // 1MB/s
+        assert_eq!(metrics.bandwidth_limit(), 1_000_000);
+    }
+
+    #[tokio::test]
+    async fn test_throughput_metrics_summary() {
+        let metrics = ThroughputMetrics::new();
+
+        metrics.record_send(MessageType::Heartbeat, 100).await;
+        metrics.record_receive(MessageType::DhtLookup, 200).await;
+
+        let summary = metrics.summary().await;
+        assert_eq!(summary.total_bytes_sent, 100);
+        assert_eq!(summary.total_bytes_received, 200);
+        assert_eq!(summary.total_messages_sent, 1);
+        assert_eq!(summary.total_messages_received, 1);
+        assert_eq!(summary.per_type.len(), 2);
+    }
+
+    // =========================================================================
+    // Migration Success Metrics Tests
+    // =========================================================================
+
+    #[test]
+    fn test_migration_success_metrics_creation() {
+        let metrics = MigrationSuccessMetrics::new();
+
+        assert_eq!(metrics.total_migrations.get(), 0);
+        assert_eq!(metrics.successful_migrations.get(), 0);
+        assert_eq!(metrics.success_rate(), 0.0);
+    }
+
+    #[test]
+    fn test_migration_success_metrics_record_start() {
+        let metrics = MigrationSuccessMetrics::new();
+
+        metrics.record_start("PreCopy");
+        metrics.record_start("PostCopy");
+        metrics.record_start("Hybrid");
+
+        assert_eq!(metrics.total_migrations.get(), 3);
+        assert_eq!(metrics.active_migrations.get(), 3);
+        assert_eq!(metrics.precopy_count.get(), 1);
+        assert_eq!(metrics.postcopy_count.get(), 1);
+        assert_eq!(metrics.hybrid_count.get(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_migration_success_metrics_record_complete() {
+        let metrics = MigrationSuccessMetrics::new();
+
+        metrics.record_start("PreCopy");
+
+        let result = MigrationResult {
+            agent_id: [1; 16],
+            source_node: NodeId::new_v4(),
+            target_node: NodeId::new_v4(),
+            strategy: "PreCopy".to_string(),
+            success: true,
+            duration_ms: 1000,
+            downtime_ms: 50,
+            bytes_transferred: 1024 * 1024,
+            timestamp: SystemTime::now(),
+            error: None,
+        };
+
+        metrics.record_complete(result).await;
+
+        assert_eq!(metrics.successful_migrations.get(), 1);
+        assert_eq!(metrics.active_migrations.get(), 0);
+        assert_eq!(metrics.success_rate(), 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_migration_success_metrics_record_failed() {
+        let metrics = MigrationSuccessMetrics::new();
+
+        metrics.record_start("PostCopy");
+
+        let result = MigrationResult {
+            agent_id: [2; 16],
+            source_node: NodeId::new_v4(),
+            target_node: NodeId::new_v4(),
+            strategy: "PostCopy".to_string(),
+            success: false,
+            duration_ms: 500,
+            downtime_ms: 0,
+            bytes_transferred: 0,
+            timestamp: SystemTime::now(),
+            error: Some("Network error".to_string()),
+        };
+
+        metrics.record_complete(result).await;
+
+        assert_eq!(metrics.failed_migrations.get(), 1);
+        assert_eq!(metrics.success_rate(), 0.0);
+    }
+
+    #[test]
+    fn test_migration_success_metrics_cancelled() {
+        let metrics = MigrationSuccessMetrics::new();
+
+        metrics.record_start("Hybrid");
+        metrics.record_cancelled();
+
+        assert_eq!(metrics.cancelled_migrations.get(), 1);
+        assert_eq!(metrics.active_migrations.get(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_migration_success_metrics_recent_results() {
+        let metrics = MigrationSuccessMetrics::new();
+
+        metrics.record_start("PreCopy");
+        let result = MigrationResult {
+            agent_id: [3; 16],
+            source_node: NodeId::new_v4(),
+            target_node: NodeId::new_v4(),
+            strategy: "PreCopy".to_string(),
+            success: true,
+            duration_ms: 2000,
+            downtime_ms: 100,
+            bytes_transferred: 2048,
+            timestamp: SystemTime::now(),
+            error: None,
+        };
+        metrics.record_complete(result).await;
+
+        let recent = metrics.recent_results().await;
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].agent_id, [3; 16]);
+    }
+
+    #[test]
+    fn test_migration_success_summary() {
+        let metrics = MigrationSuccessMetrics::new();
+        metrics.total_migrations.add(10);
+        metrics.successful_migrations.add(8);
+        metrics.failed_migrations.add(2);
+
+        let summary = metrics.summary();
+        assert_eq!(summary.total_migrations, 10);
+        assert_eq!(summary.successful_migrations, 8);
+        assert_eq!(summary.failed_migrations, 2);
+        assert!((summary.success_rate - 0.8).abs() < 0.001);
+    }
+
+    // =========================================================================
+    // Operation Latency Metrics Tests
+    // =========================================================================
+
+    #[test]
+    fn test_operation_type_display() {
+        assert_eq!(format!("{}", OperationType::DhtGet), "dht_get");
+        assert_eq!(format!("{}", OperationType::GossipRound), "gossip_round");
+        assert_eq!(format!("{}", OperationType::AgentLookup), "agent_lookup");
+    }
+
+    #[tokio::test]
+    async fn test_operation_latency_metrics_creation() {
+        let metrics = OperationLatencyMetrics::new();
+
+        assert_eq!(metrics.total_operations.get(), 0);
+        assert_eq!(metrics.sla_violations.get(), 0);
+        assert_eq!(metrics.sla_compliance_rate(), 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_operation_latency_metrics_record() {
+        let metrics = OperationLatencyMetrics::new();
+
+        metrics.record(OperationType::DhtGet, 5000, true).await;
+        metrics.record(OperationType::DhtGet, 10000, true).await;
+        metrics.record(OperationType::DhtPut, 15000, false).await;
+
+        assert_eq!(metrics.total_operations.get(), 3);
+
+        let dht_get_stats = metrics
+            .operation_stats(OperationType::DhtGet)
+            .await
+            .unwrap();
+        assert_eq!(dht_get_stats.count, 2);
+        assert_eq!(dht_get_stats.success_count, 2);
+        assert_eq!(dht_get_stats.failure_count, 0);
+
+        let dht_put_stats = metrics
+            .operation_stats(OperationType::DhtPut)
+            .await
+            .unwrap();
+        assert_eq!(dht_put_stats.count, 1);
+        assert_eq!(dht_put_stats.success_count, 0);
+        assert_eq!(dht_put_stats.failure_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_operation_latency_metrics_sla() {
+        let metrics = OperationLatencyMetrics::new();
+        metrics.set_sla_threshold(10_000); // 10ms
+
+        // Within SLA
+        metrics.record(OperationType::DhtGet, 5000, true).await;
+        assert_eq!(metrics.sla_violations.get(), 0);
+
+        // SLA violation
+        metrics.record(OperationType::DhtGet, 15_000, true).await;
+        assert_eq!(metrics.sla_violations.get(), 1);
+
+        assert!((metrics.sla_compliance_rate() - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_operation_timer() {
+        let metrics = OperationLatencyMetrics::new();
+        let timer = metrics.start_timer();
+
+        std::thread::sleep(Duration::from_millis(10));
+
+        let elapsed_us = timer.elapsed_us();
+        assert!(elapsed_us >= 10_000); // At least 10ms in microseconds
+
+        let elapsed_ms = timer.elapsed_ms();
+        assert!(elapsed_ms >= 10);
+    }
+
+    #[tokio::test]
+    async fn test_operation_latency_summary() {
+        let metrics = OperationLatencyMetrics::new();
+
+        metrics.record(OperationType::DhtGet, 5000, true).await;
+        metrics
+            .record(OperationType::GossipRound, 20000, true)
+            .await;
+
+        let summary = metrics.summary().await;
+        assert_eq!(summary.total_operations, 2);
+        assert_eq!(summary.per_operation.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_operation_latency_no_stats_for_unknown() {
+        let metrics = OperationLatencyMetrics::new();
+
+        let stats = metrics.operation_stats(OperationType::DhtGet).await;
+        assert!(stats.is_none());
+    }
+}

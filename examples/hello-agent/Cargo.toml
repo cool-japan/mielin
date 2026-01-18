@@ -1,0 +1,11 @@
+[package]
+name = "hello-agent"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mielin-cells = { path = "../../mielin-cells" }
+mielin-wasm = { path = "../../mielin-wasm" }
+tokio.workspace = true

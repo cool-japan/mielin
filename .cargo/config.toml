@@ -1,0 +1,16 @@
+# Cargo build configuration for MielinOS
+
+[build]
+# Default target for kernel builds
+# Commented out - use --target flag when building kernel
+# target = "x86_64-unknown-none"
+
+[target.x86_64-unknown-none]
+# Use bootimage as the runner for easy QEMU testing
+# Install with: cargo install bootimage
+runner = "bootimage runner"
+
+[unstable]
+# Enable build-std for no_std targets
+build-std = ["core", "compiler_builtins", "alloc"]
+build-std-features = ["compiler-builtins-mem"]

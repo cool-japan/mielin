@@ -1,0 +1,29 @@
+[package]
+name = "mielin"
+description = "MielinOS - A microkernel-based operating system for distributed AI agents with neural mesh networking"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "../README.md"
+keywords = ["operating-system", "microkernel", "distributed-systems", "ai-agents", "mesh-networking"]
+categories = ["os", "asynchronous", "network-programming", "wasm"]
+
+[dependencies]
+mielin-hal = { workspace = true }
+mielin-rt = { workspace = true }
+mielin-mesh-core = { workspace = true }
+mielin-mesh-wire = { workspace = true }
+mielin-cells = { workspace = true }
+mielin-wasm = { workspace = true }
+mielin-tensor = { workspace = true }
+
+[features]
+default = []
+full = ["kernel"]
+kernel = ["dep:mielin-kernel", "mielin-kernel?/std"]
+
+[dependencies.mielin-kernel]
+workspace = true
+optional = true

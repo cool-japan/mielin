@@ -1,0 +1,15 @@
+[package]
+name = "agent-migration"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mielin-cells = { path = "../../mielin-cells" }
+mielin-mesh-core = { path = "../../mielin-mesh/core" }
+mielin-mesh-wire = { path = "../../mielin-mesh/wire" }
+mielin-wasm = { path = "../../mielin-wasm" }
+mielin-hal = { path = "../../mielin-hal" }
+tokio.workspace = true
+uuid.workspace = true

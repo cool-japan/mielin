@@ -1,0 +1,26 @@
+[package]
+name = "e2e-agent-migration"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+mielin-cells = { path = "../../mielin-cells" }
+mielin-mesh-core = { path = "../../mielin-mesh/core" }
+mielin-mesh-wire = { path = "../../mielin-mesh/wire" }
+
+# Async runtime
+tokio.workspace = true
+
+# Error handling
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Utilities
+uuid.workspace = true

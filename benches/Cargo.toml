@@ -1,0 +1,47 @@
+[package]
+name = "benches"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+mielin-cells = { path = "../mielin-cells" }
+mielin-hal = { path = "../mielin-hal" }
+mielin-mesh-core = { path = "../mielin-mesh/core" }
+mielin-mesh-wire = { path = "../mielin-mesh/wire" }
+mielin-tensor = { path = "../mielin-tensor" }
+criterion = { workspace = true }
+uuid.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+oxicode.workspace = true
+rand.workspace = true
+
+# Note: kernel_benches use limited std-compatible kernel components
+# Full kernel testing requires separate benchmarking infrastructure
+
+[[bench]]
+name = "agent_benches"
+harness = false
+
+[[bench]]
+name = "mesh_benches"
+harness = false
+
+[[bench]]
+name = "mesh_performance"
+harness = false
+
+[[bench]]
+name = "migration_performance"
+harness = false
+
+[[bench]]
+name = "tensor_performance"
+harness = false
+
+[[bench]]
+name = "kernel_performance"
+harness = false

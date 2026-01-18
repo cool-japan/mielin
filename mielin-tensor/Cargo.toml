@@ -1,0 +1,56 @@
+[package]
+name = "mielin-tensor"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kernel-level tensor operations with hardware accelerator support (Arm SVE2/SME, CUDA, Metal, NPU)"
+keywords = ["tensor", "machine-learning", "accelerator", "simd", "gpu"]
+
+[dependencies]
+mielin-hal.workspace = true
+mielin-kernel.workspace = true
+libm.workspace = true
+
+# Parallel execution
+rayon = { version = "1.11", optional = true }
+num_cpus = { version = "1.17", optional = true }
+
+[dev-dependencies]
+rstest.workspace = true
+
+[features]
+default = []
+# Standard library support (enables file system operations)
+std = []
+# Multi-threading support
+parallel = ["std", "rayon", "num_cpus"]
+# GPU backends
+cuda = ["std"]
+metal = ["std"]
+# NPU backends
+apple-neural-engine = ["std"]
+edge-tpu = ["std"]
+qualcomm-npu = ["std"]
+# Model formats
+onnx = ["std"]
+tflite = ["std"]
+# All features
+all = ["parallel", "cuda", "metal", "apple-neural-engine", "edge-tpu", "qualcomm-npu", "onnx", "tflite"]
+
+[[bench]]
+name = "quantization_bench"
+harness = false
+
+[[bench]]
+name = "simd_bench"
+harness = false
+
+[[bench]]
+name = "comprehensive_bench"
+harness = false
+
+[[bench]]
+name = "performance_analysis"
+harness = false

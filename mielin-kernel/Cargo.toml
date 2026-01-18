@@ -1,0 +1,90 @@
+[package]
+name = "mielin-kernel"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core unikernel implementation providing the foundation for agent execution across heterogeneous hardware platforms"
+keywords = ["kernel", "unikernel", "embedded", "no-std", "operating-system"]
+
+[dependencies]
+# Core dependencies for no_std environment
+spin = "0.10.0"
+lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
+bitflags = "2.10.0"
+
+# Bootloader support (optional - requires nightly Rust)
+bootloader = { version = "0.11.14", optional = true }
+
+[features]
+default = []
+bootable = ["bootloader"]
+std = []  # Enable std for testing and benchmarking
+
+# Debug features - enable additional checks and diagnostics
+debug = []           # Enable debug assertions and extra validation
+debug-alloc = []     # Enable allocation debugging (tracks call sites)
+debug-scheduler = [] # Enable scheduler debugging (logs task state changes)
+
+# Release optimizations
+release-lto = []     # Suggest LTO for release builds (handled in profile)
+release-strip = []   # Suggest stripping symbols (handled in profile)
+
+# Optional std support for testing
+[dev-dependencies]
+proptest.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "allocation"
+harness = false
+required-features = ["std"]
+
+[[example]]
+name = "memory_allocator"
+required-features = ["std"]
+
+[[example]]
+name = "scheduler"
+required-features = ["std"]
+
+[[example]]
+name = "lockfree"
+required-features = ["std"]
+
+[[example]]
+name = "heap_allocator"
+required-features = ["std"]
+
+[[example]]
+name = "ipc"
+required-features = ["std"]
+
+[[example]]
+name = "config"
+required-features = ["std"]
+
+[[example]]
+name = "interrupt"
+required-features = ["std"]
+
+[[example]]
+name = "timer"
+required-features = ["std"]
+
+[[example]]
+name = "rt"
+required-features = ["std"]
+
+[[example]]
+name = "embedded"
+required-features = ["std"]
+
+[[example]]
+name = "observability"
+required-features = ["std"]
+
+[[example]]
+name = "hardening"
+required-features = ["std"]

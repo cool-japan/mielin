@@ -1,0 +1,18 @@
+[package]
+name = "tensor-inference"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mielin-cells = { path = "../../mielin-cells" }
+mielin-hal = { path = "../../mielin-hal" }
+mielin-tensor = { path = "../../mielin-tensor" }
+mielin-wasm = { path = "../../mielin-wasm" }
+
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+wat.workspace = true

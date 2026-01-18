@@ -1,0 +1,13 @@
+[package]
+name = "embedded-iot"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "sensor-node"
+path = "src/main.rs"
+
+[dependencies]
+mielin-rt = { path = "../../mielin-rt" }
+mielin-cells = { path = "../../mielin-cells" }
+mielin-hal = { path = "../../mielin-hal" }
