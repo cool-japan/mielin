@@ -15,6 +15,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.0] - 2026-03-30 - "Ranvier" (Initial Release)
+
+**First stable release** of MielinOS - Core mesh networking and agent migration.
+
+### Changes from rc.1
+- Version promoted from release candidate to stable
+- All known issues from 0.1.0-rc.1 resolved
+
+### Summary
+- **155,178 lines of Rust** across 445 files
+- **3,255 tests passing** with zero clippy warnings
+- Complete QUIC transport with TLS 1.3 encryption
+- P2P mesh networking with mDNS discovery and gossip protocol
+- Live agent migration with delta compression
+- Production features: HA, DR, multi-region, compliance
+
+See [0.1.0-rc.1] release notes below for full feature list.
+
+---
+
 ## [0.1.0-rc.1] - 2026-01-17 - "Oligodendrocyte" (Release Candidate)
 
 **First Release Candidate** - Core mesh networking and agent migration complete.
@@ -261,5 +281,6 @@ MielinOS versions are named after key components of the nervous system:
 - [Discussions](https://github.com/cool-japan/mielin/discussions)
 - [Documentation](https://github.com/cool-japan/mielin/blob/main/README.md)
 
-[Unreleased]: https://github.com/cool-japan/mielin/compare/v0.1.0-rc.1...HEAD
+[Unreleased]: https://github.com/cool-japan/mielin/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/cool-japan/mielin/compare/v0.1.0-rc.1...v0.1.0
 [0.1.0-rc.1]: https://github.com/cool-japan/mielin/releases/tag/v0.1.0-rc.1

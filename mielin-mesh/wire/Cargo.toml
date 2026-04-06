@@ -24,14 +24,14 @@ libm.workspace = true
 hex.workspace = true
 
 # WebSocket support
-tokio-tungstenite = "0.28"
+tokio-tungstenite = "0.29"
 futures.workspace = true
 
 # ACME / Let's Encrypt integration
 instant-acme = "0.8"  # Updated from 0.7 with API migration completed
 base64 = "0.22"
 reqwest.workspace = true
-x509-parser = "0.18.0"
+x509-parser = "0.18.1"
 ring.workspace = true
 rustls-pemfile = "2.2"
 

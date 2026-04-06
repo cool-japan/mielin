@@ -217,4 +217,4 @@ Pass weight data through WASM memory imports or via host functions.
 
 ## License
 
-MIT OR Apache-2.0
+Apache-2.0

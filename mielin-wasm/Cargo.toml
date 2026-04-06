@@ -24,7 +24,7 @@ mielin-tensor.workspace = true
 [dev-dependencies]
 rstest.workspace = true
 wat.workspace = true
-tempfile = "3.24"
+tempfile = "3.27"
 criterion.workspace = true
 
 [[bench]]

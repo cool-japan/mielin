@@ -4,7 +4,7 @@
 
 MielinOS is a next-generation operating system designed from the ground up for distributed AI agents with neural mesh networking capabilities. Named after the myelin sheath that enables rapid signal transmission in biological neural networks, MielinOS provides the infrastructure for agents to migrate, communicate, and execute across heterogeneous hardware platforms.
 
-**Current Status:** v0.1.0-rc.1 "Oligodendrocyte" (Released 2026-01-18)
+**Current Status:** v0.1.0 "Ranvier" (Released 2026-03-30)
 
 ## Overview
 
@@ -23,7 +23,7 @@ Add MielinOS to your project:
 
 ```toml
 [dependencies]
-mielin = "0.1.0-rc.1"
+mielin = "0.1.0"
 ```
 
 Basic usage:
@@ -69,9 +69,9 @@ You can depend on specific crates instead of the meta crate:
 
 ```toml
 [dependencies]
-mielin-hal = "0.1.0-rc.1"      # Hardware abstraction only
-mielin-tensor = "0.1.0-rc.1"   # Tensor operations only
-mielin-cells = "0.1.0-rc.1"    # Agent SDK only
+mielin-hal = "0.1.0"      # Hardware abstraction only
+mielin-tensor = "0.1.0"   # Tensor operations only
+mielin-cells = "0.1.0"    # Agent SDK only
 ```
 
 ## Architecture
@@ -263,14 +263,26 @@ Areas where we need help:
 - Documentation and examples
 - Security auditing
 
+## Sponsorship
+
+MielinOS is developed and maintained by **COOLJAPAN OU (Team Kitasan)**.
+
+If you find MielinOS useful, please consider sponsoring the project to support continued development of the Pure Rust ecosystem.
+
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-red?logo=github)](https://github.com/sponsors/cool-japan)
+
+**[https://github.com/sponsors/cool-japan](https://github.com/sponsors/cool-japan)**
+
+Your sponsorship helps us:
+- Maintain and improve the COOLJAPAN ecosystem
+- Keep the entire ecosystem (OxiBLAS, OxiFFT, SciRS2, etc.) 100% Pure Rust
+- Provide long-term support and security updates
+
 ## License
 
-Licensed under either of:
+Licensed under:
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](./LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](./LICENSE-MIT))
-
-at your option.
+- Apache License, Version 2.0 ([LICENSE](./LICENSE))
 
 ## Acknowledgments
 

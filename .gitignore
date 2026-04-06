@@ -34,3 +34,6 @@ Thumbs.db
 # Claude
 **/CLAUDE.md
 **/.claude/
+
+# Rustc ICE dumps
+rustc-ice-*.txt

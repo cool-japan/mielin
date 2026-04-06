@@ -12,10 +12,10 @@ keywords = ["kernel", "unikernel", "embedded", "no-std", "operating-system"]
 # Core dependencies for no_std environment
 spin = "0.10.0"
 lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
-bitflags = "2.10.0"
+bitflags = "2.11.0"
 
 # Bootloader support (optional - requires nightly Rust)
-bootloader = { version = "0.11.14", optional = true }
+bootloader = { version = "0.11.15", optional = true }
 
 [features]
 default = []

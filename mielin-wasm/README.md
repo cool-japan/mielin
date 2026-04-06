@@ -318,4 +318,4 @@ let executor = WasmExecutor::with_config(config)?;
 
 ## License
 
-MIT OR Apache-2.0
+Apache-2.0

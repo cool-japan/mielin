@@ -64,8 +64,8 @@ enum ConfigSubcommand {
     #[command(visible_aliases = &["create", "new"])]
     Init {
         /// Output path (uses default if not specified)
-        #[arg(short = 'o', long)]
-        output: Option<std::path::PathBuf>,
+        #[arg(short = 'p', long = "config-path")]
+        config_path: Option<std::path::PathBuf>,
 
         /// Force overwrite if file exists
         #[arg(short = 'f', long)]
@@ -89,8 +89,8 @@ impl ConfigCommand {
                 from_version,
             } => migrate_command(from, to.as_deref(), from_version).await,
             ConfigSubcommand::Show => show_command().await,
-            ConfigSubcommand::Init { output, force } => {
-                init_command(output.as_deref(), *force).await
+            ConfigSubcommand::Init { config_path, force } => {
+                init_command(config_path.as_deref(), *force).await
             }
         }
     }

@@ -22,7 +22,7 @@ tracing.workspace = true
 lru = "0.16.3"
 
 # Node discovery
-mdns-sd = "0.17.2"
+mdns-sd = "0.18.2"
 
 # Distributed tracing
 hex.workspace = true
