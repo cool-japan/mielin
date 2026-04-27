@@ -10,6 +10,7 @@ pub mod debug;
 pub mod discovery;
 pub mod dna;
 pub mod dr;
+pub mod fault;
 pub mod group;
 pub mod ha;
 pub mod history;

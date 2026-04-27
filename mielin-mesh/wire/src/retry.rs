@@ -168,7 +168,7 @@ impl RetryPolicy {
 
     /// Apply jitter to a delay
     fn apply_jitter(&self, delay: Duration) -> Duration {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
 
         let delay_millis = delay.as_millis() as f64;

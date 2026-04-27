@@ -62,7 +62,7 @@ pub struct WatchExpression {
 impl DebugContext {
     /// Create a new debug context
     pub fn new(agent_id: [u8; 16]) -> Self {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
         let mut session_id = [0u8; 16];
         rng.fill(&mut session_id);

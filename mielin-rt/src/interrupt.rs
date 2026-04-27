@@ -22,7 +22,7 @@ const MAX_HANDLERS: usize = 64;
 const MAX_EVENTS: usize = 32;
 
 /// Interrupt priority levels (lower = higher priority)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[repr(u8)]
 pub enum Priority {
     /// Highest priority (cannot be preempted)
@@ -30,17 +30,12 @@ pub enum Priority {
     /// High priority
     High = 1,
     /// Medium priority (default)
+    #[default]
     Medium = 2,
     /// Low priority
     Low = 3,
     /// Background priority
     Background = 4,
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Self::Medium
-    }
 }
 
 impl Priority {

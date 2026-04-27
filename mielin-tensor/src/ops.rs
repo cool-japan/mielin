@@ -1,7 +1,10 @@
 //! Tensor operations with hardware-specific backends
 
 extern crate alloc;
-use crate::backends::{add_avx2, add_neon, dot_avx2, dot_neon, matvec_avx2, matvec_neon};
+use crate::backends::{
+    add_avx2, add_neon, add_sve2, div_sve2, dot_avx2, dot_neon, matvec_avx2, matvec_neon,
+    matvec_sve2, mul_sve2, sub_sve2,
+};
 use crate::broadcast::{broadcast_shape, broadcast_strides, index_from_strides, unravel_index};
 use crate::tensor::Tensor;
 use alloc::vec::Vec;
@@ -44,34 +47,86 @@ impl TensorOps {
         // Fast path: exact shape match
         if a.shape() == b.shape() {
             let mut result = Tensor::zeros(a.shape().to_vec());
-
-            if self.capabilities.contains(HardwareCapabilities::NEON)
+            if self.capabilities.contains(HardwareCapabilities::SVE2) {
+                #[cfg(target_arch = "aarch64")]
+                unsafe {
+                    add_sve2(a.data(), b.data(), result.data_mut())
+                };
+                #[cfg(not(target_arch = "aarch64"))]
+                add_sve2(a.data(), b.data(), result.data_mut());
+            } else if self.capabilities.contains(HardwareCapabilities::NEON)
                 || self.capabilities.contains(HardwareCapabilities::AVX2)
             {
                 self.add_simd(a.data(), b.data(), result.data_mut());
             } else {
                 self.add_scalar(a.data(), b.data(), result.data_mut());
             }
-
             return Some(result);
         }
-
         // Broadcasting path
         self.broadcast_binary_op(a, b, |x, y| x + y)
     }
 
     /// Element-wise subtraction with broadcasting support
     pub fn sub(&self, a: &Tensor<f32>, b: &Tensor<f32>) -> Option<Tensor<f32>> {
+        if a.shape() == b.shape() {
+            let mut result = Tensor::zeros(a.shape().to_vec());
+            if self.capabilities.contains(HardwareCapabilities::SVE2) {
+                #[cfg(target_arch = "aarch64")]
+                unsafe {
+                    sub_sve2(a.data(), b.data(), result.data_mut())
+                };
+                #[cfg(not(target_arch = "aarch64"))]
+                sub_sve2(a.data(), b.data(), result.data_mut());
+                return Some(result);
+            }
+            for i in 0..a.size() {
+                result.data_mut()[i] = a.data()[i] - b.data()[i];
+            }
+            return Some(result);
+        }
         self.broadcast_binary_op(a, b, |x, y| x - y)
     }
 
     /// Element-wise multiplication with broadcasting support
     pub fn mul(&self, a: &Tensor<f32>, b: &Tensor<f32>) -> Option<Tensor<f32>> {
+        if a.shape() == b.shape() {
+            let mut result = Tensor::zeros(a.shape().to_vec());
+            if self.capabilities.contains(HardwareCapabilities::SVE2) {
+                #[cfg(target_arch = "aarch64")]
+                unsafe {
+                    mul_sve2(a.data(), b.data(), result.data_mut())
+                };
+                #[cfg(not(target_arch = "aarch64"))]
+                mul_sve2(a.data(), b.data(), result.data_mut());
+            } else {
+                for i in 0..a.size() {
+                    result.data_mut()[i] = a.data()[i] * b.data()[i];
+                }
+            }
+            return Some(result);
+        }
         self.broadcast_binary_op(a, b, |x, y| x * y)
     }
 
     /// Element-wise division with broadcasting support
     pub fn div(&self, a: &Tensor<f32>, b: &Tensor<f32>) -> Option<Tensor<f32>> {
+        if a.shape() == b.shape() {
+            let mut result = Tensor::zeros(a.shape().to_vec());
+            if self.capabilities.contains(HardwareCapabilities::SVE2) {
+                #[cfg(target_arch = "aarch64")]
+                unsafe {
+                    div_sve2(a.data(), b.data(), result.data_mut())
+                };
+                #[cfg(not(target_arch = "aarch64"))]
+                div_sve2(a.data(), b.data(), result.data_mut());
+            } else {
+                for i in 0..a.size() {
+                    result.data_mut()[i] = a.data()[i] / b.data()[i];
+                }
+            }
+            return Some(result);
+        }
         self.broadcast_binary_op(a, b, |x, y| x / y)
     }
 
@@ -157,15 +212,13 @@ impl TensorOps {
     /// SVE2-optimized dot product
     #[inline]
     fn dot_sve2(&self, a: &[f32], b: &[f32]) -> f32 {
-        // SVE2 implementation requires nightly Rust
-        // For now, use NEON as fallback on AArch64
         #[cfg(target_arch = "aarch64")]
         {
-            unsafe { dot_neon(a, b) }
+            unsafe { crate::backends::sve2::dot_sve2(a, b) }
         }
         #[cfg(not(target_arch = "aarch64"))]
         {
-            self.dot_scalar(a, b)
+            crate::backends::sve2::dot_sve2(a, b)
         }
     }
 
@@ -269,7 +322,7 @@ impl TensorOps {
         }
     }
 
-    /// SVE2-optimized matrix multiplication
+    /// SVE2-optimized matrix multiplication (column-by-column via matvec_sve2)
     #[inline]
     fn matmul_sve2(
         &self,
@@ -280,9 +333,19 @@ impl TensorOps {
         k: usize,
         n: usize,
     ) {
-        // SVE2 implementation requires nightly Rust
-        // Use NEON as fallback for now
-        self.matmul_neon(a, b, result, m, k, n);
+        for j in 0..n {
+            let col_b: alloc::vec::Vec<f32> = (0..k).map(|i| *b.get(&[i, j]).unwrap()).collect();
+            let mut col_result = alloc::vec![0.0f32; m];
+            #[cfg(target_arch = "aarch64")]
+            unsafe {
+                matvec_sve2(a.data(), &col_b, &mut col_result, m, k)
+            };
+            #[cfg(not(target_arch = "aarch64"))]
+            matvec_sve2(a.data(), &col_b, &mut col_result, m, k);
+            for (i, &val) in col_result.iter().enumerate() {
+                result.set(&[i, j], val);
+            }
+        }
     }
 
     /// AVX2-optimized matrix multiplication
@@ -483,6 +546,7 @@ mod tests {
             HardwareCapabilities::NONE,
             HardwareCapabilities::NEON,
             HardwareCapabilities::AVX2,
+            HardwareCapabilities::SVE2,
         ] {
             let ops = TensorOps::new(caps);
 

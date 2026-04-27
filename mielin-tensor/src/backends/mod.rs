@@ -26,5 +26,6 @@ pub use rvv::{
     add_rvv, dot_rvv, fma_rvv, matvec_rvv, max_rvv, min_rvv, mul_rvv, scale_rvv, sum_rvv,
 };
 pub use sve2::{
-    add_sve2, dot_sve2, fma_sve2, matvec_sve2, max_sve2, min_sve2, mul_sve2, scale_sve2, sum_sve2,
+    add_sve2, div_sve2, dot_sve2, fma_sve2, matvec_sve2, max_sve2, min_sve2, mul_sve2, scale_sve2,
+    sub_sve2, sum_sve2,
 };

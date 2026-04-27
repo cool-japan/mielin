@@ -636,7 +636,7 @@ pub struct ABTestDeployment {
 impl ABTestDeployment {
     /// Assign an agent to a version based on traffic split
     pub fn assign_agent(&mut self, agent_id: AgentId) -> Version {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
 
         if rng.random::<f32>() < self.config.traffic_split {
@@ -684,7 +684,7 @@ pub struct CanaryDeployment {
 impl CanaryDeployment {
     /// Assign an agent to canary or stable version
     pub fn assign_agent(&mut self, agent_id: AgentId) -> Version {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
 
         if rng.random::<f32>() < self.current_percentage {

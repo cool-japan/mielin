@@ -223,7 +223,7 @@ pub struct ResourceUsageSnapshot {
 }
 
 /// Tenant status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TenantStatus {
     /// Tenant is active and operational
     Active,
@@ -232,13 +232,8 @@ pub enum TenantStatus {
     /// Tenant is disabled by admin
     Disabled,
     /// Tenant is pending approval
+    #[default]
     Pending,
-}
-
-impl Default for TenantStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
 }
 
 /// Tenant information
@@ -571,20 +566,15 @@ pub struct AuditLogStats {
 }
 
 /// Routing policy for tenant isolation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum RoutingPolicy {
     /// Strict isolation: no cross-tenant communication
+    #[default]
     Strict,
     /// Allow explicit cross-tenant routing with permission
     PermissionBased,
     /// Allow routing within same namespace only
     NamespaceOnly,
-}
-
-impl Default for RoutingPolicy {
-    fn default() -> Self {
-        Self::Strict
-    }
 }
 
 /// Cross-tenant permission

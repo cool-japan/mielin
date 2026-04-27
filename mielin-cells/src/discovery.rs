@@ -689,7 +689,7 @@ impl LoadBalancer {
                 selected
             }
             LoadBalancingStrategy::Random => {
-                use rand::Rng;
+                use rand::RngExt;
                 let mut rng = rand::rng();
                 let index = rng.random_range(0..results.len());
                 results[index].registration.agent_id

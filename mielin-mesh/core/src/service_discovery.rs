@@ -37,9 +37,10 @@ pub enum ServiceDiscoveryError {
 }
 
 /// Service health status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ServiceHealth {
     /// Service is healthy and accepting requests
+    #[default]
     Healthy,
     /// Service is degraded but still functional
     Degraded,
@@ -47,12 +48,6 @@ pub enum ServiceHealth {
     Unhealthy,
     /// Service is in maintenance mode
     Maintenance,
-}
-
-impl Default for ServiceHealth {
-    fn default() -> Self {
-        Self::Healthy
-    }
 }
 
 /// Service endpoint information

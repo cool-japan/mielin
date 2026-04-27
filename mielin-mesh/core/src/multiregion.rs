@@ -64,9 +64,10 @@ impl std::fmt::Display for RegionId {
 }
 
 /// Region health status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum RegionHealth {
     /// Region is fully operational
+    #[default]
     Healthy,
     /// Region is degraded but operational
     Degraded,
@@ -74,12 +75,6 @@ pub enum RegionHealth {
     Unhealthy,
     /// Region is in maintenance mode
     Maintenance,
-}
-
-impl Default for RegionHealth {
-    fn default() -> Self {
-        Self::Healthy
-    }
 }
 
 /// Geographic location (latitude, longitude)
@@ -177,20 +172,15 @@ impl RegionInfo {
 }
 
 /// Replication consistency level
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ConsistencyLevel {
     /// Eventually consistent across regions
+    #[default]
     Eventual,
     /// Consistent across majority of regions
     Quorum,
     /// Strongly consistent across all regions
     Strong,
-}
-
-impl Default for ConsistencyLevel {
-    fn default() -> Self {
-        Self::Eventual
-    }
 }
 
 /// Replication policy for cross-region data

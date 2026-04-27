@@ -39,9 +39,10 @@ pub enum LoadBalancerError {
 }
 
 /// Load balancing algorithm
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum LoadBalancingAlgorithm {
     /// Round-robin: distribute requests evenly across all endpoints
+    #[default]
     RoundRobin,
     /// Least connections: route to endpoint with fewest active connections
     LeastConnections,
@@ -51,12 +52,6 @@ pub enum LoadBalancingAlgorithm {
     Random,
     /// Least response time: route to endpoint with lowest average response time
     LeastResponseTime,
-}
-
-impl Default for LoadBalancingAlgorithm {
-    fn default() -> Self {
-        Self::RoundRobin
-    }
 }
 
 /// Health check configuration for endpoints
@@ -334,7 +329,7 @@ impl ServicePool {
 
     /// Random selection
     fn random_select<'a>(&self, endpoints: &[&'a Arc<EndpointStats>]) -> &'a Arc<EndpointStats> {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
         let index = rng.random_range(0..endpoints.len());
         endpoints[index]

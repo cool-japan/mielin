@@ -21,7 +21,7 @@ num_cpus = { version = "1.17", optional = true }
 rstest.workspace = true
 
 [features]
-default = []
+default = ["std"]
 # Standard library support (enables file system operations)
 std = []
 # Multi-threading support

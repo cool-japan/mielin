@@ -7,9 +7,10 @@ use crate::WireError;
 use serde::{Deserialize, Serialize};
 
 /// Compression algorithm selection
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum CompressionAlgorithm {
     /// No compression
+    #[default]
     None,
     /// LZ4 fast compression - best for speed
     Lz4,
@@ -17,27 +18,16 @@ pub enum CompressionAlgorithm {
     Zstd,
 }
 
-impl Default for CompressionAlgorithm {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
 /// Compression level for tuning compression ratio vs speed
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CompressionLevel {
     /// Fastest compression, lowest ratio
     Fast,
     /// Balanced compression
+    #[default]
     Default,
     /// Best compression ratio, slower
     Best,
-}
-
-impl Default for CompressionLevel {
-    fn default() -> Self {
-        Self::Default
-    }
 }
 
 /// Compressed message wrapper

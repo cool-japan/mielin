@@ -247,22 +247,8 @@ impl CanaryState {
 
     /// Generate random canary value
     fn generate_canary() -> u64 {
-        // XorShift128+ for canary generation
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let seed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("SystemTime before UNIX_EPOCH")
-            .as_nanos() as u64;
-
-        let mut s0 = seed;
-        let mut s1 = seed.wrapping_mul(6364136223846793005);
-
-        // XorShift step
-        s1 ^= s0;
-        s0 = s0.rotate_left(24) ^ s1 ^ (s1 << 16);
-        s1 = s1.rotate_left(37);
-
-        s0.wrapping_add(s1)
+        use rand::RngExt;
+        rand::rng().random::<u64>()
     }
 
     /// Place canary for stack frame

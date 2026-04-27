@@ -79,20 +79,15 @@ pub const MAX_PAGES: usize = 1024;
 const INVALID_PAGE: u32 = u32::MAX;
 
 /// Allocation strategy for multi-page allocations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AllocationStrategy {
     /// First fit: use the first free block that's large enough
+    #[default]
     FirstFit,
     /// Best fit: use the smallest free block that's large enough
     BestFit,
     /// Worst fit: use the largest free block (reduces fragmentation for varying sizes)
     WorstFit,
-}
-
-impl Default for AllocationStrategy {
-    fn default() -> Self {
-        Self::FirstFit
-    }
 }
 
 /// Allocation statistics

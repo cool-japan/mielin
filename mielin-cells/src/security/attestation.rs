@@ -91,7 +91,7 @@ impl CapabilityAttestation {
         duration_secs: u64,
         purpose: String,
     ) -> Result<Self, CellError> {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
         let mut attestation_id = [0u8; 16];
         rng.fill(&mut attestation_id);

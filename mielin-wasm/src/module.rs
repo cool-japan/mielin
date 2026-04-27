@@ -38,7 +38,7 @@
 //! let instance = registry.instantiate_with_shared("app", "shared")?;
 //! ```
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, Result};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use wasmtime::{Engine, Instance, Linker, Memory, MemoryType, Module, Store};
@@ -239,7 +239,8 @@ impl ModuleRegistry {
         }
 
         // Compile module
-        let module = Module::new(&self.engine, module_bytes).context("Failed to compile module")?;
+        let module = Module::new(&self.engine, module_bytes)
+            .map_err(|e| anyhow::anyhow!("Failed to compile module: {}", e))?;
 
         // Extract imports and exports
         let imports = self.extract_imports(&module);
@@ -383,8 +384,8 @@ impl ModuleRegistry {
             &self.engine,
             HostState::new(mielin_hal::capabilities::HardwareCapabilities::NONE),
         );
-        let memory =
-            Memory::new(&mut store, memory_type).context("Failed to create shared memory")?;
+        let memory = Memory::new(&mut store, memory_type)
+            .map_err(|e| anyhow::anyhow!("Failed to create shared memory: {}", e))?;
 
         let info = SharedMemoryInfo {
             id: id.clone(),
@@ -472,7 +473,7 @@ impl ModuleRegistry {
         // Instantiate the module
         let instance = linker
             .instantiate(&mut store, &module_info.module)
-            .context("Failed to instantiate module")?;
+            .map_err(|e| anyhow::anyhow!("Failed to instantiate module: {}", e))?;
 
         module_info.state = ModuleState::Ready;
 

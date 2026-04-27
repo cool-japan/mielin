@@ -33,6 +33,9 @@ rustyline.workspace = true
 rand.workspace = true
 rhai.workspace = true
 reqwest.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
 
 mielin-cells.workspace = true
 mielin-mesh-core.workspace = true

@@ -245,9 +245,10 @@ impl Default for TraceContext {
 // =============================================================================
 
 /// Span kind (OpenTelemetry compatible)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SpanKind {
     /// Internal operation
+    #[default]
     Internal,
     /// Server-side of RPC
     Server,
@@ -259,27 +260,16 @@ pub enum SpanKind {
     Consumer,
 }
 
-impl Default for SpanKind {
-    fn default() -> Self {
-        Self::Internal
-    }
-}
-
 /// Span status
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SpanStatus {
     /// Unset status
+    #[default]
     Unset,
     /// Operation completed successfully
     Ok,
     /// Operation failed
     Error { message: String },
-}
-
-impl Default for SpanStatus {
-    fn default() -> Self {
-        Self::Unset
-    }
 }
 
 /// Span event (point-in-time occurrence within span)

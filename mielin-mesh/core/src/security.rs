@@ -194,18 +194,13 @@ pub struct MtlsConfig {
 }
 
 /// TLS version enum
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TlsVersion {
     /// TLS 1.2 (minimum supported)
     Tls12,
     /// TLS 1.3 (recommended)
+    #[default]
     Tls13,
-}
-
-impl Default for TlsVersion {
-    fn default() -> Self {
-        Self::Tls13
-    }
 }
 
 impl MtlsConfig {
@@ -444,20 +439,15 @@ impl PublicKey {
 }
 
 /// Supported key algorithms
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum KeyAlgorithm {
     /// Ed25519 (recommended for signatures)
+    #[default]
     Ed25519,
     /// ECDSA with P-256
     EcdsaP256,
     /// ECDSA with P-384
     EcdsaP384,
-}
-
-impl Default for KeyAlgorithm {
-    fn default() -> Self {
-        Self::Ed25519
-    }
 }
 
 /// Digital signature
@@ -871,18 +861,13 @@ impl Permission {
 }
 
 /// ACL rule effect
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum AclEffect {
     /// Allow the action
     Allow,
     /// Deny the action
+    #[default]
     Deny,
-}
-
-impl Default for AclEffect {
-    fn default() -> Self {
-        Self::Deny
-    }
 }
 
 /// Subject of an ACL rule

@@ -94,6 +94,7 @@ pub mod ble;
 pub mod coap;
 pub mod config;
 pub mod energy;
+pub mod energy_scheduler;
 pub mod fault;
 pub mod gpio;
 pub mod i2c;

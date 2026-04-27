@@ -70,7 +70,7 @@ impl AuthToken {
 
     /// Generate a random token ID
     fn generate_token_id() -> [u8; 16] {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
         let mut token_id = [0u8; 16];
         rng.fill(&mut token_id);
@@ -143,7 +143,7 @@ pub struct AuthChallenge {
 impl AuthChallenge {
     /// Create a new authentication challenge
     pub fn create(validity_secs: u64) -> Result<Self, CellError> {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
 
         let mut challenge_id = [0u8; 16];

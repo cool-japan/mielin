@@ -693,6 +693,274 @@ impl<T, const N: usize> Default for RingBuffer<T, N> {
 unsafe impl<T: Send, const N: usize> Send for RingBuffer<T, N> {}
 unsafe impl<T: Send, const N: usize> Sync for RingBuffer<T, N> {}
 
+// =============================================================================
+// Chase-Lev Work-Stealing Deque
+// =============================================================================
+
+/// Result of a steal attempt from another worker's deque.
+pub enum Steal<T> {
+    /// Successfully stole an item
+    Success(T),
+    /// The deque was empty at the time of stealing
+    Empty,
+    /// A concurrent steal or push raced; caller should retry
+    Retry,
+}
+
+/// Internal circular buffer for the Chase-Lev deque.
+///
+/// The buffer is always power-of-2 sized so index masking replaces modulo.
+/// Items live in `UnsafeCell` slots; the atomic `top`/`bottom` indices on
+/// the deque itself guard exclusive access per the paper's protocol.
+struct ChaseLevBuffer<T> {
+    slots: alloc::vec::Vec<UnsafeCell<core::mem::MaybeUninit<T>>>,
+    mask: usize,
+}
+
+impl<T> ChaseLevBuffer<T> {
+    fn new(capacity: usize) -> Self {
+        debug_assert!(capacity.is_power_of_two());
+        let mut slots = alloc::vec::Vec::with_capacity(capacity);
+        for _ in 0..capacity {
+            slots.push(UnsafeCell::new(core::mem::MaybeUninit::uninit()));
+        }
+        Self {
+            mask: capacity - 1,
+            slots,
+        }
+    }
+
+    #[inline]
+    fn capacity(&self) -> usize {
+        self.slots.len()
+    }
+
+    /// Write item at logical index `i` (owner only, no concurrent write).
+    ///
+    /// # Safety
+    /// Called only by the owner when the slot is logically owned (below bottom).
+    #[inline]
+    unsafe fn write(&self, i: usize, val: T) {
+        let slot = self.slots[i & self.mask].get();
+        (*slot).write(val);
+    }
+
+    /// Read item at logical index `i`.
+    ///
+    /// # Safety
+    /// The slot must have been written before and not yet invalidated by a
+    /// concurrent steal that advanced `top` past `i`.
+    #[inline]
+    unsafe fn read(&self, i: usize) -> T {
+        let slot = self.slots[i & self.mask].get();
+        (*slot).assume_init_read()
+    }
+}
+
+// SAFETY: T: Send means items can cross thread boundaries.  The buffer
+// itself is only accessed through the protocol-ordained atomic indices.
+unsafe impl<T: Send> Send for ChaseLevBuffer<T> {}
+unsafe impl<T: Send> Sync for ChaseLevBuffer<T> {}
+
+/// Chase-Lev single-owner / multi-thief work-stealing deque.
+///
+/// Owner thread uses `push` / `pop` (LIFO from the bottom end).
+/// Thief threads use `steal` (FIFO from the top end).
+///
+/// Memory orderings follow the 2005 Chase-Lev paper and the 2013 correction
+/// by Lê, Pop, Cohen & Nardelli (SC fence at steal boundaries).
+pub struct WorkStealingDeque<T: Send> {
+    /// Index of the next slot the owner will push into (exclusive bottom).
+    bottom: AtomicUsize,
+    /// Index of the oldest item available for stealing (inclusive top).
+    top: AtomicUsize,
+    /// Pointer to the live buffer; replaced on growth.
+    ///
+    /// We never shrink.  Old buffers are leaked intentionally because a
+    /// thief may still be reading from one while the owner has moved on.
+    /// In a production kernel, hazard pointers would reclaim them; for
+    /// correctness we accept the static-lifetime leak (bounded by growth factor).
+    buffer: AtomicPtr<ChaseLevBuffer<T>>,
+}
+
+impl<T: Send> WorkStealingDeque<T> {
+    /// Create a new deque with the given initial capacity (rounded up to power of 2).
+    pub fn new(capacity: usize) -> Self {
+        let cap = capacity.next_power_of_two().max(2);
+        let buf = Box::into_raw(Box::new(ChaseLevBuffer::new(cap)));
+        Self {
+            bottom: AtomicUsize::new(0),
+            top: AtomicUsize::new(0),
+            buffer: AtomicPtr::new(buf),
+        }
+    }
+
+    /// Push an item onto the bottom of the deque.  Owner thread only.
+    ///
+    /// Grows the buffer by 2× when full, leaking the old buffer.
+    pub fn push(&self, item: T) {
+        let b = self.bottom.load(Ordering::Relaxed);
+        let t = self.top.load(Ordering::Acquire);
+
+        // SAFETY: buffer is set in new() and only replaced (never freed) in push().
+        let buf = unsafe { &*self.buffer.load(Ordering::Relaxed) };
+
+        // Grow if the deque is about to overflow the buffer.
+        if b.wrapping_sub(t) >= buf.capacity() {
+            self.grow(b, t, buf);
+        }
+
+        let buf = unsafe { &*self.buffer.load(Ordering::Relaxed) };
+        // SAFETY: slot `b` is logically owned by the owner (bottom end); no thief
+        // can reach it because top ≤ b.
+        unsafe { buf.write(b, item) };
+
+        // Release so a subsequent steal's Acquire on `bottom` sees the write.
+        self.bottom.store(b.wrapping_add(1), Ordering::Release);
+    }
+
+    /// Pop an item from the bottom of the deque.  Owner thread only.
+    ///
+    /// Returns `None` when the deque is empty (including after racing with steals).
+    pub fn pop(&self) -> Option<T> {
+        let b = self.bottom.load(Ordering::Relaxed);
+        // SAFETY: buffer never freed; see push().
+        let buf = unsafe { &*self.buffer.load(Ordering::Relaxed) };
+
+        // Pre-check: if the deque is already empty, skip the decrement entirely.
+        // This guards against the wrapping_sub(0) == usize::MAX edge case where
+        // an unsigned comparison `t > b.wrapping_sub(1)` would fail to detect empty.
+        let t_pre = self.top.load(Ordering::Relaxed);
+        if b == t_pre {
+            return None;
+        }
+
+        let b = b.wrapping_sub(1);
+        self.bottom.store(b, Ordering::Relaxed);
+        // SeqCst fence required so that the load of `top` below is ordered
+        // after the store of `bottom` above from the perspective of all threads.
+        core::sync::atomic::fence(Ordering::SeqCst);
+
+        let t = self.top.load(Ordering::Relaxed);
+
+        // After decrement the invariant is: if t > b, deque was concurrently drained.
+        if t > b {
+            self.bottom.store(b.wrapping_add(1), Ordering::Relaxed);
+            return None;
+        }
+
+        // SAFETY: slot `b` is within [top, bottom) so it contains a valid item.
+        let item = unsafe { buf.read(b) };
+
+        if t == b {
+            // Single item left; race with potential concurrent steals.
+            if self
+                .top
+                .compare_exchange(t, t.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
+                .is_err()
+            {
+                // A thief already took it.
+                self.bottom.store(b.wrapping_add(1), Ordering::Relaxed);
+                return None;
+            }
+            self.bottom.store(b.wrapping_add(1), Ordering::Relaxed);
+        }
+
+        Some(item)
+    }
+
+    /// Steal an item from the top of the deque.  Any thread may call this.
+    ///
+    /// Returns `Steal::Retry` on ABA / concurrent contention.
+    pub fn steal(&self) -> Steal<T> {
+        let t = self.top.load(Ordering::Acquire);
+        // SeqCst fence to establish ordering between this load and the
+        // owner's store of bottom (corrects the race described in the 2013 paper).
+        core::sync::atomic::fence(Ordering::SeqCst);
+        let b = self.bottom.load(Ordering::Acquire);
+
+        if t >= b {
+            return Steal::Empty;
+        }
+
+        // SAFETY: slot `t` is within [top, bottom) so it contains a valid item.
+        let buf = unsafe { &*self.buffer.load(Ordering::Acquire) };
+        let item = unsafe { buf.read(t) };
+
+        // CAS top from t to t+1.  AcqRel so the read above isn't reordered after.
+        match self
+            .top
+            .compare_exchange(t, t.wrapping_add(1), Ordering::AcqRel, Ordering::Relaxed)
+        {
+            Ok(_) => Steal::Success(item),
+            Err(_) => {
+                // Another thief or the owner won; item is still valid but we
+                // must not expose it — just signal retry.
+                core::mem::forget(item);
+                Steal::Retry
+            }
+        }
+    }
+
+    /// Return the approximate number of items in the deque.
+    pub fn len(&self) -> usize {
+        let b = self.bottom.load(Ordering::Relaxed);
+        let t = self.top.load(Ordering::Relaxed);
+        b.wrapping_sub(t)
+    }
+
+    /// Return true if the deque appears empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Double the buffer capacity, copying live items from the old buffer.
+    ///
+    /// Only ever called by the owner, so no concurrent push/pop races here.
+    fn grow(&self, b: usize, t: usize, old: &ChaseLevBuffer<T>) {
+        let new_cap = old.capacity() * 2;
+        let new_buf = Box::into_raw(Box::new(ChaseLevBuffer::new(new_cap)));
+        // Copy live items [t, b).
+        for i in t..b {
+            // SAFETY: items [t,b) are live in old buffer; new buffer owns the slots.
+            unsafe {
+                let val = old.read(i);
+                (*new_buf).write(i, val);
+            }
+        }
+        // Release so thieves that load the buffer pointer after this see the copies.
+        self.buffer.store(new_buf, Ordering::Release);
+        // Intentionally leak old: a thief may still hold a raw reference to it.
+    }
+}
+
+impl<T: Send> Drop for WorkStealingDeque<T> {
+    fn drop(&mut self) {
+        let b = *self.bottom.get_mut();
+        let t = *self.top.get_mut();
+        // SAFETY: we have exclusive access (drop is single-threaded).
+        let buf = unsafe { &*self.buffer.load(Ordering::Relaxed) };
+        // Drop remaining live items to avoid leaks.
+        for i in t..b {
+            // SAFETY: items [t,b) are live.
+            unsafe {
+                let _ = buf.read(i);
+            }
+        }
+        // Free the current buffer.
+        let raw = self.buffer.load(Ordering::Relaxed);
+        if !raw.is_null() {
+            // SAFETY: allocated via Box::into_raw in new() or grow().
+            unsafe { drop(Box::from_raw(raw)) };
+        }
+    }
+}
+
+// SAFETY: T: Send satisfies cross-thread transfer.  The deque itself is
+// always accessed through the atomic protocol documented above.
+unsafe impl<T: Send> Send for WorkStealingDeque<T> {}
+unsafe impl<T: Send> Sync for WorkStealingDeque<T> {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -910,5 +1178,138 @@ mod tests {
         stack.push(String::from("hello"));
         stack.push(String::from("world"));
         // Stack drops here, should free all memory
+    }
+
+    #[test]
+    fn test_chase_lev_push_pop_single_thread() {
+        let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
+        assert!(deque.is_empty());
+
+        deque.push(1);
+        deque.push(2);
+        deque.push(3);
+        assert_eq!(deque.len(), 3);
+
+        assert_eq!(deque.pop(), Some(3));
+        assert_eq!(deque.pop(), Some(2));
+        assert_eq!(deque.pop(), Some(1));
+        assert_eq!(deque.pop(), None);
+        assert!(deque.is_empty());
+    }
+
+    #[test]
+    fn test_chase_lev_empty_steal_returns_empty() {
+        let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
+        assert!(matches!(deque.steal(), Steal::Empty));
+    }
+
+    #[test]
+    fn test_chase_lev_steal_from_other_thread() {
+        use alloc::sync::Arc;
+        use std::thread;
+
+        let deque = Arc::new(WorkStealingDeque::<i32>::new(16));
+
+        for i in 0..8 {
+            deque.push(i);
+        }
+
+        let thief_deque = Arc::clone(&deque);
+        let handle = thread::spawn(move || {
+            let mut stolen = alloc::vec::Vec::new();
+            for _ in 0..8 {
+                loop {
+                    match thief_deque.steal() {
+                        Steal::Success(v) => {
+                            stolen.push(v);
+                            break;
+                        }
+                        Steal::Retry => core::hint::spin_loop(),
+                        Steal::Empty => break,
+                    }
+                }
+            }
+            stolen
+        });
+
+        let stolen = handle.join().unwrap();
+        // Steals happen from the top (FIFO), so first items pushed are stolen first.
+        // Owner might also pop from the bottom; combined set must cover all 8 items.
+        assert!(!stolen.is_empty());
+        let mut remaining = alloc::vec::Vec::new();
+        while let Some(v) = deque.pop() {
+            remaining.push(v);
+        }
+        let mut all: alloc::vec::Vec<i32> = stolen.into_iter().chain(remaining).collect();
+        all.sort();
+        assert_eq!(all, (0..8).collect::<alloc::vec::Vec<i32>>());
+    }
+
+    #[test]
+    fn test_chase_lev_concurrent_steals() {
+        use alloc::sync::Arc;
+        use std::sync::Barrier;
+        use std::thread;
+
+        const ITEMS: i32 = 64;
+        const THIEVES: usize = 4;
+
+        let deque = Arc::new(WorkStealingDeque::<i32>::new(128));
+        let barrier = Arc::new(Barrier::new(THIEVES + 1));
+
+        for i in 0..ITEMS {
+            deque.push(i);
+        }
+
+        let mut handles = alloc::vec::Vec::new();
+        for _ in 0..THIEVES {
+            let d = Arc::clone(&deque);
+            let b = Arc::clone(&barrier);
+            handles.push(thread::spawn(move || {
+                b.wait();
+                let mut count = 0usize;
+                let mut spins = 0usize;
+                loop {
+                    match d.steal() {
+                        Steal::Success(_) => count += 1,
+                        Steal::Retry => {
+                            spins += 1;
+                            if spins > 10_000 {
+                                break;
+                            }
+                            core::hint::spin_loop();
+                        }
+                        Steal::Empty => break,
+                    }
+                }
+                count
+            }));
+        }
+
+        barrier.wait();
+        // Owner also participates by popping.
+        let mut owner_count = 0usize;
+        let mut spins = 0usize;
+        loop {
+            match deque.pop() {
+                Some(_) => owner_count += 1,
+                None => {
+                    spins += 1;
+                    if spins > 100 {
+                        break;
+                    }
+                }
+            }
+        }
+
+        let total: usize = handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .sum::<usize>()
+            + owner_count;
+        assert_eq!(
+            total as i32, ITEMS,
+            "All items must be accounted for exactly once"
+        );
     }
 }

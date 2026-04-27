@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (iteration 2)
+
+#### Distributed Inference Engine (mielin-tensor/src/distributed.rs)
+- `PartitionStrategy` — RowWise, ColumnWise, Block{rows,cols}, Pipeline{stages}
+- `TensorShard` / `ShardedTensor::partition` + `reconstruct` — lossless roundtrip for all strategies; non-divisible dimensions distributed via `base+1` remainder
+- `DistributedTransport` trait + `LocalTransport` (Arc<Mutex<HashMap>>) for in-process simulation
+- `ReduceOp` (Sum, Product, Max, Min) with correct identity elements; used by `all_reduce`
+- `distributed_matmul` — Cannon's algorithm on a p_r×p_c process grid; bit-near-identical to local matmul
+- `ModelParallelLayer::forward` — RowWise concatenates shard outputs; ColumnWise all-reduces partial products
+- `ModelParallelPipeline` + `DistributedInferenceEngine` with compile-time `LayerSpec` → `CompiledModel` plan; exposes FLOP and inter-node-byte metrics
+- 16 integration tests covering all strategies, all reduce ops, distributed matmul, and engine end-to-end
+
+#### Lock-Free Work-Stealing Scheduler (mielin-kernel)
+- `WorkStealingDeque<T>` — Chase-Lev (2005) + Lê/Pop/Cohen/Nardelli (2013) correction; power-of-2 circular buffer with 2× growth; `push` (owner), `pop` (owner), `steal` (any thread); `Steal<T>` = Success/Empty/Retry
+- `WorkStealingScheduler` — 8-worker array; per-worker 256-priority-level deques; LCG random victim selection; `spawn_task`, `schedule`, `yield_task`, `terminate_task`; `WorkStealingMetrics` + snapshot
+- 21 new tests (4 Chase-Lev unit + 17 scheduler) covering concurrency, work stealing, priority ordering, load balance
+
+#### Fault Injection and Chaos Testing (mielin-cells, mielin-mesh/core)
+- `mielin-cells/src/fault.rs` — `FaultInjector` with `FaultKind` (Drop/Delay/Corrupt/Duplicate/Timeout); probabilistic LCG; per-label `max_occurrences` cap; builder helpers `always_drop`, `always_delay`, `occasionally`
+- 15 fault injection tests: probability distribution, cross-version migration (v1→v2, v2→v1), HA failover under node failure, corruption detection, retry-on-transient, concurrent injection, composition
+- 10 chaos tests in `mielin-mesh/core/tests/chaos_tests.rs`: network partition splits cluster, failure detection timing, gossip convergence after join/leave, split-brain prevention, node rejoin, concurrent joins, rapid churn, registry consistency, migration during partition
+
+#### Energy-Aware Scheduling (mielin-rt)
+- `EnergyPolicy` / `EnergyMode` (Performance/Balanced/PowerSave/BudgetEnforced) + `SleepRecommendation` (StayAwake/LightSleep/DeepSleep/Hibernate); `recommend_sleep` decision tree
+- `PowerDomain` + `PowerDomainTracker` — 16-slot fixed array; per-peripheral power accounting with `E = P_mW × Δt_µs / 1000` µJ accrual on state transitions; `AtomicU32` total-power cache
+- `EnergyAwareScheduler` in `src/energy_scheduler.rs` — pre-schedule hint (power-cap check, budget exhaustion, 20%-headroom warning), task start/stop bracketing, idle sleep recommendation
+- `EnergyAdaptiveController` — proportional window controller; steps CPU frequency up/down based on energy utilisation vs target; no-heap, array-backed frequency table
+- `PowerManager::suggest_next_state` — maps `EnergySchedulingHint.sleep_recommendation` to `PowerState`
+- 21 new tests across energy.rs and energy_scheduler.rs
+
+### Test Results
+- **3704 tests run: 3704 passed** (up from 3617, net +87 new tests)
+- `cargo clippy --workspace --all-targets -- -D warnings` exits 0
+
+### Added
+
+#### SVE2 Dispatcher Wire-up (mielin-tensor)
+- `sub_sve2` and `div_sve2` backend functions using `svsub_f32_m` / `svdiv_f32_m` intrinsics
+- `dot_sve2`, `matmul_sve2`, `add_sve2`, `sub_sve2`, `mul_sve2`, `div_sve2` fully routed from `TensorOps` on `target_feature=+sve2` AArch64
+- Removed obsolete "requires nightly Rust" comment — SVE2 intrinsics stabilised in Rust 1.86
+- 2 new unit tests (`test_sve2_sub`, `test_sve2_div`) in the sve2 backend
+- Benchmark harness extended with SVE2 in element-wise and matrix benchmarks
+
+#### HTTP Control Plane (mielin-cli)
+- New `mielin-cli/src/control/` module: `ControlServer` (axum 0.8), `ControlClient` (reqwest), and serde DTOs
+- Endpoints: `GET /api/v1/health`, `GET /api/v1/mesh/status`, `GET /api/v1/mesh/peers`, `GET /api/v1/mesh/nodes`, `GET /api/v1/agents`, `POST /api/v1/agents`, `DELETE /api/v1/agents/:id`, `GET /api/v1/agents/:id`, `POST /api/v1/migrate`, `GET /api/v1/migrate/status`
+- `daemon` subcommand gains `--control-listen <addr>` (default `127.0.0.1:8081`); starts `ControlServer` alongside `MeshService`
+- `mielinctl mesh status --daemon <addr>` reads live `MeshService` data; graceful mock fallback when daemon is unreachable
+- Workspace dependencies: `axum 0.8`, `tower 0.5`, `tower-http 0.6`
+
+#### WASI Preview 2 / Component Model Foundation (mielin-wasm)
+- New `preview2` Cargo feature (default off) enabling `wasmtime-wasi` Component Model path
+- `ComponentExecutor` in `src/preview2.rs` with `P2HostState` implementing `WasiView` + `IoView`; uses `wasmtime_wasi::p2::add_to_linker_async`
+- Minimal WIT world at `wit/mielin.wit` importing `wasi:clocks/wall-clock`, `wasi:random/random`, `wasi:cli/environment`
+- 3 integration tests gated on `--features preview2`: compile, clock, and random
+- `wasmtime-wasi = "43.0.1"` added as optional workspace dependency
+
+### Changed
+
+#### Toolchain
+- Bumped `rust-toolchain.toml` channel from `1.90.0` to `1.91.0` (required by `wasmtime 43.0.1` MSRV)
+
+#### rand 0.10 API Migration
+- All `use rand::Rng` imports updated to `use rand::RngExt` following rand 0.10 trait reorganisation
+- `fill_bytes` calls updated to `fill` across mesh, cells, and cli crates
+
+#### wasmtime 43 Compatibility
+- Replaced `.context("msg")` with `.map_err(|e| anyhow::anyhow!("…: {e:#}"))` where `wasmtime::Error` is the error type (no longer implements `std::error::Error` in v43)
+- Removed deprecated `Config::async_support(false)` call (no-op in wasmtime 43)
+
+#### Clippy / Zero-Warnings
+- Replaced manual `impl Default` blocks with `#[derive(Default)]` + `#[default]` on variants across `mielin-mesh-wire` and `mielin-rt`
+- Removed redundant `let i = i;` rebind in integration_tests.rs
+- Gated kernel `cli` privileged instruction behind `#[cfg(not(test))]` to fix SIGSEGV in userspace test runs
+
+### Test Results
+- **3617 tests run: 3617 passed** (up from 3255 at rc.1, +362 net new tests)
+- `cargo clippy --workspace --all-targets -- -D warnings` exits 0
+
 ### Planned
 - Docker Compose setup for local cluster testing
 - Real hardware testing (RasPi 4 + Graviton3)

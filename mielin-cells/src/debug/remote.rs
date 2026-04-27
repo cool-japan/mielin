@@ -62,7 +62,7 @@ impl RemoteDebugger {
     }
 
     pub fn create_session(&mut self, agent_id: [u8; 16]) -> Result<[u8; 16], CellError> {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
         let mut session_id = [0u8; 16];
         rng.fill(&mut session_id);

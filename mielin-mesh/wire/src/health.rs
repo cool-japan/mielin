@@ -13,9 +13,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
 
 /// Connection health status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum HealthStatus {
     /// Connection is healthy
+    #[default]
     Healthy,
     /// Connection is degraded (slow or packet loss)
     Degraded,
@@ -23,12 +24,6 @@ pub enum HealthStatus {
     Unhealthy,
     /// Connection is dead (disconnected)
     Dead,
-}
-
-impl Default for HealthStatus {
-    fn default() -> Self {
-        Self::Healthy
-    }
 }
 
 /// Connection health metrics

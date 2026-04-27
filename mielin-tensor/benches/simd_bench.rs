@@ -124,6 +124,7 @@ fn bench_element_wise_ops() {
         ("Scalar", HardwareCapabilities::NONE),
         ("NEON", HardwareCapabilities::NEON),
         ("AVX2", HardwareCapabilities::AVX2),
+        ("SVE2", HardwareCapabilities::SVE2),
     ];
 
     // Benchmark add operation
@@ -190,6 +191,7 @@ fn bench_matrix_ops() {
         ("Scalar", HardwareCapabilities::NONE),
         ("NEON", HardwareCapabilities::NEON),
         ("AVX2", HardwareCapabilities::AVX2),
+        ("SVE2", HardwareCapabilities::SVE2),
     ];
 
     for &m in &sizes {

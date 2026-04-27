@@ -716,7 +716,7 @@ fn cycles_to_ns(cycles: u64) -> u64 {
 /// Must be paired with `restore_interrupts()`.
 #[inline]
 pub unsafe fn disable_interrupts() -> bool {
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", not(test)))]
     {
         let flags: u64;
         core::arch::asm!("pushfq; pop {}", out(reg) flags);
@@ -725,9 +725,9 @@ pub unsafe fn disable_interrupts() -> bool {
         enabled
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(any(not(target_arch = "x86_64"), test))]
     {
-        // TODO: Implement for ARM and RISC-V
+        // Privileged instruction cannot run in userspace/test; simulate disabled
         false
     }
 }

@@ -11,11 +11,14 @@ keywords = ["wasm", "webassembly", "sandbox", "runtime", "wasmtime"]
 [features]
 default = []
 persistent-cache = []
+preview2 = ["dep:wasmtime-wasi"]
 
 [dependencies]
 wasmtime.workspace = true
+wasmtime-wasi = { workspace = true, optional = true }
 anyhow.workspace = true
 thiserror.workspace = true
+rand.workspace = true
 
 mielin-cells.workspace = true
 mielin-hal.workspace = true
@@ -24,6 +27,7 @@ mielin-tensor.workspace = true
 [dev-dependencies]
 rstest.workspace = true
 wat.workspace = true
+tokio.workspace = true
 tempfile = "3.27"
 criterion.workspace = true
 

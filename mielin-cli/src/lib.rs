@@ -6,6 +6,7 @@ pub mod audit;
 pub mod commands;
 pub mod config;
 pub mod config_validator;
+pub mod control;
 pub mod error;
 pub mod history;
 pub mod output;

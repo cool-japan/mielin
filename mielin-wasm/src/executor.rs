@@ -20,7 +20,6 @@ impl WasmExecutor {
         let mut config = Config::new();
         config.wasm_multi_memory(true);
         config.wasm_multi_value(true);
-        config.async_support(false);
 
         let engine =
             Engine::new(&config).map_err(|e| WasmError::CompilationFailed(e.to_string()))?;

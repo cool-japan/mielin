@@ -288,12 +288,13 @@ pub const MIN_MTU: u32 = 1280;
 pub const MAX_MTU: u32 = 9000;
 
 /// Path state
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum PathState {
     /// Path is active and being used
     Active,
 
     /// Path is available but not primary
+    #[default]
     Standby,
 
     /// Path is being probed for health
@@ -304,12 +305,6 @@ pub enum PathState {
 
     /// Path is disabled (manually or due to repeated failures)
     Disabled,
-}
-
-impl Default for PathState {
-    fn default() -> Self {
-        Self::Standby
-    }
 }
 
 /// A network path to a remote peer
@@ -976,7 +971,7 @@ impl PathFailover {
 // =============================================================================
 
 /// Policy for selecting paths
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MultiPathPolicy {
     /// Use round-robin across all healthy paths
     RoundRobin,
@@ -985,6 +980,7 @@ pub enum MultiPathPolicy {
     WeightedRandom,
 
     /// Always select the path with lowest latency
+    #[default]
     LeastLatency,
 
     /// Select path with highest available bandwidth
@@ -995,12 +991,6 @@ pub enum MultiPathPolicy {
 
     /// Composite score based on multiple factors
     CompositeScore,
-}
-
-impl Default for MultiPathPolicy {
-    fn default() -> Self {
-        Self::LeastLatency
-    }
 }
 
 // =============================================================================

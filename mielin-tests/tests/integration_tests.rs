@@ -1280,7 +1280,6 @@ mod full_pipeline {
         let mut handles = Vec::new();
 
         for i in 0..5 {
-            let i = i;
             let handle = tokio::spawn(async move {
                 let runtime = TensorRuntime::new(HardwareCapabilities::NONE);
                 let ops = runtime.ops();

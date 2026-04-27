@@ -639,9 +639,9 @@ impl MigrationCoordinator {
 
     /// Generate a unique migration ID
     fn generate_migration_id(&self) -> [u8; 16] {
-        use rand::RngCore;
+        use rand::RngExt;
         let mut id = [0u8; 16];
-        rand::rng().fill_bytes(&mut id);
+        rand::rng().fill(&mut id);
         id
     }
 }

@@ -3,7 +3,7 @@
 ## Pending Tasks
 
 ### High Priority
-- [ ] WASI Preview 2 / Component Model support
+- [x] WASI Preview 2 / Component Model support — ComponentExecutor with wasmtime-wasi p2 add_to_linker_async; WIT world at wit/mielin.wit; 3 integration tests under `--features preview2`
 
 ### Low Priority
 - [ ] Video tutorials for WASM development

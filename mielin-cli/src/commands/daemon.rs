@@ -1,5 +1,6 @@
 //! Daemon command handler
 
+use crate::control::ControlServer;
 use crate::output::{render_output, OutputFormat};
 use crate::types::OperationResult;
 use anyhow::Result;
@@ -12,6 +13,7 @@ pub async fn handle_daemon_command(
     listen: String,
     role: String,
     bootstrap: Option<String>,
+    control_listen: SocketAddr,
     format: OutputFormat,
 ) -> Result<()> {
     let bind_address: SocketAddr = listen
@@ -62,14 +64,31 @@ pub async fn handle_daemon_command(
 
     service.start().await?;
 
+    // Wrap in Arc so the ControlServer can share it without needing ownership.
+    let mesh = Arc::new(service);
+
     let result = OperationResult {
         success: true,
-        message: "Mesh service started. Press Ctrl+C to stop.".to_string(),
+        message: format!(
+            "Mesh service started. Control plane on {}. Press Ctrl+C to stop.",
+            control_listen
+        ),
         id: None,
     };
     println!("{}", render_output(&result, format)?);
 
-    tokio::signal::ctrl_c().await?;
+    let control_server = ControlServer::new(mesh.clone());
+
+    tokio::select! {
+        res = control_server.serve(control_listen) => {
+            if let Err(e) = res {
+                tracing::error!("Control plane exited with error: {}", e);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("Received Ctrl+C, shutting down");
+        }
+    }
 
     let result = OperationResult {
         success: true,
@@ -78,7 +97,18 @@ pub async fn handle_daemon_command(
     };
     println!("{}", render_output(&result, format)?);
 
-    service.stop().await?;
+    // Recover the MeshService from the Arc to call stop().
+    // The ControlServer has been dropped at this point, so try_unwrap should succeed.
+    match Arc::try_unwrap(mesh) {
+        Ok(mut svc) => {
+            svc.stop().await?;
+        }
+        Err(_arc) => {
+            tracing::warn!(
+                "Could not obtain exclusive ownership of MeshService for clean shutdown"
+            );
+        }
+    }
 
     let result = OperationResult {
         success: true,

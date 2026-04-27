@@ -3,7 +3,7 @@
 ## Pending Tasks
 
 ### High Priority
-- [ ] Implement SVE2 backend (placeholder exists)
+- [x] Implement SVE2 backend — dispatcher fully wired; dot, matmul, add, sub, mul, div all route through sve2 intrinsics on aarch64+sve2
 
 ### Low Priority
 - [ ] Video tutorials for TensorLogic

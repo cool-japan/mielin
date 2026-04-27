@@ -449,6 +449,54 @@ pub fn min_sve2(a: &[f32]) -> f32 {
     a.iter().cloned().fold(f32::INFINITY, f32::min)
 }
 
+#[cfg(all(target_arch = "aarch64", target_feature = "sve2"))]
+#[target_feature(enable = "sve2")]
+pub unsafe fn sub_sve2(a: &[f32], b: &[f32], result: &mut [f32]) {
+    use core::arch::aarch64::*;
+    let len = a.len().min(b.len()).min(result.len());
+    let mut i = 0;
+    while i < len {
+        let pg = svwhilelt_b32_u64(i as u64, len as u64);
+        let va = svld1_f32(pg, a.as_ptr().add(i));
+        let vb = svld1_f32(pg, b.as_ptr().add(i));
+        let vr = svsub_f32_m(pg, va, vb);
+        svst1_f32(pg, result.as_mut_ptr().add(i), vr);
+        i += svcntw();
+    }
+}
+
+#[cfg(not(all(target_arch = "aarch64", target_feature = "sve2")))]
+pub fn sub_sve2(a: &[f32], b: &[f32], result: &mut [f32]) {
+    let len = a.len().min(b.len()).min(result.len());
+    for i in 0..len {
+        result[i] = a[i] - b[i];
+    }
+}
+
+#[cfg(all(target_arch = "aarch64", target_feature = "sve2"))]
+#[target_feature(enable = "sve2")]
+pub unsafe fn div_sve2(a: &[f32], b: &[f32], result: &mut [f32]) {
+    use core::arch::aarch64::*;
+    let len = a.len().min(b.len()).min(result.len());
+    let mut i = 0;
+    while i < len {
+        let pg = svwhilelt_b32_u64(i as u64, len as u64);
+        let va = svld1_f32(pg, a.as_ptr().add(i));
+        let vb = svld1_f32(pg, b.as_ptr().add(i));
+        let vr = svdiv_f32_m(pg, va, vb);
+        svst1_f32(pg, result.as_mut_ptr().add(i), vr);
+        i += svcntw();
+    }
+}
+
+#[cfg(not(all(target_arch = "aarch64", target_feature = "sve2")))]
+pub fn div_sve2(a: &[f32], b: &[f32], result: &mut [f32]) {
+    let len = a.len().min(b.len()).min(result.len());
+    for i in 0..len {
+        result[i] = a[i] / b[i];
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -652,5 +700,43 @@ mod tests {
         let result = sum_sve2(&a);
 
         assert_eq!(result, 0.0);
+    }
+
+    #[test]
+    fn test_sve2_sub() {
+        let a = std::vec![5.0f32, 4.0, 3.0, 2.0];
+        let b = std::vec![1.0f32, 2.0, 1.0, 1.0];
+        let mut result = std::vec![0.0f32; 4];
+
+        #[cfg(all(target_arch = "aarch64", target_feature = "sve2"))]
+        unsafe {
+            sub_sve2(&a, &b, &mut result)
+        };
+        #[cfg(not(all(target_arch = "aarch64", target_feature = "sve2")))]
+        sub_sve2(&a, &b, &mut result);
+
+        assert!((result[0] - 4.0).abs() < 1e-6);
+        assert!((result[1] - 2.0).abs() < 1e-6);
+        assert!((result[2] - 2.0).abs() < 1e-6);
+        assert!((result[3] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_sve2_div() {
+        let a = std::vec![4.0f32, 9.0, 6.0, 8.0];
+        let b = std::vec![2.0f32, 3.0, 2.0, 4.0];
+        let mut result = std::vec![0.0f32; 4];
+
+        #[cfg(all(target_arch = "aarch64", target_feature = "sve2"))]
+        unsafe {
+            div_sve2(&a, &b, &mut result)
+        };
+        #[cfg(not(all(target_arch = "aarch64", target_feature = "sve2")))]
+        div_sve2(&a, &b, &mut result);
+
+        assert!((result[0] - 2.0).abs() < 1e-6);
+        assert!((result[1] - 3.0).abs() < 1e-6);
+        assert!((result[2] - 3.0).abs() < 1e-6);
+        assert!((result[3] - 2.0).abs() < 1e-6);
     }
 }

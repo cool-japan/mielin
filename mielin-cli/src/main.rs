@@ -113,6 +113,9 @@ enum Commands {
         /// Bootstrap node address to connect to
         #[arg(short, long)]
         bootstrap: Option<String>,
+        /// Listen address for the HTTP control-plane API
+        #[arg(long, default_value = "127.0.0.1:8081")]
+        control_listen: std::net::SocketAddr,
     },
     /// Generate shell completion scripts
     Completion {
@@ -159,7 +162,8 @@ async fn main() -> anyhow::Result<()> {
             listen,
             role,
             bootstrap,
-        } => handle_daemon_command(listen, role, bootstrap, format).await,
+            control_listen,
+        } => handle_daemon_command(listen, role, bootstrap, control_listen, format).await,
         Commands::Completion { shell } => {
             handle_completion_command(shell);
             Ok(())

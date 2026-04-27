@@ -250,13 +250,13 @@ impl AotCompiler {
     /// Precompile WASM module to native code
     pub fn precompile(&self, wasm_bytes: &[u8]) -> Result<PrecompiledModule> {
         // Compile module
-        let module =
-            Module::new(&self.engine, wasm_bytes).context("Failed to compile WASM module")?;
+        let module = Module::new(&self.engine, wasm_bytes)
+            .map_err(|e| anyhow::anyhow!("Failed to compile WASM module: {}", e))?;
 
         // Serialize to native code
         let native_code = module
             .serialize()
-            .context("Failed to serialize compiled module")?;
+            .map_err(|e| anyhow::anyhow!("Failed to serialize compiled module: {}", e))?;
 
         Ok(PrecompiledModule::new(native_code))
     }
@@ -452,7 +452,7 @@ impl AotCompiler {
         // Deserialize module
         unsafe {
             Module::deserialize(&self.engine, &precompiled.native_code)
-                .context("Failed to deserialize precompiled module")
+                .map_err(|e| anyhow::anyhow!("Failed to deserialize precompiled module: {}", e))
         }
     }
 

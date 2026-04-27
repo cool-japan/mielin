@@ -235,7 +235,7 @@ async fn top_command(
 
 async fn fetch_resource_snapshot() -> Result<ResourceSnapshot> {
     // Stub implementation - would fetch actual data from daemon
-    use rand::Rng;
+    use rand::RngExt;
     let mut rng = rand::rng();
 
     let agents = vec![
@@ -467,7 +467,7 @@ async fn fetch_events(
     limit: usize,
 ) -> Result<Vec<Event>> {
     // Stub implementation - would fetch actual events from daemon
-    use rand::Rng;
+    use rand::RngExt;
     let mut rng = rand::rng();
 
     let event_types = [

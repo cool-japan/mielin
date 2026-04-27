@@ -3,8 +3,8 @@
 ## Pending Tasks
 
 ### High Priority
-- [ ] Implement actual node connection (requires backend daemon - mielin-cells integration)
-- [ ] Implement actual mesh status fetching (requires backend daemon - mielin-mesh integration)
+- [x] Implement actual node connection — HTTP control plane (axum /api/v1/…) wired; ControlClient talks to live daemon with graceful mock fallback
+- [x] Implement actual mesh status fetching — ControlClient.mesh_status() reads live MeshService; `mielinctl mesh status --daemon <addr>` returns real counts
 
 ### Low Priority
 - [ ] Video tutorials for CLI usage

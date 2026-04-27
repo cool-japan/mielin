@@ -26,6 +26,9 @@ pub mod verification;
 pub mod wasi;
 pub mod wasi_debug;
 
+#[cfg(feature = "preview2")]
+pub mod preview2;
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]

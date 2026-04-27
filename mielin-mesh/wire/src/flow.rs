@@ -410,22 +410,17 @@ impl BackpressureController {
 // =============================================================================
 
 /// Congestion control algorithm
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum CongestionAlgorithm {
     /// No congestion control
     None,
     /// Additive Increase Multiplicative Decrease (AIMD)
+    #[default]
     Aimd,
     /// Cubic (TCP Cubic-like)
     Cubic,
     /// BBR-like (Bandwidth-Based)
     Bbr,
-}
-
-impl Default for CongestionAlgorithm {
-    fn default() -> Self {
-        Self::Aimd
-    }
 }
 
 /// Congestion control configuration
@@ -462,20 +457,15 @@ impl Default for CongestionConfig {
 }
 
 /// Congestion state
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum CongestionState {
     /// Slow start phase
+    #[default]
     SlowStart,
     /// Congestion avoidance phase
     CongestionAvoidance,
     /// Recovery phase after loss
     Recovery,
-}
-
-impl Default for CongestionState {
-    fn default() -> Self {
-        Self::SlowStart
-    }
 }
 
 /// Congestion controller

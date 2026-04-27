@@ -1,7 +1,8 @@
 //! Energy Profiling for Embedded Devices
 //!
-//! Provides per-task energy tracking, budget management, and energy-aware
-//! scheduling hints for embedded systems.
+//! Provides per-task energy tracking, budget management, energy policy enforcement,
+//! per-peripheral power domain accounting, and energy-aware scheduling hints for
+//! embedded systems.
 //!
 //! ## Features
 //!
@@ -9,6 +10,8 @@
 //! - **Energy Budget Management**: Set and enforce energy budgets
 //! - **Power Mode Statistics**: Track time spent in each power mode
 //! - **Energy-Aware Scheduling**: Hints for energy-efficient task scheduling
+//! - **Energy Policy**: Global device policy (performance/balanced/power-save/budget)
+//! - **Power Domain Tracking**: Per-peripheral active/idle/off energy accounting
 //!
 //! ## Example
 //!
@@ -698,6 +701,453 @@ pub struct TaskEnergySummary {
     pub over_budget_count: usize,
 }
 
+// ============================================================================
+// EnergyError
+// ============================================================================
+
+/// Errors arising from energy subsystem operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnergyError {
+    /// No slot available to register a new domain
+    DomainTableFull,
+    /// The requested peripheral is not registered
+    DomainNotFound,
+    /// Budget window overflow or invalid parameters
+    InvalidBudget,
+}
+
+// ============================================================================
+// EnergyPolicy / EnergyMode / SleepRecommendation
+// ============================================================================
+
+/// Device-wide energy operating mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnergyMode {
+    /// Maximize performance; energy is irrelevant
+    Performance,
+    /// Balance performance and energy (default)
+    Balanced,
+    /// Minimize energy; accept latency degradation
+    PowerSave,
+    /// Honor an explicit rolling-window energy budget
+    BudgetEnforced {
+        /// Maximum energy (millijoules) over the window
+        total_mj: u64,
+        /// Window length in milliseconds
+        window_ms: u64,
+    },
+}
+
+/// Recommendation for the next CPU/system sleep depth
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SleepRecommendation {
+    /// Do not sleep; keep the CPU running
+    StayAwake,
+    /// WFI / C1 – very fast wakeup
+    LightSleep,
+    /// STOP / C6 – clocks off, RAM retained
+    DeepSleep,
+    /// STANDBY – lowest power, RAM may be lost
+    Hibernate,
+}
+
+/// Global energy policy that all subsystems consult
+#[derive(Debug, Clone, Copy)]
+pub struct EnergyPolicy {
+    /// Operating mode
+    pub mode: EnergyMode,
+    /// Hard cap on instantaneous total power (milliwatts)
+    pub max_power_mw: u32,
+    /// Idle time (ms) before suggesting deep sleep
+    pub idle_threshold_ms: u64,
+    /// Acceptable wakeup latency budget (microseconds)
+    pub wakeup_latency_us: u64,
+}
+
+impl EnergyPolicy {
+    /// Full-speed policy — no energy constraints applied
+    pub fn performance() -> Self {
+        Self {
+            mode: EnergyMode::Performance,
+            max_power_mw: u32::MAX,
+            idle_threshold_ms: u64::MAX,
+            wakeup_latency_us: 0,
+        }
+    }
+
+    /// Balanced policy — mild power constraints, fast wakeup
+    pub fn balanced() -> Self {
+        Self {
+            mode: EnergyMode::Balanced,
+            max_power_mw: 500,
+            idle_threshold_ms: 50,
+            wakeup_latency_us: 500,
+        }
+    }
+
+    /// Aggressive power save — deep sleep as early as possible
+    pub fn power_save() -> Self {
+        Self {
+            mode: EnergyMode::PowerSave,
+            max_power_mw: 100,
+            idle_threshold_ms: 5,
+            wakeup_latency_us: 10_000,
+        }
+    }
+
+    /// Hard budget over a rolling window
+    pub fn budget_enforced(total_mj: u64, window_ms: u64) -> Self {
+        Self {
+            mode: EnergyMode::BudgetEnforced {
+                total_mj,
+                window_ms,
+            },
+            max_power_mw: ((total_mj * 1_000) / window_ms.max(1)) as u32,
+            idle_threshold_ms: 20,
+            wakeup_latency_us: 2_000,
+        }
+    }
+
+    /// Recommend a sleep depth given how long the system has been idle and
+    /// when the next task deadline arrives.
+    ///
+    /// The recommendation becomes deeper as idle time grows relative to the
+    /// idle threshold and the deadline distance exceeds the acceptable wakeup
+    /// latency.
+    pub fn recommend_sleep(&self, idle_ms: u64, next_deadline_ms: u64) -> SleepRecommendation {
+        match self.mode {
+            EnergyMode::Performance => SleepRecommendation::StayAwake,
+
+            EnergyMode::Balanced | EnergyMode::BudgetEnforced { .. } => {
+                if idle_ms == 0 {
+                    return SleepRecommendation::StayAwake;
+                }
+                let wakeup_ms = self.wakeup_latency_us / 1_000;
+                if next_deadline_ms <= wakeup_ms + 1 {
+                    SleepRecommendation::StayAwake
+                } else if idle_ms < self.idle_threshold_ms / 2 {
+                    SleepRecommendation::LightSleep
+                } else if idle_ms < self.idle_threshold_ms {
+                    SleepRecommendation::DeepSleep
+                } else {
+                    SleepRecommendation::Hibernate
+                }
+            }
+
+            EnergyMode::PowerSave => {
+                if idle_ms == 0 {
+                    return SleepRecommendation::LightSleep;
+                }
+                let wakeup_ms = self.wakeup_latency_us / 1_000;
+                if next_deadline_ms <= wakeup_ms + 1 {
+                    SleepRecommendation::LightSleep
+                } else if idle_ms < self.idle_threshold_ms {
+                    SleepRecommendation::DeepSleep
+                } else {
+                    SleepRecommendation::Hibernate
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// PowerDomain / PeripheralId / DomainState / PowerDomainTracker / DomainReport
+// ============================================================================
+
+/// Identifier for a trackable peripheral power domain
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeripheralId {
+    Cpu,
+    Ram,
+    Flash,
+    Uart0,
+    Uart1,
+    Spi0,
+    Spi1,
+    I2c0,
+    I2c1,
+    Gpio,
+    Timer0,
+    Timer1,
+    Radio,
+    Adc,
+    /// User-defined peripheral (index 0–254)
+    Custom(u8),
+}
+
+impl PeripheralId {
+    fn index(&self) -> usize {
+        match self {
+            PeripheralId::Cpu => 0,
+            PeripheralId::Ram => 1,
+            PeripheralId::Flash => 2,
+            PeripheralId::Uart0 => 3,
+            PeripheralId::Uart1 => 4,
+            PeripheralId::Spi0 => 5,
+            PeripheralId::Spi1 => 6,
+            PeripheralId::I2c0 => 7,
+            PeripheralId::I2c1 => 8,
+            PeripheralId::Gpio => 9,
+            PeripheralId::Timer0 => 10,
+            PeripheralId::Timer1 => 11,
+            PeripheralId::Radio => 12,
+            PeripheralId::Adc => 13,
+            PeripheralId::Custom(n) => 14usize.saturating_add(*n as usize),
+        }
+    }
+}
+
+/// Operating state of a power domain
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DomainState {
+    /// Peripheral is fully active
+    On,
+    /// Clock-gated (register state preserved, no computation)
+    Idle,
+    /// Fully powered off
+    Off,
+}
+
+/// Per-peripheral power domain with energy accounting
+#[derive(Debug, Clone, Copy)]
+pub struct PowerDomain {
+    /// Which peripheral this domain represents
+    pub peripheral: PeripheralId,
+    /// Power draw when fully active (milliwatts)
+    pub power_on_mw: u16,
+    /// Power draw when clock-gated (milliwatts)
+    pub power_idle_mw: u16,
+    /// Power draw when fully off (milliwatts — e.g. leakage)
+    pub power_off_mw: u16,
+    /// Current operating state
+    pub state: DomainState,
+    /// Cumulative energy consumed in all states
+    pub energy_consumed: Energy,
+    /// Timestamp of last state transition (microseconds)
+    pub last_state_change_us: u64,
+}
+
+impl PowerDomain {
+    /// Construct a new power domain starting in the Off state
+    pub fn new(
+        peripheral: PeripheralId,
+        power_on_mw: u16,
+        power_idle_mw: u16,
+        power_off_mw: u16,
+        start_us: u64,
+    ) -> Self {
+        Self {
+            peripheral,
+            power_on_mw,
+            power_idle_mw,
+            power_off_mw,
+            state: DomainState::Off,
+            energy_consumed: Energy::ZERO,
+            last_state_change_us: start_us,
+        }
+    }
+
+    /// Instantaneous power draw based on current state (milliwatts)
+    pub fn current_power_mw(&self) -> u32 {
+        match self.state {
+            DomainState::On => self.power_on_mw as u32,
+            DomainState::Idle => self.power_idle_mw as u32,
+            DomainState::Off => self.power_off_mw as u32,
+        }
+    }
+
+    /// Accrue energy for time spent in current state, then transition
+    pub fn transition(&mut self, new_state: DomainState, now_us: u64) {
+        let elapsed_us = now_us.saturating_sub(self.last_state_change_us);
+        let power_mw = self.current_power_mw() as u64;
+        // E[µJ] = P[mW] * t[µs] / 1000
+        let energy_uj = power_mw.saturating_mul(elapsed_us) / 1_000;
+        self.energy_consumed = self
+            .energy_consumed
+            .saturating_add(Energy::microjoules(energy_uj));
+        self.state = new_state;
+        self.last_state_change_us = now_us;
+    }
+}
+
+/// Maximum number of simultaneously tracked power domains
+const MAX_POWER_DOMAINS: usize = 16;
+
+/// Summary report across all registered domains
+#[derive(Debug, Clone, Copy)]
+pub struct DomainReport {
+    /// Number of registered domains
+    pub domain_count: usize,
+    /// Total instantaneous power draw (milliwatts)
+    pub total_power_mw: u32,
+    /// Total energy consumed across all domains (microjoules)
+    pub total_energy_uj: u64,
+    /// Number of domains currently active
+    pub active_domains: usize,
+}
+
+/// Tracker for an ensemble of power domains
+pub struct PowerDomainTracker {
+    domains: [Option<PowerDomain>; MAX_POWER_DOMAINS],
+    total_power_mw: core::sync::atomic::AtomicU32,
+    tracking_start_us: u64,
+}
+
+impl PowerDomainTracker {
+    /// Create a new tracker with the given wall-clock origin
+    pub fn new(start_us: u64) -> Self {
+        Self {
+            domains: [const { None }; MAX_POWER_DOMAINS],
+            total_power_mw: core::sync::atomic::AtomicU32::new(0),
+            tracking_start_us: start_us,
+        }
+    }
+
+    /// Register a new power domain.  Returns an error if the table is full or
+    /// the domain's index slot is already occupied.
+    pub fn register(&mut self, domain: PowerDomain) -> Result<(), EnergyError> {
+        let idx = domain.peripheral.index() % MAX_POWER_DOMAINS;
+        if self.domains[idx].is_some() {
+            return Err(EnergyError::DomainTableFull);
+        }
+        let pwr = domain.current_power_mw();
+        self.domains[idx] = Some(domain);
+        self.recompute_total_power();
+        let _ = pwr;
+        Ok(())
+    }
+
+    /// Transition a peripheral to a new state, accruing energy for the elapsed
+    /// time in the previous state.
+    pub fn transition(&mut self, peripheral: PeripheralId, new_state: DomainState, now_us: u64) {
+        let idx = peripheral.index() % MAX_POWER_DOMAINS;
+        if let Some(ref mut domain) = self.domains[idx] {
+            domain.transition(new_state, now_us);
+            self.recompute_total_power();
+        }
+    }
+
+    /// Instantaneous total power draw from all registered domains (milliwatts)
+    pub fn total_power_mw(&self) -> u32 {
+        self.total_power_mw
+            .load(core::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Accumulated energy across all domains since tracking started (microjoules)
+    pub fn total_energy_uj(&self) -> u64 {
+        self.domains
+            .iter()
+            .flatten()
+            .map(|d| d.energy_consumed.as_microjoules())
+            .fold(0u64, |a, b| a.saturating_add(b))
+    }
+
+    /// Energy consumed by a specific peripheral, or None if not registered
+    pub fn peripheral_energy(&self, peripheral: PeripheralId) -> Option<Energy> {
+        let idx = peripheral.index() % MAX_POWER_DOMAINS;
+        self.domains[idx].as_ref().map(|d| d.energy_consumed)
+    }
+
+    /// Produce a summary report
+    pub fn report(&self) -> DomainReport {
+        let mut domain_count = 0usize;
+        let mut active_domains = 0usize;
+        for d in self.domains.iter().flatten() {
+            domain_count += 1;
+            if d.state == DomainState::On {
+                active_domains += 1;
+            }
+        }
+        DomainReport {
+            domain_count,
+            total_power_mw: self.total_power_mw(),
+            total_energy_uj: self.total_energy_uj(),
+            active_domains,
+        }
+    }
+
+    /// Tracking origin timestamp
+    pub fn tracking_start_us(&self) -> u64 {
+        self.tracking_start_us
+    }
+
+    fn recompute_total_power(&self) {
+        let total: u32 = self
+            .domains
+            .iter()
+            .flatten()
+            .map(|d| d.current_power_mw())
+            .fold(0u32, |a, b| a.saturating_add(b));
+        self.total_power_mw
+            .store(total, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+// ============================================================================
+// PowerManager — energy-policy-aware facade over AdvancedPowerManager
+// ============================================================================
+
+/// Power state exposed to the energy-aware scheduler
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerState {
+    /// Full CPU activity
+    Active,
+    /// WFI-class light sleep
+    LightSleep,
+    /// STOP-class deep sleep
+    DeepSleep,
+    /// STANDBY-class hibernate
+    Hibernate,
+}
+
+/// Thin power manager that integrates an [`EnergyPolicy`] with a power-state
+/// machine.  Deliberately separate from the heavy `AdvancedPowerManager` in
+/// `power.rs` so energy_scheduler can own it without alloc.
+#[derive(Debug)]
+pub struct PowerManager {
+    policy: EnergyPolicy,
+    state: PowerState,
+}
+
+impl PowerManager {
+    /// Create a new manager with an explicit energy policy
+    pub fn with_energy_policy(policy: EnergyPolicy) -> Self {
+        Self {
+            policy,
+            state: PowerState::Active,
+        }
+    }
+
+    /// Map a scheduling hint's sleep recommendation to a concrete `PowerState`
+    pub fn suggest_next_state(
+        &self,
+        hint: &crate::energy_scheduler::EnergySchedulingHint,
+    ) -> PowerState {
+        match hint.sleep_recommendation {
+            SleepRecommendation::StayAwake => PowerState::Active,
+            SleepRecommendation::LightSleep => PowerState::LightSleep,
+            SleepRecommendation::DeepSleep => PowerState::DeepSleep,
+            SleepRecommendation::Hibernate => PowerState::Hibernate,
+        }
+    }
+
+    /// Current power state
+    pub fn state(&self) -> PowerState {
+        self.state
+    }
+
+    /// Apply a new power state
+    pub fn set_state(&mut self, state: PowerState) {
+        self.state = state;
+    }
+
+    /// Expose the active policy
+    pub fn policy(&self) -> &EnergyPolicy {
+        &self.policy
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -948,12 +1398,131 @@ mod tests {
     fn test_idle_task() {
         let mut profiler = EnergyProfiler::new();
 
-        // Track idle task
         profiler.start_task(TaskId::IDLE, 0);
         let energy = profiler.stop_task(TaskId::IDLE, 1_000_000);
         assert!(energy.is_some());
 
         let profile = profiler.get_task(TaskId::IDLE).unwrap();
         assert_eq!(profile.execution_count, 1);
+    }
+
+    // ------------------------------------------------------------------
+    // EnergyPolicy tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_energy_policy_performance_always_awake() {
+        let policy = EnergyPolicy::performance();
+        // Performance mode never sleeps regardless of idle time
+        assert_eq!(
+            policy.recommend_sleep(10_000, 100_000),
+            SleepRecommendation::StayAwake
+        );
+        assert_eq!(policy.recommend_sleep(0, 0), SleepRecommendation::StayAwake);
+    }
+
+    #[test]
+    fn test_energy_policy_power_save_recommends_sleep() {
+        let policy = EnergyPolicy::power_save();
+        // Any non-zero idle time should at minimum get LightSleep under PowerSave
+        let rec = policy.recommend_sleep(0, 100_000);
+        assert_eq!(rec, SleepRecommendation::LightSleep);
+
+        // Past threshold with ample deadline → Hibernate
+        let rec = policy.recommend_sleep(policy.idle_threshold_ms + 1, 100_000);
+        assert_eq!(rec, SleepRecommendation::Hibernate);
+    }
+
+    #[test]
+    fn test_energy_policy_sleep_recommendation_deepens_with_idle_time() {
+        let policy = EnergyPolicy::balanced();
+        let long_deadline = 1_000_000;
+
+        // No idle → stay awake
+        assert_eq!(
+            policy.recommend_sleep(0, long_deadline),
+            SleepRecommendation::StayAwake
+        );
+        // Just past half threshold → DeepSleep (or beyond)
+        let half = policy.idle_threshold_ms / 2;
+        let rec_mid = policy.recommend_sleep(half + 1, long_deadline);
+        assert!(matches!(
+            rec_mid,
+            SleepRecommendation::DeepSleep | SleepRecommendation::Hibernate
+        ));
+        // Past full threshold → Hibernate
+        assert_eq!(
+            policy.recommend_sleep(policy.idle_threshold_ms + 1, long_deadline),
+            SleepRecommendation::Hibernate
+        );
+    }
+
+    #[test]
+    fn test_energy_policy_budget_enforced() {
+        let policy = EnergyPolicy::budget_enforced(100, 1_000);
+        assert!(matches!(policy.mode, EnergyMode::BudgetEnforced { .. }));
+        // max_power_mw = 100_000 µJ / 1_000 ms = 100 mW
+        assert_eq!(policy.max_power_mw, 100);
+    }
+
+    // ------------------------------------------------------------------
+    // PowerDomainTracker tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_power_domain_tracker_register() {
+        let mut tracker = PowerDomainTracker::new(0);
+        let domain = PowerDomain::new(PeripheralId::Cpu, 200, 50, 5, 0);
+        assert!(tracker.register(domain).is_ok());
+        assert_eq!(tracker.report().domain_count, 1);
+    }
+
+    #[test]
+    fn test_power_domain_tracker_transition_accounting() {
+        let mut tracker = PowerDomainTracker::new(0);
+        // CPU: 200 mW on, 50 mW idle, 5 mW off; starts Off
+        let domain = PowerDomain::new(PeripheralId::Cpu, 200, 50, 5, 0);
+        tracker.register(domain).unwrap();
+
+        // Transition Off→On at t=0 (0 µs spent Off)
+        tracker.transition(PeripheralId::Cpu, DomainState::On, 0);
+        // Run On for 1 000 µs, then go Idle
+        tracker.transition(PeripheralId::Cpu, DomainState::Idle, 1_000);
+
+        // Energy = 200 mW * 1000 µs / 1000 = 200 µJ
+        let e = tracker.peripheral_energy(PeripheralId::Cpu).unwrap();
+        assert_eq!(e.as_microjoules(), 200);
+    }
+
+    #[test]
+    fn test_power_domain_tracker_total_power() {
+        let mut tracker = PowerDomainTracker::new(0);
+        let cpu = PowerDomain::new(PeripheralId::Cpu, 200, 50, 5, 0);
+        let uart = PowerDomain::new(PeripheralId::Uart0, 10, 2, 0, 0);
+        tracker.register(cpu).unwrap();
+        tracker.register(uart).unwrap();
+
+        // Both domains start Off; power = leakage only
+        assert_eq!(tracker.total_power_mw(), 5); // CPU off=5, UART off=0
+
+        // Bring CPU On
+        tracker.transition(PeripheralId::Cpu, DomainState::On, 100);
+        assert_eq!(tracker.total_power_mw(), 200); // CPU on=200, UART off=0
+    }
+
+    #[test]
+    fn test_power_domain_tracker_report() {
+        let mut tracker = PowerDomainTracker::new(0);
+        tracker
+            .register(PowerDomain::new(PeripheralId::Radio, 80, 10, 1, 0))
+            .unwrap();
+        tracker.transition(PeripheralId::Radio, DomainState::On, 0);
+        tracker.transition(PeripheralId::Radio, DomainState::Off, 500);
+
+        let report = tracker.report();
+        assert_eq!(report.domain_count, 1);
+        assert_eq!(report.active_domains, 0); // now Off
+                                              // Energy: 80 mW * 500 µs / 1000 = 40 µJ
+        assert_eq!(report.total_energy_uj, 40);
     }
 }
