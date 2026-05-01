@@ -1,13 +1,13 @@
-# MielinOS TODO
+# MielinOS TODO — v0.1.0 (2026-05-01)
 
 ## Pending Tasks
 
 ### High Priority - Release Critical
 - [x] All tests passing (100% pass rate) — 3617 tests, 0 failures
 - [x] Zero compiler warnings — clippy clean with -D warnings
-- [ ] Documentation updated
+- [x] Documentation updated — documentation fields added to all subcrates, README.md updated
 - [x] CHANGELOG.md updated
-- [ ] Version bumped in Cargo.toml
+- [x] Version bumped in Cargo.toml
 
 ### High Priority - Testing & Validation
 - [ ] Local cluster testing
@@ -54,9 +54,9 @@
 - [ ] Academic partnerships
 - [ ] Industry adoption program
 
-## Completed Features (v0.1.0-rc.1)
+## Completed Features (v0.1.0)
 
-MielinOS v0.1.0-rc.1 "Oligodendrocyte" is a complete distributed agent mesh operating system with the following components:
+MielinOS v0.1.0 "Oligodendrocyte" is a complete distributed agent mesh operating system with the following components:
 
 ### Core Components
 - ✅ **mielin-kernel**: Unikernel with multi-architecture support

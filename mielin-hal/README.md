@@ -8,7 +8,7 @@ Cross-platform hardware abstraction for Arm (AArch64, Cortex-M), RISC-V, and x86
 
 The Hardware Abstraction Layer (HAL) provides a unified interface to detect and utilize hardware capabilities across diverse platforms—from embedded microcontrollers to high-performance servers. MielinHAL enables the kernel to make intelligent decisions about resource allocation, agent placement, and hardware acceleration.
 
-**Current Status:** v0.1.0-rc.1 "Oligodendrocyte" (Released 2026-01-18)
+**Current Status:** v0.1.0 "Ranvier" (Released 2026-05-01)
 
 ## Supported Architectures
 

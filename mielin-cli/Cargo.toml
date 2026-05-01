@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Command-line interface and control plane for MielinOS distributed agent mesh"
 keywords = ["cli", "command-line", "control-plane", "mesh", "management"]
+categories = ["command-line-utilities", "os"]
+readme = "README.md"
+documentation = "https://docs.rs/mielin-cli"
 
 [[bin]]
 name = "mielinctl"

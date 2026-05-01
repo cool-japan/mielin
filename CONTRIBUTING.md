@@ -468,7 +468,7 @@ Contributors will be:
 
 ## License
 
-By contributing to MielinOS, you agree that your contributions will be licensed under both the MIT License and Apache License 2.0.
+By contributing to MielinOS, you agree that your contributions will be licensed under the Apache License 2.0.
 
 ---
 

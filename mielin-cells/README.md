@@ -8,7 +8,7 @@ Comprehensive SDK for creating, managing, and migrating autonomous AI agents in 
 
 Mielin Cells implements Layer 2 of the MielinOS architecture, providing complete agent lifecycle management, stateful migration capabilities, policy enforcement, and DNA (WebAssembly binary) management.
 
-**Current Status:** v0.1.0-rc.1 "Oligodendrocyte" (Released 2026-01-18)
+**Current Status:** v0.1.0 "Ranvier" (Released 2026-05-01)
 
 ## Features
 
@@ -633,4 +633,4 @@ Licensed under:
 
 **Mielin Cells** - The neurotransmitters enabling autonomous agents to traverse the computational nervous system 🧠⚡
 
-**Current Version:** v0.1.0-rc.1 "Oligodendrocyte" | Released 2026-01-18
+**Current Version:** v0.1.0 "Ranvier" | Released 2026-05-01

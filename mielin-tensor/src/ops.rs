@@ -48,11 +48,11 @@ impl TensorOps {
         if a.shape() == b.shape() {
             let mut result = Tensor::zeros(a.shape().to_vec());
             if self.capabilities.contains(HardwareCapabilities::SVE2) {
-                #[cfg(target_arch = "aarch64")]
+                #[cfg(all(target_arch = "aarch64", target_feature = "sve2"))]
                 unsafe {
                     add_sve2(a.data(), b.data(), result.data_mut())
                 };
-                #[cfg(not(target_arch = "aarch64"))]
+                #[cfg(not(all(target_arch = "aarch64", target_feature = "sve2")))]
                 add_sve2(a.data(), b.data(), result.data_mut());
             } else if self.capabilities.contains(HardwareCapabilities::NEON)
                 || self.capabilities.contains(HardwareCapabilities::AVX2)
@@ -72,11 +72,11 @@ impl TensorOps {
         if a.shape() == b.shape() {
             let mut result = Tensor::zeros(a.shape().to_vec());
             if self.capabilities.contains(HardwareCapabilities::SVE2) {
-                #[cfg(target_arch = "aarch64")]
+                #[cfg(all(target_arch = "aarch64", target_feature = "sve2"))]
                 unsafe {
                     sub_sve2(a.data(), b.data(), result.data_mut())
                 };
-                #[cfg(not(target_arch = "aarch64"))]
+                #[cfg(not(all(target_arch = "aarch64", target_feature = "sve2")))]
                 sub_sve2(a.data(), b.data(), result.data_mut());
                 return Some(result);
             }
@@ -93,11 +93,11 @@ impl TensorOps {
         if a.shape() == b.shape() {
             let mut result = Tensor::zeros(a.shape().to_vec());
             if self.capabilities.contains(HardwareCapabilities::SVE2) {
-                #[cfg(target_arch = "aarch64")]
+                #[cfg(all(target_arch = "aarch64", target_feature = "sve2"))]
                 unsafe {
                     mul_sve2(a.data(), b.data(), result.data_mut())
                 };
-                #[cfg(not(target_arch = "aarch64"))]
+                #[cfg(not(all(target_arch = "aarch64", target_feature = "sve2")))]
                 mul_sve2(a.data(), b.data(), result.data_mut());
             } else {
                 for i in 0..a.size() {
@@ -114,11 +114,11 @@ impl TensorOps {
         if a.shape() == b.shape() {
             let mut result = Tensor::zeros(a.shape().to_vec());
             if self.capabilities.contains(HardwareCapabilities::SVE2) {
-                #[cfg(target_arch = "aarch64")]
+                #[cfg(all(target_arch = "aarch64", target_feature = "sve2"))]
                 unsafe {
                     div_sve2(a.data(), b.data(), result.data_mut())
                 };
-                #[cfg(not(target_arch = "aarch64"))]
+                #[cfg(not(all(target_arch = "aarch64", target_feature = "sve2")))]
                 div_sve2(a.data(), b.data(), result.data_mut());
             } else {
                 for i in 0..a.size() {
@@ -212,11 +212,11 @@ impl TensorOps {
     /// SVE2-optimized dot product
     #[inline]
     fn dot_sve2(&self, a: &[f32], b: &[f32]) -> f32 {
-        #[cfg(target_arch = "aarch64")]
+        #[cfg(all(target_arch = "aarch64", target_feature = "sve2"))]
         {
             unsafe { crate::backends::sve2::dot_sve2(a, b) }
         }
-        #[cfg(not(target_arch = "aarch64"))]
+        #[cfg(not(all(target_arch = "aarch64", target_feature = "sve2")))]
         {
             crate::backends::sve2::dot_sve2(a, b)
         }
@@ -336,11 +336,11 @@ impl TensorOps {
         for j in 0..n {
             let col_b: alloc::vec::Vec<f32> = (0..k).map(|i| *b.get(&[i, j]).unwrap()).collect();
             let mut col_result = alloc::vec![0.0f32; m];
-            #[cfg(target_arch = "aarch64")]
+            #[cfg(all(target_arch = "aarch64", target_feature = "sve2"))]
             unsafe {
                 matvec_sve2(a.data(), &col_b, &mut col_result, m, k)
             };
-            #[cfg(not(target_arch = "aarch64"))]
+            #[cfg(not(all(target_arch = "aarch64", target_feature = "sve2")))]
             matvec_sve2(a.data(), &col_b, &mut col_result, m, k);
             for (i, &val) in col_result.iter().enumerate() {
                 result.set(&[i, j], val);

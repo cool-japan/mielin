@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Core unikernel implementation providing the foundation for agent execution across heterogeneous hardware platforms"
 keywords = ["kernel", "unikernel", "embedded", "no-std", "operating-system"]
+categories = ["os", "no-std", "embedded", "asynchronous"]
+readme = "README.md"
+documentation = "https://docs.rs/mielin-kernel"
 
 [dependencies]
 # Core dependencies for no_std environment

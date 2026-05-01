@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Agent SDK providing agent lifecycle management, policy execution, and inter-agent communication"
 keywords = ["agent", "sdk", "distributed", "messaging", "lifecycle"]
+categories = ["os", "asynchronous", "wasm", "network-programming"]
+readme = "README.md"
+documentation = "https://docs.rs/mielin-cells"
 
 [dependencies]
 serde.workspace = true

@@ -126,7 +126,7 @@ pub struct TensorShard {
     pub col_end: usize,
     /// Local data for this shard (row-major)
     pub data: Vec<f32>,
-    /// Local shape [rows, cols] or [rows] for 1-D tensors
+    /// Local shape \[rows, cols\] or \[rows\] for 1-D tensors
     pub local_shape: Vec<usize>,
     /// Partition strategy that produced this shard
     pub strategy: PartitionStrategy,

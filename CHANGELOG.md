@@ -94,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0] - 2026-03-30 - "Ranvier" (Initial Release)
+## [0.1.0] - 2026-05-01 - "Ranvier" (Initial Release)
 
 **First stable release** of MielinOS - Core mesh networking and agent migration.
 
@@ -103,8 +103,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All known issues from 0.1.0-rc.1 resolved
 
 ### Summary
-- **155,178 lines of Rust** across 445 files
-- **3,255 tests passing** with zero clippy warnings
+- **199,393 lines of Rust** across 458 files
+- **3,617 tests passing** with zero clippy warnings
 - Complete QUIC transport with TLS 1.3 encryption
 - P2P mesh networking with mDNS discovery and gossip protocol
 - Live agent migration with delta compression

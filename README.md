@@ -4,7 +4,7 @@
 
 MielinOS is a next-generation operating system designed from the ground up for distributed AI agents with neural mesh networking capabilities. Named after the myelin sheath that enables rapid signal transmission in biological neural networks, MielinOS provides the infrastructure for agents to migrate, communicate, and execute across heterogeneous hardware platforms.
 
-**Current Status:** v0.1.0 "Ranvier" (Released 2026-03-30)
+**Current Status:** v0.1.0 "Ranvier" (Released 2026-05-01)
 
 ## Overview
 

@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Distributed hash table and routing implementation with Kademlia-based DHT and geographic awareness"
 keywords = ["distributed", "dht", "kademlia", "p2p", "networking"]
+categories = ["network-programming", "algorithms", "asynchronous"]
+readme = "README.md"
+documentation = "https://docs.rs/mielin-mesh-core"
 
 [dependencies]
 tokio.workspace = true

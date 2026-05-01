@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "QUIC-based wire protocol for agent migration and mesh communication with compression and security"
 keywords = ["quic", "protocol", "networking", "migration", "distributed"]
+categories = ["network-programming", "asynchronous", "cryptography"]
+readme = "README.md"
+documentation = "https://docs.rs/mielin-mesh-wire"
 
 [dependencies]
 tokio.workspace = true

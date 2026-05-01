@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Kernel-level tensor operations with hardware accelerator support (Arm SVE2/SME, CUDA, Metal, NPU)"
 keywords = ["tensor", "machine-learning", "accelerator", "simd", "gpu"]
+categories = ["science", "algorithms", "no-std", "hardware-support"]
+readme = "README.md"
+documentation = "https://docs.rs/mielin-tensor"
 
 [dependencies]
 mielin-hal.workspace = true

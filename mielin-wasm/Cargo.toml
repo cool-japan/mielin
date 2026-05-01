@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "WebAssembly sandboxing and execution runtime for agent cells using Wasmtime"
 keywords = ["wasm", "webassembly", "sandbox", "runtime", "wasmtime"]
+categories = ["wasm", "os", "network-programming"]
+readme = "README.md"
+documentation = "https://docs.rs/mielin-wasm"
 
 [features]
 default = []

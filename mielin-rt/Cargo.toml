@@ -8,6 +8,8 @@ repository.workspace = true
 description = "Lightweight embedded runtime for Cortex-M and resource-constrained IoT devices"
 keywords = ["embedded", "cortex-m", "iot", "real-time", "no-std"]
 categories = ["embedded", "no-std", "hardware-support"]
+readme = "README.md"
+documentation = "https://docs.rs/mielin-rt"
 # Disable automatic example discovery - all examples are no_std and conflict with std tests
 autoexamples = false
 

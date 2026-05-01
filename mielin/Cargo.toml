@@ -9,6 +9,7 @@ repository.workspace = true
 readme = "../README.md"
 keywords = ["operating-system", "microkernel", "distributed-systems", "ai-agents", "mesh-networking"]
 categories = ["os", "asynchronous", "network-programming", "wasm"]
+documentation = "https://docs.rs/mielin"
 
 [dependencies]
 mielin-hal = { workspace = true }

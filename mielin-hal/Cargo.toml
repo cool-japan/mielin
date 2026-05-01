@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Hardware abstraction layer providing unified interfaces across x86_64, AArch64, RISC-V, and ARM Cortex-M architectures"
 keywords = ["hardware", "hal", "embedded", "no-std", "cross-platform"]
+categories = ["hardware-support", "no-std", "embedded", "os"]
+readme = "README.md"
+documentation = "https://docs.rs/mielin-hal"
 
 [dependencies]
 bitflags.workspace = true
