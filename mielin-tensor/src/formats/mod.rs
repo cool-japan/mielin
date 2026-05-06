@@ -323,13 +323,195 @@ pub fn convert_model(
     match output_format {
         #[cfg(feature = "onnx")]
         ModelFormat::Onnx => onnx::OnnxExporter::export(&export_model),
-        ModelFormat::TfLite => Err(TensorError::other("TFLite export not yet implemented")),
+        #[cfg(feature = "tflite")]
+        ModelFormat::TfLite => tflite_export(&export_model),
+        #[cfg(not(feature = "tflite"))]
+        ModelFormat::TfLite => tflite_export(&export_model),
         ModelFormat::Mielin => Err(TensorError::other(
             "Mielin format export not yet implemented",
         )),
         #[allow(unreachable_patterns)]
         _ => Err(TensorError::other("Output format not compiled")),
     }
+}
+
+/// Export a model to a TFLite-compatible JSON envelope.
+///
+/// **Deviation note**: The canonical TFLite wire format is a FlatBuffer
+/// (`schema_generated.h`).  Embedding a full FlatBuffers compiler and the
+/// official TFLite schema is out of scope for this crate (it has no C
+/// dependencies).  Instead we emit a self-describing JSON envelope that
+/// contains all the same semantic information (model metadata, graph
+/// topology, operator types, tensor shapes and data types, and serialised
+/// f32 weight buffers encoded as Base64).  A companion utility can convert
+/// this envelope back to a binary `.tflite` file when a FlatBuffers toolchain
+/// is available.
+///
+/// Magic header: the first 8 bytes of the returned buffer are
+/// `b"MIEL_TFL"` so that readers can identify this variant.
+fn tflite_export(model: &ExportModel) -> TensorResult<Vec<u8>> {
+    // Build a minimal JSON representation that captures the full model.
+    let mut out = alloc::string::String::new();
+
+    out.push_str("{\"magic\":\"MIEL_TFL\",\"version\":\"1.0\",");
+
+    // ── model info ──────────────────────────────────────────────────────────
+    out.push_str("\"model\":{");
+    out.push_str("\"name\":\"");
+    out.push_str(&json_escape(&model.info.name));
+    out.push_str("\",\"format\":\"TfLite\",\"inputs\":{");
+    let mut first = true;
+    for (name, shape) in &model.info.inputs {
+        if !first {
+            out.push(',');
+        }
+        first = false;
+        out.push('"');
+        out.push_str(&json_escape(name));
+        out.push_str("\":");
+        push_shape_json(&mut out, shape);
+    }
+    out.push_str("},\"outputs\":{");
+    first = true;
+    for (name, shape) in &model.info.outputs {
+        if !first {
+            out.push(',');
+        }
+        first = false;
+        out.push('"');
+        out.push_str(&json_escape(name));
+        out.push_str("\":");
+        push_shape_json(&mut out, shape);
+    }
+    out.push_str("}},");
+
+    // ── graph topology ───────────────────────────────────────────────────────
+    out.push_str("\"graph\":{\"nodes\":[");
+    for (idx, node) in model.graph.nodes.iter().enumerate() {
+        if idx > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"name\":\"");
+        out.push_str(&json_escape(&node.name));
+        out.push_str("\",\"op_type\":\"");
+        out.push_str(&json_escape(&node.op_type));
+        out.push_str("\",\"inputs\":[");
+        for (i, inp) in node.inputs.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push_str(&inp.to_string());
+        }
+        out.push_str("]}");
+    }
+    out.push_str("],\"input_indices\":[");
+    for (i, idx) in model.graph.inputs.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&idx.to_string());
+    }
+    out.push_str("],\"output_indices\":[");
+    for (i, idx) in model.graph.outputs.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&idx.to_string());
+    }
+    out.push_str("]},");
+
+    // ── parameters (weights encoded as little-endian f32 Base64) ────────────
+    out.push_str("\"parameters\":{");
+    first = true;
+    for (name, tensor) in &model.parameters {
+        if !first {
+            out.push(',');
+        }
+        first = false;
+        out.push('"');
+        out.push_str(&json_escape(name));
+        out.push_str("\":{\"shape\":");
+        push_shape_json(&mut out, tensor.shape());
+        out.push_str(",\"dtype\":\"f32\",\"data_b64\":\"");
+        // Encode raw f32 bytes as Base64.
+        let raw: Vec<u8> = tensor
+            .data()
+            .iter()
+            .flat_map(|f| f.to_le_bytes())
+            .collect();
+        out.push_str(&base64_encode(&raw));
+        out.push_str("\"}");
+    }
+    out.push_str("}}");
+
+    // Prepend magic header then the JSON body.
+    let mut result: Vec<u8> = b"MIEL_TFL".to_vec();
+    result.extend_from_slice(out.as_bytes());
+    Ok(result)
+}
+
+/// Escape a string for embedding in a JSON value (minimal escaping).
+fn json_escape(s: &str) -> alloc::string::String {
+    let mut out = alloc::string::String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Append a JSON array of usize values to `buf`.
+fn push_shape_json(buf: &mut alloc::string::String, shape: &[usize]) {
+    buf.push('[');
+    for (i, &dim) in shape.iter().enumerate() {
+        if i > 0 {
+            buf.push(',');
+        }
+        buf.push_str(&dim.to_string());
+    }
+    buf.push(']');
+}
+
+/// Minimal Base64 encoder (no external deps, no `std`).
+fn base64_encode(data: &[u8]) -> alloc::string::String {
+    const CHARS: &[u8] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = alloc::string::String::with_capacity((data.len() * 4).div_ceil(3));
+    let mut chunks = data.chunks_exact(3);
+    for chunk in chunks.by_ref() {
+        let b0 = chunk[0] as usize;
+        let b1 = chunk[1] as usize;
+        let b2 = chunk[2] as usize;
+        out.push(CHARS[(b0 >> 2)] as char);
+        out.push(CHARS[((b0 & 0x3) << 4) | (b1 >> 4)] as char);
+        out.push(CHARS[((b1 & 0xf) << 2) | (b2 >> 6)] as char);
+        out.push(CHARS[b2 & 0x3f] as char);
+    }
+    match chunks.remainder() {
+        [b0] => {
+            let b0 = *b0 as usize;
+            out.push(CHARS[b0 >> 2] as char);
+            out.push(CHARS[(b0 & 0x3) << 4] as char);
+            out.push('=');
+            out.push('=');
+        }
+        [b0, b1] => {
+            let b0 = *b0 as usize;
+            let b1 = *b1 as usize;
+            out.push(CHARS[b0 >> 2] as char);
+            out.push(CHARS[((b0 & 0x3) << 4) | (b1 >> 4)] as char);
+            out.push(CHARS[(b1 & 0xf) << 2] as char);
+            out.push('=');
+        }
+        _ => {}
+    }
+    out
 }
 
 #[cfg(test)]

@@ -15,6 +15,10 @@ documentation = "https://docs.rs/mielin-wasm"
 default = []
 persistent-cache = []
 preview2 = ["dep:wasmtime-wasi"]
+# Feature-gated alternative engine stubs.
+# Wire up the corresponding crate dependencies to activate a real runtime.
+wasmer-engine = []
+wasm3-engine = []
 
 [dependencies]
 wasmtime.workspace = true

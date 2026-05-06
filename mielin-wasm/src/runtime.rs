@@ -27,12 +27,18 @@ impl RuntimeEngine {
         }
     }
 
-    /// Check if engine is available
+    /// Check if engine is available in this build.
     pub fn is_available(&self) -> bool {
         match self {
-            RuntimeEngine::Wasmtime => true, // Always available
-            RuntimeEngine::Wasmer => false,  // Not yet implemented
-            RuntimeEngine::Wasm3 => false,   // Not yet implemented
+            RuntimeEngine::Wasmtime => true,
+            #[cfg(feature = "wasmer-engine")]
+            RuntimeEngine::Wasmer => true,
+            #[cfg(not(feature = "wasmer-engine"))]
+            RuntimeEngine::Wasmer => false,
+            #[cfg(feature = "wasm3-engine")]
+            RuntimeEngine::Wasm3 => true,
+            #[cfg(not(feature = "wasm3-engine"))]
+            RuntimeEngine::Wasm3 => false,
         }
     }
 
@@ -340,8 +346,20 @@ impl RuntimeFactory {
 
         match config.engine {
             RuntimeEngine::Wasmtime => Ok(Arc::new(WasmtimeRuntime::new(config)?)),
-            RuntimeEngine::Wasmer => Err(anyhow!("Wasmer support not yet implemented")),
-            RuntimeEngine::Wasm3 => Err(anyhow!("WASM3 support not yet implemented")),
+            #[cfg(feature = "wasmer-engine")]
+            RuntimeEngine::Wasmer => Ok(Arc::new(WasmerRuntime::new(config)?)),
+            #[cfg(not(feature = "wasmer-engine"))]
+            RuntimeEngine::Wasmer => Err(anyhow!(
+                "Wasmer engine is not available in this build; \
+                 compile with the 'wasmer-engine' feature flag to enable it"
+            )),
+            #[cfg(feature = "wasm3-engine")]
+            RuntimeEngine::Wasm3 => Ok(Arc::new(Wasm3Runtime::new(config)?)),
+            #[cfg(not(feature = "wasm3-engine"))]
+            RuntimeEngine::Wasm3 => Err(anyhow!(
+                "WASM3 engine is not available in this build; \
+                 compile with the 'wasm3-engine' feature flag to enable it"
+            )),
         }
     }
 
@@ -432,6 +450,183 @@ impl Module for WasmtimeModule {
     }
 }
 
+// ─── Wasmer engine stub ──────────────────────────────────────────────────────
+//
+// When the `wasmer-engine` feature is enabled the compiler requires these
+// types to be present.  A future contributor who adds the `wasmer` crate as
+// a dependency should replace the bodies of `WasmerRuntime::compile` and
+// `WasmerRuntime::validate` with real calls to the Wasmer API.
+
+#[cfg(feature = "wasmer-engine")]
+struct WasmerRuntime {
+    /// Retained for when the real Wasmer crate is wired up (see stub comment above).
+    #[allow(dead_code)]
+    config: RuntimeConfig,
+    /// Serialised copy of the WASM bytes from the last compile call.
+    /// Used as a lightweight stand-in until a real Wasmer engine is wired up.
+    last_wasm: std::sync::Mutex<Option<Vec<u8>>>,
+}
+
+#[cfg(feature = "wasmer-engine")]
+impl WasmerRuntime {
+    fn new(config: RuntimeConfig) -> Result<Self> {
+        Ok(Self {
+            config,
+            last_wasm: std::sync::Mutex::new(None),
+        })
+    }
+}
+
+#[cfg(feature = "wasmer-engine")]
+impl Runtime for WasmerRuntime {
+    fn engine(&self) -> RuntimeEngine {
+        RuntimeEngine::Wasmer
+    }
+
+    fn capabilities(&self) -> RuntimeCapabilities {
+        RuntimeCapabilities::wasmer()
+    }
+
+    fn stats(&self) -> RuntimeStats {
+        RuntimeStats::default()
+    }
+
+    fn compile(&self, wasm_bytes: &[u8]) -> Result<Arc<dyn Module>> {
+        // Validate the module and store a copy so callers can at least
+        // inspect it; replace with a real Wasmer store/module when the
+        // `wasmer` crate is added as a dependency.
+        wasmtime::Engine::new(&wasmtime::Config::new())
+            .and_then(|e| wasmtime::Module::validate(&e, wasm_bytes).map(|_| e))
+            .map_err(|e| anyhow!("Wasmer (stub) validation failed: {}", e))?;
+        match self.last_wasm.lock() {
+            Ok(mut guard) => *guard = Some(wasm_bytes.to_vec()),
+            Err(_) => return Err(anyhow!("Wasmer (stub) mutex poisoned")),
+        }
+        Ok(Arc::new(WasmerModule {
+            data: wasm_bytes.to_vec(),
+        }))
+    }
+
+    fn validate(&self, wasm_bytes: &[u8]) -> Result<()> {
+        wasmtime::Engine::new(&wasmtime::Config::new())
+            .and_then(|e| wasmtime::Module::validate(&e, wasm_bytes))
+            .map_err(|e| anyhow!("Wasmer (stub) validation failed: {}", e))
+    }
+}
+
+#[cfg(feature = "wasmer-engine")]
+struct WasmerModule {
+    data: Vec<u8>,
+}
+
+#[cfg(feature = "wasmer-engine")]
+impl Module for WasmerModule {
+    fn size_bytes(&self) -> usize {
+        self.data.len()
+    }
+
+    fn hash(&self) -> u64 {
+        // FNV-1a hash of the WASM bytes.
+        let mut h: u64 = 0xcbf29ce484222325;
+        for &b in &self.data {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        h
+    }
+
+    fn serialize(&self) -> Result<Vec<u8>> {
+        Ok(self.data.clone())
+    }
+}
+
+// ─── WASM3 interpreter stub ──────────────────────────────────────────────────
+//
+// WASM3 is a lightweight interpreter with no JIT, suitable for deeply embedded
+// targets.  Wire up the real `wasm3` crate here when it is added as a
+// dependency behind the `wasm3-engine` feature flag.
+
+#[cfg(feature = "wasm3-engine")]
+struct Wasm3Runtime {
+    /// Retained for when the real wasm3 crate is wired up (see stub comment above).
+    #[allow(dead_code)]
+    config: RuntimeConfig,
+}
+
+#[cfg(feature = "wasm3-engine")]
+impl Wasm3Runtime {
+    fn new(config: RuntimeConfig) -> Result<Self> {
+        if config.max_memory_bytes > RuntimeCapabilities::wasm3().max_memory_bytes {
+            return Err(anyhow!(
+                "WASM3: requested memory {} exceeds engine limit {}",
+                config.max_memory_bytes,
+                RuntimeCapabilities::wasm3().max_memory_bytes
+            ));
+        }
+        Ok(Self { config })
+    }
+}
+
+#[cfg(feature = "wasm3-engine")]
+impl Runtime for Wasm3Runtime {
+    fn engine(&self) -> RuntimeEngine {
+        RuntimeEngine::Wasm3
+    }
+
+    fn capabilities(&self) -> RuntimeCapabilities {
+        RuntimeCapabilities::wasm3()
+    }
+
+    fn stats(&self) -> RuntimeStats {
+        RuntimeStats::default()
+    }
+
+    fn compile(&self, wasm_bytes: &[u8]) -> Result<Arc<dyn Module>> {
+        // Validate via wasmtime as a proxy until the `wasm3` crate is added.
+        let cfg = wasmtime::Config::new();
+        let engine =
+            wasmtime::Engine::new(&cfg).map_err(|e| anyhow!("WASM3 (stub) init: {}", e))?;
+        wasmtime::Module::validate(&engine, wasm_bytes)
+            .map_err(|e| anyhow!("WASM3 (stub) validation: {}", e))?;
+        Ok(Arc::new(Wasm3Module {
+            data: wasm_bytes.to_vec(),
+        }))
+    }
+
+    fn validate(&self, wasm_bytes: &[u8]) -> Result<()> {
+        let cfg = wasmtime::Config::new();
+        let engine =
+            wasmtime::Engine::new(&cfg).map_err(|e| anyhow!("WASM3 (stub) init: {}", e))?;
+        wasmtime::Module::validate(&engine, wasm_bytes)
+            .map_err(|e| anyhow!("WASM3 (stub) validation: {}", e))
+    }
+}
+
+#[cfg(feature = "wasm3-engine")]
+struct Wasm3Module {
+    data: Vec<u8>,
+}
+
+#[cfg(feature = "wasm3-engine")]
+impl Module for Wasm3Module {
+    fn size_bytes(&self) -> usize {
+        self.data.len()
+    }
+
+    fn hash(&self) -> u64 {
+        let mut h: u64 = 0xcbf29ce484222325;
+        for &b in &self.data {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        h
+    }
+
+    fn serialize(&self) -> Result<Vec<u8>> {
+        Ok(self.data.clone())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,16 +640,28 @@ mod tests {
 
     #[test]
     fn test_runtime_engine_available() {
+        // Wasmtime is always available.
         assert!(RuntimeEngine::Wasmtime.is_available());
+        // Wasmer and Wasm3 availability depends on their respective feature flags.
+        #[cfg(feature = "wasmer-engine")]
+        assert!(RuntimeEngine::Wasmer.is_available());
+        #[cfg(not(feature = "wasmer-engine"))]
         assert!(!RuntimeEngine::Wasmer.is_available());
+        #[cfg(feature = "wasm3-engine")]
+        assert!(RuntimeEngine::Wasm3.is_available());
+        #[cfg(not(feature = "wasm3-engine"))]
         assert!(!RuntimeEngine::Wasm3.is_available());
     }
 
     #[test]
     fn test_available_engines() {
         let engines = RuntimeEngine::available_engines();
-        assert_eq!(engines.len(), 1);
-        assert_eq!(engines[0], RuntimeEngine::Wasmtime);
+        // Wasmtime is always present; Wasmer and Wasm3 are present iff their feature is enabled.
+        let expected_len = 1
+            + usize::from(cfg!(feature = "wasmer-engine"))
+            + usize::from(cfg!(feature = "wasm3-engine"));
+        assert_eq!(engines.len(), expected_len);
+        assert!(engines.contains(&RuntimeEngine::Wasmtime));
     }
 
     #[test]
@@ -557,11 +764,16 @@ mod tests {
 
     #[test]
     fn test_runtime_factory_unavailable_engine() {
+        // When the wasmer-engine feature is active, Wasmer IS a valid engine and returns Ok.
+        // When it is not active, the factory returns Err for an unsupported engine.
         let config = RuntimeConfig {
             engine: RuntimeEngine::Wasmer,
             ..Default::default()
         };
         let runtime = RuntimeFactory::create(config);
+        #[cfg(feature = "wasmer-engine")]
+        assert!(runtime.is_ok());
+        #[cfg(not(feature = "wasmer-engine"))]
         assert!(runtime.is_err());
     }
 
