@@ -301,9 +301,10 @@ impl GossipService {
         let states = self.states.clone();
         let _discovery = self.discovery.clone();
         let health = self.health.clone();
-        let _local_node_id = self.local_node_id;
+        let local_node_id = self.local_node_id;
         let config = self.config.clone();
         let stats = self.stats.clone();
+        let message_tx = self._message_tx.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(config.gossip_interval);
@@ -338,10 +339,18 @@ impl GossipService {
 
                     let peer_count = selected_peers.len();
 
-                    // Send to selected peers (in real implementation, would use transport)
+                    // Send one Push message per selected peer through the message channel.
+                    // The channel is the local dispatch bus; actual per-peer network I/O is
+                    // handled by whoever drains _message_rx (future transport layer).
                     for _peer in &selected_peers {
-                        // TODO: Actual network send
-                        // transport.send(peer, GossipMessage::Push { ... }).await;
+                        let msg = GossipMessage::Push {
+                            node_id: local_node_id,
+                            states: recent_states.clone(),
+                        };
+                        if let Err(e) = message_tx.send(msg).await {
+                            debug!("Gossip send channel closed during round: {}", e);
+                            break;
+                        }
                     }
 
                     // Update stats
@@ -359,8 +368,9 @@ impl GossipService {
         let states = self.states.clone();
         let _discovery = self.discovery.clone();
         let health = self.health.clone();
-        let _local_node_id = self.local_node_id;
+        let local_node_id = self.local_node_id;
         let config = self.config.clone();
+        let message_tx = self._message_tx.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(config.anti_entropy_interval);
@@ -390,9 +400,15 @@ impl GossipService {
 
                 debug!("Anti-entropy: sending digest with {} keys", digests.len());
 
-                // Send digest to peer (in real implementation)
-                // let peer = selected_peers[0];
-                // transport.send(peer, GossipMessage::AntiEntropy { ... }).await;
+                // Dispatch AntiEntropy message through the local channel for the
+                // selected peer (transport layer drains the receiver).
+                let msg = GossipMessage::AntiEntropy {
+                    node_id: local_node_id,
+                    digests,
+                };
+                if let Err(e) = message_tx.send(msg).await {
+                    debug!("Anti-entropy send channel closed: {}", e);
+                }
             }
         });
     }

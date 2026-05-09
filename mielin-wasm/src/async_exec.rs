@@ -1091,7 +1091,7 @@ mod tests {
         let ctx2 = Arc::new(Mutex::new(AsyncContext::new()));
 
         // Make ctx2 completed
-        ctx2.lock().unwrap().set_state(ExecutionState::Completed);
+        ctx2.lock().unwrap_or_else(|e| e.into_inner()).set_state(ExecutionState::Completed);
 
         sched.add(ctx1);
         sched.add(ctx2);

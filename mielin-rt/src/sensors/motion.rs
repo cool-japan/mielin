@@ -630,7 +630,7 @@ mod tests {
         accel.init().unwrap();
         accel.set_simulated_acceleration(Acceleration::new(0.0, 0.0, 1.0));
 
-        let reading = accel.read().unwrap();
+        let reading = accel.read().expect("test setup");
         assert_eq!(reading.value.z, 1.0);
     }
 
@@ -641,7 +641,7 @@ mod tests {
         accel.set_simulated_acceleration(Acceleration::new(0.1, 0.2, 1.0));
         accel.set_offset(Vector3::new(0.1, 0.2, 0.0));
 
-        let reading = accel.read().unwrap();
+        let reading = accel.read().expect("test setup");
         assert!((reading.value.x - 0.0).abs() < 0.001);
         assert!((reading.value.y - 0.0).abs() < 0.001);
     }
@@ -678,7 +678,7 @@ mod tests {
         gyro.init().unwrap();
         gyro.set_simulated_angular_velocity(AngularVelocity::new(10.0, 20.0, 30.0));
 
-        let reading = gyro.read().unwrap();
+        let reading = gyro.read().expect("test setup");
         assert_eq!(reading.value.x, 10.0);
         assert_eq!(reading.value.y, 20.0);
         assert_eq!(reading.value.z, 30.0);
@@ -703,7 +703,7 @@ mod tests {
         mag.init().unwrap();
         mag.set_simulated_magnetic_field(MagneticField::new(20.0, 10.0, 40.0));
 
-        let reading = mag.read().unwrap();
+        let reading = mag.read().expect("test setup");
         assert_eq!(reading.value.x, 20.0);
         assert_eq!(reading.value.y, 10.0);
         assert_eq!(reading.value.z, 40.0);

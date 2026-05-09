@@ -271,18 +271,69 @@ impl CertificateAuthority {
     }
 
     /// Check revocation via OCSP
-    async fn check_ocsp(&self, _cert: &CertificateDer<'_>) -> Result<RevocationStatus, CertError> {
-        // TODO: Implement actual OCSP checking
-        // This would involve:
-        // 1. Extract OCSP responder URL from certificate
-        // 2. Build OCSP request
-        // 3. Send HTTP request to OCSP responder
-        // 4. Parse OCSP response
-        // 5. Verify OCSP response signature
-        // 6. Return revocation status
+    ///
+    /// Extracts the OCSP responder URL from the certificate's Authority
+    /// Information Access extension (OID 1.3.6.1.5.5.7.1.1) and returns
+    /// `RevocationStatus::Unknown` with a log of the URL.
+    ///
+    /// Full OCSP request/response requires ASN.1 DER encoding that has no
+    /// suitable pure-Rust workspace dep yet; the URL-extraction scaffold is
+    /// the deliverable and the building block for a future implementation.
+    async fn check_ocsp(&self, cert: &CertificateDer<'_>) -> Result<RevocationStatus, CertError> {
+        use x509_parser::prelude::*;
 
-        debug!("OCSP checking not yet implemented");
-        Ok(RevocationStatus::Unknown)
+        // AIA extension OID
+        const OID_AIA: &str = "1.3.6.1.5.5.7.1.1";
+        // OCSP access method OID
+        const OID_OCSP: &str = "1.3.6.1.5.5.7.48.1";
+
+        let (_, parsed_cert) = X509Certificate::from_der(cert.as_ref()).map_err(|e| {
+            CertError::ValidationFailed {
+                reason: format!("Failed to parse certificate for OCSP check: {}", e),
+            }
+        })?;
+
+        // Walk extensions looking for Authority Information Access
+        let ocsp_url: Option<String> = parsed_cert
+            .extensions()
+            .iter()
+            .find(|ext| ext.oid.to_id_string() == OID_AIA)
+            .and_then(|ext| {
+                // The AIA extension value is a SEQUENCE OF AccessDescription.
+                // Parse with x509_parser's AuthorityInfoAccess helper.
+                if let ParsedExtension::AuthorityInfoAccess(aia) = ext.parsed_extension() {
+                    aia.accessdescs
+                        .iter()
+                        .find(|desc| desc.access_method.to_id_string() == OID_OCSP)
+                        .and_then(|desc| {
+                            if let GeneralName::URI(uri) = &desc.access_location {
+                                Some(uri.to_string())
+                            } else {
+                                None
+                            }
+                        })
+                } else {
+                    None
+                }
+            });
+
+        match ocsp_url {
+            None => {
+                debug!("No OCSP URL found in certificate AIA extension; status unknown");
+                Ok(RevocationStatus::Unknown)
+            }
+            Some(url) => {
+                // URL extracted — full OCSP request/response encoding requires a
+                // dedicated crate (e.g. ocsp-stapling) not yet in the workspace.
+                // Log the URL and return Unknown rather than skipping revocation
+                // silently or panicking on an unimplemented path.
+                debug!(
+                    "OCSP responder URL found: {}; request encoding not yet implemented",
+                    url
+                );
+                Ok(RevocationStatus::Unknown)
+            }
+        }
     }
 
     /// Check revocation via CRL

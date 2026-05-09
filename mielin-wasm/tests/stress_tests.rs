@@ -135,12 +135,12 @@ fn test_concurrent_module_compilation() {
                 for _ in 0..MODULES_PER_THREAD {
                     match executor.compile_module(&wasm) {
                         Ok(_) => {
-                            let mut count = success.lock().unwrap();
+                            let mut count = success.lock().unwrap_or_else(|e| e.into_inner());
                             *count += 1;
                         }
                         Err(e) => {
                             eprintln!("Thread {} compilation error: {}", thread_id, e);
-                            let mut count = errors.lock().unwrap();
+                            let mut count = errors.lock().unwrap_or_else(|e| e.into_inner());
                             *count += 1;
                         }
                     }
@@ -155,8 +155,8 @@ fn test_concurrent_module_compilation() {
 
     let duration = start.elapsed();
     let total_modules = THREAD_COUNT * MODULES_PER_THREAD;
-    let success = *success_count.lock().unwrap();
-    let errors = *error_count.lock().unwrap();
+    let success = *success_count.lock().unwrap_or_else(|e| e.into_inner());
+    let errors = *error_count.lock().unwrap_or_else(|e| e.into_inner());
 
     println!("\n=== Concurrent Compilation Results ===");
     println!("Total modules: {}", total_modules);
@@ -203,17 +203,17 @@ fn test_concurrent_module_execution() {
                             match add.call(&mut store, (5, 7)) {
                                 Ok(result) => {
                                     assert_eq!(result, 12);
-                                    let mut count = success.lock().unwrap();
+                                    let mut count = success.lock().unwrap_or_else(|e| e.into_inner());
                                     *count += 1;
                                 }
                                 Err(_) => {
-                                    let mut count = errors.lock().unwrap();
+                                    let mut count = errors.lock().unwrap_or_else(|e| e.into_inner());
                                     *count += 1;
                                 }
                             }
                         }
                         Err(_) => {
-                            let mut count = errors.lock().unwrap();
+                            let mut count = errors.lock().unwrap_or_else(|e| e.into_inner());
                             *count += 1;
                         }
                     }
@@ -228,8 +228,8 @@ fn test_concurrent_module_execution() {
 
     let duration = start.elapsed();
     let total_executions = THREAD_COUNT * EXECUTIONS_PER_THREAD;
-    let success = *success_count.lock().unwrap();
-    let errors = *error_count.lock().unwrap();
+    let success = *success_count.lock().unwrap_or_else(|e| e.into_inner());
+    let errors = *error_count.lock().unwrap_or_else(|e| e.into_inner());
 
     println!("\n=== Concurrent Execution Results ===");
     println!("Total executions: {}", total_executions);
@@ -273,7 +273,7 @@ fn test_1000_concurrent_modules() {
                         let result = add.call(&mut store, (id as i32, 1)).unwrap();
                         assert_eq!(result, id as i32 + 1);
 
-                        let mut count = success.lock().unwrap();
+                        let mut count = success.lock().unwrap_or_else(|e| e.into_inner());
                         *count += 1;
                     }
                     Err(e) => {
@@ -289,7 +289,7 @@ fn test_1000_concurrent_modules() {
     }
 
     let duration = start.elapsed();
-    let success = *success_count.lock().unwrap();
+    let success = *success_count.lock().unwrap_or_else(|e| e.into_inner());
 
     println!("\n=== 1000 Concurrent Modules Test ===");
     println!("Target modules: {}", MODULE_COUNT);
@@ -327,7 +327,7 @@ fn test_memory_stress() {
                         // Fill first 1KB of memory
                         fill.call(&mut store, 256).unwrap();
 
-                        let mut count = success.lock().unwrap();
+                        let mut count = success.lock().unwrap_or_else(|e| e.into_inner());
                         *count += 1;
                     }
                     Err(e) => {
@@ -343,7 +343,7 @@ fn test_memory_stress() {
     }
 
     let duration = start.elapsed();
-    let success = *success_count.lock().unwrap();
+    let success = *success_count.lock().unwrap_or_else(|e| e.into_inner());
 
     println!("\n=== Memory Stress Test ===");
     println!("Concurrent instances: {}", THREAD_COUNT);
@@ -381,7 +381,7 @@ fn test_cpu_stress() {
                         let result = fib.call(&mut store, FIBONACCI_N).unwrap();
                         assert!(result > 0);
 
-                        let mut count = success.lock().unwrap();
+                        let mut count = success.lock().unwrap_or_else(|e| e.into_inner());
                         *count += 1;
                     }
                     Err(e) => {
@@ -397,7 +397,7 @@ fn test_cpu_stress() {
     }
 
     let duration = start.elapsed();
-    let success = *success_count.lock().unwrap();
+    let success = *success_count.lock().unwrap_or_else(|e| e.into_inner());
 
     println!("\n=== CPU Stress Test ===");
     println!("Concurrent computations: {}", THREAD_COUNT);
@@ -421,7 +421,7 @@ fn test_cache_stress() {
     // Pre-populate cache
     cache
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .insert(key.clone(), wasm.clone(), wasm.len());
 
     let start = Instant::now();
@@ -437,14 +437,14 @@ fn test_cache_stress() {
 
             thread::spawn(move || {
                 for _ in 0..OPERATIONS_PER_THREAD {
-                    let cache_locked = cache.lock().unwrap();
+                    let cache_locked = cache.lock().unwrap_or_else(|e| e.into_inner());
                     match cache_locked.get(&key) {
                         Some(_) => {
-                            let mut count = hits.lock().unwrap();
+                            let mut count = hits.lock().unwrap_or_else(|e| e.into_inner());
                             *count += 1;
                         }
                         None => {
-                            let mut count = misses.lock().unwrap();
+                            let mut count = misses.lock().unwrap_or_else(|e| e.into_inner());
                             *count += 1;
                         }
                     }
@@ -458,8 +458,8 @@ fn test_cache_stress() {
     }
 
     let duration = start.elapsed();
-    let hits = *hit_count.lock().unwrap();
-    let misses = *miss_count.lock().unwrap();
+    let hits = *hit_count.lock().unwrap_or_else(|e| e.into_inner());
+    let misses = *miss_count.lock().unwrap_or_else(|e| e.into_inner());
     let total = THREAD_COUNT * OPERATIONS_PER_THREAD;
 
     println!("\n=== Cache Stress Test ===");
@@ -549,7 +549,7 @@ fn test_long_running_concurrent() {
                     ops += 1;
                 }
 
-                let mut counts_locked = counts.lock().unwrap();
+                let mut counts_locked = counts.lock().unwrap_or_else(|e| e.into_inner());
                 counts_locked[thread_id] = ops;
             })
         })
@@ -560,7 +560,7 @@ fn test_long_running_concurrent() {
     }
 
     let duration = start.elapsed();
-    let counts = operation_counts.lock().unwrap();
+    let counts = operation_counts.lock().unwrap_or_else(|e| e.into_inner());
     let total_ops: usize = counts.iter().sum();
 
     println!("\n=== Long-Running Concurrent Test ===");

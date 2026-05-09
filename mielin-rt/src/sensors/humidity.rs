@@ -339,7 +339,7 @@ mod tests {
         sensor.init().unwrap();
         sensor.set_simulated_humidity(65.0);
 
-        let reading = sensor.read().unwrap();
+        let reading = sensor.read().expect("test setup");
         assert_eq!(reading.value.percent(), 65.0);
         assert!(reading.is_valid());
     }
@@ -409,12 +409,12 @@ mod tests {
 
         // Values beyond 100% should be clamped
         sensor.set_simulated_humidity(150.0);
-        let reading = sensor.read().unwrap();
+        let reading = sensor.read().expect("test setup");
         assert_eq!(reading.value.percent(), 100.0);
 
         // Negative values should be clamped to 0
         sensor.set_simulated_humidity(-10.0);
-        let reading = sensor.read().unwrap();
+        let reading = sensor.read().expect("test setup");
         assert_eq!(reading.value.percent(), 0.0);
     }
 

@@ -46,7 +46,7 @@
 //! Virtual memory management involves direct manipulation of page tables and
 //! CPU control registers. Care must be taken to maintain memory safety invariants.
 
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, VecDeque};
 use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use spin::Mutex;
 
@@ -1449,6 +1449,15 @@ impl VmmState {
 /// Global VMM state
 static VMM_STATE: Mutex<VmmState> = Mutex::new(VmmState::new());
 
+// Recycled ASID free list.
+//
+// When an address space is destroyed its ASID is pushed here so that
+// `allocate_asid` can reuse it before bumping the monotonic counter.
+// Kept separate from `VmmState` because `VecDeque` is not const-constructible.
+lazy_static::lazy_static! {
+    static ref ASID_FREE_LIST: Mutex<VecDeque<usize>> = Mutex::new(VecDeque::new());
+}
+
 /// Initialize the VMM subsystem
 pub fn init() -> Result<(), VmmError> {
     let state = VMM_STATE.lock();
@@ -1463,7 +1472,22 @@ pub fn init() -> Result<(), VmmError> {
 }
 
 /// Allocate an address space ID (ASID)
+///
+/// Checks the recycled-ASID free list first; falls back to the monotonic
+/// counter when the list is empty.
 fn allocate_asid() -> Result<usize, VmmError> {
+    // Try to reuse a recycled ASID before bumping the counter.
+    {
+        let mut free_list = ASID_FREE_LIST.lock();
+        if let Some(recycled) = free_list.pop_front() {
+            // active_spaces was already decremented when the ASID was freed;
+            // re-increment it now that it is back in use.
+            let state = VMM_STATE.lock();
+            state.active_spaces.fetch_add(1, Ordering::SeqCst);
+            return Ok(recycled);
+        }
+    }
+
     let state = VMM_STATE.lock();
     let asid = state.next_asid.fetch_add(1, Ordering::SeqCst);
 
@@ -1477,10 +1501,16 @@ fn allocate_asid() -> Result<usize, VmmError> {
 }
 
 /// Free an address space ID
+///
+/// Decrements the active-spaces counter and returns the ASID to the free
+/// list so it can be reused by a future `allocate_asid` call.
 fn free_asid(asid: usize) {
     let state = VMM_STATE.lock();
     state.active_spaces.fetch_sub(1, Ordering::SeqCst);
-    let _ = asid; // TODO: Implement ASID recycling
+    drop(state);
+
+    let mut free_list = ASID_FREE_LIST.lock();
+    free_list.push_back(asid);
 }
 
 /// Load CR3 register (x86_64) or TTBR0 (ARM64)

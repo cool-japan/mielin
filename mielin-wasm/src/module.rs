@@ -514,7 +514,7 @@ impl ModuleRegistry {
 
         // Add shared memory reference
         {
-            let mut inst_lock = instance.write().unwrap();
+            let mut inst_lock = instance.write().unwrap_or_else(|e| e.into_inner());
             inst_lock.shared_memories.push(memory_id_str.to_string());
         }
 

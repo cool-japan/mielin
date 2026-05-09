@@ -432,7 +432,29 @@ pub fn enable_irq(irq: u8) -> Result<(), InterruptError> {
 
     desc.enabled = true;
 
-    // TODO: Enable IRQ at hardware level (PIC/APIC/GIC)
+    // Unmask the IRQ line in the 8259 PIC (x86_64 only, not under test).
+    // Master PIC (IRQs 0-7): data port 0x21.
+    // Slave PIC  (IRQs 8-15): data port 0xA1.
+    // Reading the current mask before writing avoids disturbing other IRQ lines.
+    #[cfg(all(target_arch = "x86_64", not(test)))]
+    {
+        // Safety: port I/O to the 8259 PIC is well-defined on x86_64 and
+        // only affects interrupt-controller state, not memory safety.
+        unsafe {
+            if irq < 8 {
+                let mut mask: u8;
+                core::arch::asm!("in al, 0x21", out("al") mask, options(nomem, nostack, preserves_flags));
+                mask &= !(1u8 << irq);
+                core::arch::asm!("out 0x21, al", in("al") mask, options(nomem, nostack, preserves_flags));
+            } else {
+                let shift = irq - 8;
+                let mut mask: u8;
+                core::arch::asm!("in al, 0xA1", out("al") mask, options(nomem, nostack, preserves_flags));
+                mask &= !(1u8 << shift);
+                core::arch::asm!("out 0xA1, al", in("al") mask, options(nomem, nostack, preserves_flags));
+            }
+        }
+    }
 
     Ok(())
 }
@@ -452,7 +474,25 @@ pub fn disable_irq(irq: u8) -> Result<(), InterruptError> {
     let desc = &mut state.irq_table[irq as usize];
     desc.enabled = false;
 
-    // TODO: Disable IRQ at hardware level (PIC/APIC/GIC)
+    // Mask the IRQ line in the 8259 PIC (x86_64 only, not under test).
+    #[cfg(all(target_arch = "x86_64", not(test)))]
+    {
+        // Safety: same justification as enable_irq — PIC port I/O only.
+        unsafe {
+            if irq < 8 {
+                let mut mask: u8;
+                core::arch::asm!("in al, 0x21", out("al") mask, options(nomem, nostack, preserves_flags));
+                mask |= 1u8 << irq;
+                core::arch::asm!("out 0x21, al", in("al") mask, options(nomem, nostack, preserves_flags));
+            } else {
+                let shift = irq - 8;
+                let mut mask: u8;
+                core::arch::asm!("in al, 0xA1", out("al") mask, options(nomem, nostack, preserves_flags));
+                mask |= 1u8 << shift;
+                core::arch::asm!("out 0xA1, al", in("al") mask, options(nomem, nostack, preserves_flags));
+            }
+        }
+    }
 
     Ok(())
 }

@@ -46,7 +46,7 @@ mod tests {
 
     #[test]
     fn test_increment() {
-        let _guard = TEST_LOCK.lock().unwrap();
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         reset();
         assert_eq!(increment(), 1);
         assert_eq!(increment(), 2);
@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn test_decrement() {
-        let _guard = TEST_LOCK.lock().unwrap();
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         reset();
         assert_eq!(decrement(), -1);
         assert_eq!(decrement(), -2);
@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn test_reset() {
-        let _guard = TEST_LOCK.lock().unwrap();
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         reset();
         increment();
         increment();

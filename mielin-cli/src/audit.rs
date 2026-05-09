@@ -349,7 +349,10 @@ impl AuditLogger {
     /// Get rotated log path
     fn get_rotated_path(&self, rotation: usize) -> PathBuf {
         let mut path = self.config.log_path.clone();
-        let file_name = path.file_name().unwrap().to_string_lossy();
+        let file_name = path
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("<unknown>"))
+            .to_string_lossy();
         path.set_file_name(format!("{}.{}", file_name, rotation));
         path
     }

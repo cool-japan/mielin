@@ -335,7 +335,7 @@ fn state_transition_hooks() {
     let log_transition = move |from: &AgentState, to: &AgentState| {
         transitions_clone
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .push((from.clone(), to.clone()));
         println!("  [Hook] Transition: {:?} -> {:?}", from, to);
     };
@@ -364,7 +364,7 @@ fn state_transition_hooks() {
 
     // Print logged transitions
     println!("\nRecorded transitions:");
-    let logged = transitions.lock().unwrap();
+    let logged = transitions.lock().unwrap_or_else(|e| e.into_inner());
     for (i, (from, to)) in logged.iter().enumerate() {
         println!("  {}. {:?} -> {:?}", i + 1, from, to);
     }

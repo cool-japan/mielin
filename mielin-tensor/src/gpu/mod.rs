@@ -376,12 +376,12 @@ mod tests {
         let ctx = GpuContext::new().unwrap();
         // On Apple Silicon, Metal backend will be detected
         // On other platforms, this may be None
-        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        #[cfg(all(target_os = "macos", target_arch = "aarch64", feature = "metal"))]
         {
             assert_eq!(ctx.device().backend, GpuBackend::Metal);
             assert!(ctx.has_gpu());
         }
-        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64", feature = "metal")))]
         {
             // May be None or another backend depending on system
             let _ = ctx.device().backend;

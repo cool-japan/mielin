@@ -943,12 +943,12 @@ mod tests {
         let tracker = shared_ack_tracker(AckConfig::default());
 
         let message_id = {
-            let mut t = tracker.lock().unwrap();
+            let mut t = tracker.lock().unwrap_or_else(|e| e.into_inner());
             t.register([1u8; 16], vec![]).unwrap()
         };
 
         let count = {
-            let t = tracker.lock().unwrap();
+            let t = tracker.lock().unwrap_or_else(|e| e.into_inner());
             t.pending_count()
         };
 

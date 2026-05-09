@@ -842,7 +842,7 @@ mod tests {
                     match s.schedule(w) {
                         Some(h) => {
                             idle = 0;
-                            let mut g = seen2.lock().unwrap();
+                            let mut g = seen2.lock().unwrap_or_else(|e| e.into_inner());
                             assert!(g.insert(h.id), "task {} scheduled twice", h.id);
                         }
                         None => {
@@ -860,7 +860,7 @@ mod tests {
             h.join().unwrap();
         }
 
-        let g = seen.lock().unwrap();
+        let g = seen.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(g.len(), TASKS, "all tasks must be seen exactly once");
     }
 

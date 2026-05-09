@@ -377,7 +377,7 @@ mod tests {
         sensor.init().unwrap();
         sensor.set_simulated_temperature(25.0);
 
-        let reading = sensor.read().unwrap();
+        let reading = sensor.read().expect("test setup");
         assert_eq!(reading.value.celsius(), 25.0);
         assert!(reading.is_valid());
     }

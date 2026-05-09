@@ -64,7 +64,12 @@ impl QuicTransport {
     pub async fn new_client() -> Result<Self, WireError> {
         let client_config = Self::configure_client()?;
 
-        let mut endpoint = Endpoint::client("[::]:0".parse().unwrap()).map_err(|e| {
+        let mut endpoint = Endpoint::client(
+            "[::]:0"
+                .parse()
+                .expect("static IPv6 wildcard addr must parse"),
+        )
+        .map_err(|e| {
             WireError::TransportError(format!("Failed to create client endpoint: {}", e))
         })?;
 

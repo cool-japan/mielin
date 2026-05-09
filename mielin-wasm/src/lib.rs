@@ -167,7 +167,7 @@ mod tests {
         start.call(&mut store, &[], &mut []).unwrap();
 
         // All tensors should be freed
-        let tensors = store.data().tensors().lock().unwrap();
+        let tensors = store.data().tensors().lock().unwrap_or_else(|e| e.into_inner());
         assert!(tensors.is_empty());
     }
 

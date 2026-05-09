@@ -49,7 +49,9 @@ pub struct MeshConfig {
 impl Default for MeshConfig {
     fn default() -> Self {
         Self {
-            bind_address: "0.0.0.0:8080".parse().unwrap(),
+            bind_address: "0.0.0.0:8080"
+                .parse()
+                .expect("static bind address must parse"),
             bootstrap_nodes: Vec::new(),
             enable_mdns: true,
             enable_gossip: true,

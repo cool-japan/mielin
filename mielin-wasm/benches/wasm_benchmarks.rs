@@ -259,7 +259,7 @@ fn bench_jit(c: &mut Criterion) {
         b.iter(|| {
             let _ = inline_cache
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|e| e.into_inner())
                 .lookup(black_box(0), black_box(123));
         })
     });
@@ -268,7 +268,7 @@ fn bench_jit(c: &mut Criterion) {
         b.iter(|| {
             inline_cache
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|e| e.into_inner())
                 .insert(black_box(0), black_box(123), black_box(456));
         })
     });

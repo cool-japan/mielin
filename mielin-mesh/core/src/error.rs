@@ -398,7 +398,9 @@ impl RetryExecutor {
             if let Some(cb) = &self.circuit_breaker {
                 if !cb.allow_request().await {
                     return Err(MeshNetworkError::CircuitBreakerOpen {
-                        addr: "0.0.0.0:0".parse().unwrap(), // Placeholder
+                        addr: "0.0.0.0:0"
+                            .parse()
+                            .expect("static placeholder addr must parse"), // Placeholder
                     });
                 }
             }

@@ -290,12 +290,12 @@ mod tests {
         let ctx = NpuContext::new().unwrap();
         // On Apple Silicon, ANE will be detected
         // On other platforms, this may be None
-        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        #[cfg(all(target_os = "macos", target_arch = "aarch64", feature = "apple-neural-engine"))]
         {
             assert_eq!(ctx.device().backend, NpuBackend::AppleNeuralEngine);
             assert!(ctx.has_npu());
         }
-        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64", feature = "apple-neural-engine")))]
         {
             // May be None or another backend depending on system
             let _ = ctx.device().backend;
