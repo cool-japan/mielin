@@ -282,7 +282,7 @@ impl TensorOps {
             for j in 0..n {
                 let mut sum = 0.0;
                 for p in 0..k {
-                    sum += a.get(&[i, p]).unwrap() * b.get(&[p, j]).unwrap();
+                    sum += a.get(&[i, p]).expect("i < m and p < k within bounds") * b.get(&[p, j]).expect("p < k and j < n within bounds");
                 }
                 result.set(&[i, j], sum);
             }
@@ -303,7 +303,7 @@ impl TensorOps {
         // Use NEON-optimized matrix-vector multiplication
         // Process each column of B as a vector
         for j in 0..n {
-            let col_b: alloc::vec::Vec<f32> = (0..k).map(|i| *b.get(&[i, j]).unwrap()).collect();
+            let col_b: alloc::vec::Vec<f32> = (0..k).map(|i| *b.get(&[i, j]).expect("i < k and j < n within bounds")).collect();
 
             let mut col_result = alloc::vec![0.0; m];
 
@@ -334,7 +334,7 @@ impl TensorOps {
         n: usize,
     ) {
         for j in 0..n {
-            let col_b: alloc::vec::Vec<f32> = (0..k).map(|i| *b.get(&[i, j]).unwrap()).collect();
+            let col_b: alloc::vec::Vec<f32> = (0..k).map(|i| *b.get(&[i, j]).expect("i < k and j < n within bounds")).collect();
             let mut col_result = alloc::vec![0.0f32; m];
             #[cfg(all(target_arch = "aarch64", target_feature = "sve2"))]
             unsafe {
@@ -362,7 +362,7 @@ impl TensorOps {
         // Use AVX2-optimized matrix-vector multiplication
         // Process each column of B as a vector
         for j in 0..n {
-            let col_b: alloc::vec::Vec<f32> = (0..k).map(|i| *b.get(&[i, j]).unwrap()).collect();
+            let col_b: alloc::vec::Vec<f32> = (0..k).map(|i| *b.get(&[i, j]).expect("i < k and j < n within bounds")).collect();
 
             let mut col_result = alloc::vec![0.0; m];
 

@@ -125,7 +125,7 @@ impl LifecycleHookManager {
         debug!(
             "Registered hook {} for events: {:?}",
             hook_id,
-            hooks.last().unwrap().event_types
+            hooks.last().expect("hook was just pushed").event_types
         );
 
         Ok(hook_id)

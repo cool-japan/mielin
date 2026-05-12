@@ -126,7 +126,7 @@ impl WasmExecutor {
 
 impl Default for WasmExecutor {
     fn default() -> Self {
-        Self::new().unwrap()
+        Self::new().expect("WasmExecutor::new should always succeed with default config")
     }
 }
 

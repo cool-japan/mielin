@@ -201,7 +201,7 @@ impl SparseTensor {
             }
         }
 
-        Tensor::from_vec(data, vec![self.nrows, self.ncols]).unwrap()
+        Tensor::from_vec(data, vec![self.nrows, self.ncols]).expect("data length = nrows * ncols matches shape")
     }
 
     /// Create sparse tensor from dense tensor
@@ -225,7 +225,7 @@ impl SparseTensor {
 
         for i in 0..nrows {
             for j in 0..ncols {
-                let val = *tensor.get(&[i, j]).unwrap();
+                let val = *tensor.get(&[i, j]).expect("indices i,j within tensor shape bounds");
                 if val.abs() > threshold {
                     rows.push(i);
                     cols.push(j);
@@ -434,7 +434,7 @@ impl SparseTensor {
             let a_val = self.values[i];
 
             for j in 0..k {
-                let b_val = *b.get(&[col, j]).unwrap();
+                let b_val = *b.get(&[col, j]).expect("col < b.nrows and j < k checked by shape validation");
                 result[row * k + j] += a_val * b_val;
             }
         }

@@ -85,7 +85,7 @@ impl Matrix {
 
         for i in 0..rows {
             for j in 0..cols {
-                let val = *matrix.get(&[i, j]).unwrap();
+                let val = *matrix.get(&[i, j]).expect("index within bounds");
                 result.set(&[j, i], val);
             }
         }
@@ -110,13 +110,13 @@ impl Matrix {
 
         match n {
             0 => Ok(1.0),
-            1 => Ok(*matrix.get(&[0, 0]).unwrap()),
+            1 => Ok(*matrix.get(&[0, 0]).expect("index within bounds")),
             2 => {
                 // ad - bc
-                let a = *matrix.get(&[0, 0]).unwrap();
-                let b = *matrix.get(&[0, 1]).unwrap();
-                let c = *matrix.get(&[1, 0]).unwrap();
-                let d = *matrix.get(&[1, 1]).unwrap();
+                let a = *matrix.get(&[0, 0]).expect("index within bounds");
+                let b = *matrix.get(&[0, 1]).expect("index within bounds");
+                let c = *matrix.get(&[1, 0]).expect("index within bounds");
+                let d = *matrix.get(&[1, 1]).expect("index within bounds");
                 Ok(a * d - b * c)
             }
             3 => {
@@ -153,10 +153,10 @@ impl Matrix {
         for k in 0..n {
             // Find pivot
             let mut max_idx = k;
-            let mut max_val = libm::fabsf(*u.get(&[k, k]).unwrap());
+            let mut max_val = libm::fabsf(*u.get(&[k, k]).expect("index within bounds"));
 
             for i in (k + 1)..n {
-                let val = libm::fabsf(*u.get(&[i, k]).unwrap());
+                let val = libm::fabsf(*u.get(&[i, k]).expect("index within bounds"));
                 if val > max_val {
                     max_val = val;
                     max_idx = i;
@@ -171,14 +171,14 @@ impl Matrix {
             // Swap rows if needed
             if max_idx != k {
                 for j in 0..n {
-                    let uk = *u.get(&[k, j]).unwrap();
-                    let um = *u.get(&[max_idx, j]).unwrap();
+                    let uk = *u.get(&[k, j]).expect("index within bounds");
+                    let um = *u.get(&[max_idx, j]).expect("index within bounds");
                     u.set(&[k, j], um);
                     u.set(&[max_idx, j], uk);
 
                     if j < k {
-                        let lk = *l.get(&[k, j]).unwrap();
-                        let lm = *l.get(&[max_idx, j]).unwrap();
+                        let lk = *l.get(&[k, j]).expect("index within bounds");
+                        let lm = *l.get(&[max_idx, j]).expect("index within bounds");
                         l.set(&[k, j], lm);
                         l.set(&[max_idx, j], lk);
                     }
@@ -188,12 +188,12 @@ impl Matrix {
 
             // Elimination
             for i in (k + 1)..n {
-                let factor = *u.get(&[i, k]).unwrap() / *u.get(&[k, k]).unwrap();
+                let factor = *u.get(&[i, k]).expect("index within bounds") / *u.get(&[k, k]).expect("index within bounds");
                 l.set(&[i, k], factor);
 
                 for j in k..n {
-                    let uij = *u.get(&[i, j]).unwrap();
-                    let ukj = *u.get(&[k, j]).unwrap();
+                    let uij = *u.get(&[i, j]).expect("index within bounds");
+                    let ukj = *u.get(&[k, j]).expect("index within bounds");
                     u.set(&[i, j], uij - factor * ukj);
                 }
             }
@@ -202,7 +202,7 @@ impl Matrix {
         // Calculate diagonal product of U
         let mut det_prod = 1.0f32;
         for i in 0..n {
-            det_prod *= *u.get(&[i, i]).unwrap();
+            det_prod *= *u.get(&[i, i]).expect("index within bounds");
         }
 
         Ok((l, u, det_sign, det_prod))
@@ -227,7 +227,7 @@ impl Matrix {
         match n {
             0 => return Ok(Tensor::zeros(alloc::vec![0, 0])),
             1 => {
-                let a = *matrix.get(&[0, 0]).unwrap();
+                let a = *matrix.get(&[0, 0]).expect("index within bounds");
                 if libm::fabsf(a) < 1e-10 {
                     return Err(MatrixError::Singular);
                 }
@@ -250,10 +250,10 @@ impl Matrix {
 
     /// Optimized 2x2 matrix inverse
     fn inverse_2x2(matrix: &Tensor<f32>) -> Result<Tensor<f32>, MatrixError> {
-        let a = *matrix.get(&[0, 0]).unwrap();
-        let b = *matrix.get(&[0, 1]).unwrap();
-        let c = *matrix.get(&[1, 0]).unwrap();
-        let d = *matrix.get(&[1, 1]).unwrap();
+        let a = *matrix.get(&[0, 0]).expect("index within bounds");
+        let b = *matrix.get(&[0, 1]).expect("index within bounds");
+        let c = *matrix.get(&[1, 0]).expect("index within bounds");
+        let d = *matrix.get(&[1, 1]).expect("index within bounds");
 
         let det = a * d - b * c;
 
@@ -311,7 +311,7 @@ impl Matrix {
         // Copy matrix A and identity I
         for i in 0..n {
             for j in 0..n {
-                aug.set(&[i, j], *matrix.get(&[i, j]).unwrap());
+                aug.set(&[i, j], *matrix.get(&[i, j]).expect("index within bounds"));
             }
             aug.set(&[i, n + i], 1.0);
         }
@@ -320,10 +320,10 @@ impl Matrix {
         for k in 0..n {
             // Find pivot
             let mut max_idx = k;
-            let mut max_val = libm::fabsf(*aug.get(&[k, k]).unwrap());
+            let mut max_val = libm::fabsf(*aug.get(&[k, k]).expect("index within bounds"));
 
             for i in (k + 1)..n {
-                let val = libm::fabsf(*aug.get(&[i, k]).unwrap());
+                let val = libm::fabsf(*aug.get(&[i, k]).expect("index within bounds"));
                 if val > max_val {
                     max_val = val;
                     max_idx = i;
@@ -337,27 +337,27 @@ impl Matrix {
             // Swap rows
             if max_idx != k {
                 for j in 0..(2 * n) {
-                    let ak = *aug.get(&[k, j]).unwrap();
-                    let am = *aug.get(&[max_idx, j]).unwrap();
+                    let ak = *aug.get(&[k, j]).expect("index within bounds");
+                    let am = *aug.get(&[max_idx, j]).expect("index within bounds");
                     aug.set(&[k, j], am);
                     aug.set(&[max_idx, j], ak);
                 }
             }
 
             // Scale pivot row
-            let pivot = *aug.get(&[k, k]).unwrap();
+            let pivot = *aug.get(&[k, k]).expect("index within bounds");
             for j in 0..(2 * n) {
-                let val = *aug.get(&[k, j]).unwrap();
+                let val = *aug.get(&[k, j]).expect("index within bounds");
                 aug.set(&[k, j], val / pivot);
             }
 
             // Eliminate column
             for i in 0..n {
                 if i != k {
-                    let factor = *aug.get(&[i, k]).unwrap();
+                    let factor = *aug.get(&[i, k]).expect("index within bounds");
                     for j in 0..(2 * n) {
-                        let aij = *aug.get(&[i, j]).unwrap();
-                        let akj = *aug.get(&[k, j]).unwrap();
+                        let aij = *aug.get(&[i, j]).expect("index within bounds");
+                        let akj = *aug.get(&[k, j]).expect("index within bounds");
                         aug.set(&[i, j], aij - factor * akj);
                     }
                 }
@@ -368,7 +368,7 @@ impl Matrix {
         let mut result = Tensor::zeros(alloc::vec![n, n]);
         for i in 0..n {
             for j in 0..n {
-                result.set(&[i, j], *aug.get(&[i, n + j]).unwrap());
+                result.set(&[i, j], *aug.get(&[i, n + j]).expect("index within bounds"));
             }
         }
 
@@ -389,7 +389,7 @@ impl Matrix {
         let n = shape[0];
         let mut sum = 0.0f32;
         for i in 0..n {
-            sum += *matrix.get(&[i, i]).unwrap();
+            sum += *matrix.get(&[i, i]).expect("index within bounds");
         }
         Ok(sum)
     }
@@ -408,8 +408,8 @@ impl Matrix {
         let n = shape[0];
         for i in 0..n {
             for j in (i + 1)..n {
-                let aij = *matrix.get(&[i, j]).unwrap();
-                let aji = *matrix.get(&[j, i]).unwrap();
+                let aij = *matrix.get(&[i, j]).expect("index within bounds");
+                let aji = *matrix.get(&[j, i]).expect("index within bounds");
                 if libm::fabsf(aij - aji) > tolerance {
                     return Ok(false);
                 }
@@ -433,7 +433,7 @@ impl Matrix {
         for i in 0..n {
             for j in 0..n {
                 if i != j {
-                    let val = *matrix.get(&[i, j]).unwrap();
+                    let val = *matrix.get(&[i, j]).expect("index within bounds");
                     if libm::fabsf(val) > tolerance {
                         return Ok(false);
                     }
@@ -453,7 +453,7 @@ impl Matrix {
         let mut result = Tensor::zeros(alloc::vec![n, n]);
 
         for i in 0..n {
-            result.set(&[i, i], *vector.get(&[i]).unwrap());
+            result.set(&[i, i], *vector.get(&[i]).expect("index within bounds"));
         }
 
         Ok(result)
@@ -471,7 +471,7 @@ impl Matrix {
         let mut result = Tensor::zeros(alloc::vec![n]);
 
         for i in 0..n {
-            result.set(&[i], *matrix.get(&[i, i]).unwrap());
+            result.set(&[i], *matrix.get(&[i, i]).expect("index within bounds"));
         }
 
         Ok(result)
@@ -524,7 +524,7 @@ impl Matrix {
             for i in 0..n {
                 let mut sum = 0.0;
                 for j in 0..n {
-                    sum += matrix.get(&[i, j]).unwrap() * v.get(&[j]).unwrap();
+                    sum += matrix.get(&[i, j]).expect("index within bounds") * v.get(&[j]).expect("index within bounds");
                 }
                 w.set(&[i], sum);
             }
@@ -532,7 +532,7 @@ impl Matrix {
             // Compute norm of w
             let mut norm = 0.0;
             for i in 0..n {
-                let wi = *w.get(&[i]).unwrap();
+                let wi = *w.get(&[i]).expect("index within bounds");
                 norm += wi * wi;
             }
             norm = sqrtf(norm);
@@ -545,7 +545,7 @@ impl Matrix {
             // Normalize: v_new = w / ||w||
             let mut v_new = Tensor::zeros(alloc::vec![n]);
             for i in 0..n {
-                v_new.set(&[i], *w.get(&[i]).unwrap() / norm);
+                v_new.set(&[i], *w.get(&[i]).expect("index within bounds") / norm);
             }
 
             // Compute Rayleigh quotient: lambda = v^T * A * v
@@ -553,14 +553,14 @@ impl Matrix {
             for i in 0..n {
                 let mut sum = 0.0;
                 for j in 0..n {
-                    sum += matrix.get(&[i, j]).unwrap() * v_new.get(&[j]).unwrap();
+                    sum += matrix.get(&[i, j]).expect("index within bounds") * v_new.get(&[j]).expect("index within bounds");
                 }
                 av.set(&[i], sum);
             }
 
             let mut new_eigenvalue = 0.0;
             for i in 0..n {
-                new_eigenvalue += v_new.get(&[i]).unwrap() * av.get(&[i]).unwrap();
+                new_eigenvalue += v_new.get(&[i]).expect("index within bounds") * av.get(&[i]).expect("index within bounds");
             }
 
             // Check convergence
@@ -624,7 +624,7 @@ impl Matrix {
             for i in 0..n {
                 for j in 0..n {
                     if i != j {
-                        let val = *a.get(&[i, j]).unwrap();
+                        let val = *a.get(&[i, j]).expect("index within bounds");
                         off_diag_norm += val * val;
                     }
                 }
@@ -640,7 +640,7 @@ impl Matrix {
         // Extract eigenvalues from diagonal
         let mut eigenvalues = Tensor::zeros(alloc::vec![n]);
         for i in 0..n {
-            eigenvalues.set(&[i], *a.get(&[i, i]).unwrap());
+            eigenvalues.set(&[i], *a.get(&[i, i]).expect("index within bounds"));
         }
 
         Ok(EigenResult {
@@ -673,7 +673,7 @@ impl Matrix {
             // Start with column j of A
             let mut v = Tensor::zeros(alloc::vec![m]);
             for i in 0..m {
-                v.set(&[i], *matrix.get(&[i, j]).unwrap());
+                v.set(&[i], *matrix.get(&[i, j]).expect("index within bounds"));
             }
 
             // Orthogonalize against previous columns
@@ -681,14 +681,14 @@ impl Matrix {
                 // r_kj = q_k^T * v
                 let mut r_kj = 0.0;
                 for i in 0..m {
-                    r_kj += q.get(&[i, k]).unwrap() * v.get(&[i]).unwrap();
+                    r_kj += q.get(&[i, k]).expect("index within bounds") * v.get(&[i]).expect("index within bounds");
                 }
                 r.set(&[k, j], r_kj);
 
                 // v = v - r_kj * q_k
                 for i in 0..m {
-                    let vi = *v.get(&[i]).unwrap();
-                    let qi = *q.get(&[i, k]).unwrap();
+                    let vi = *v.get(&[i]).expect("index within bounds");
+                    let qi = *q.get(&[i, k]).expect("index within bounds");
                     v.set(&[i], vi - r_kj * qi);
                 }
             }
@@ -696,7 +696,7 @@ impl Matrix {
             // r_jj = ||v||
             let mut norm = 0.0;
             for i in 0..m {
-                let vi = *v.get(&[i]).unwrap();
+                let vi = *v.get(&[i]).expect("index within bounds");
                 norm += vi * vi;
             }
             norm = sqrtf(norm);
@@ -712,7 +712,7 @@ impl Matrix {
 
                 // q_j = v / ||v||
                 for i in 0..m {
-                    q.set(&[i, j], *v.get(&[i]).unwrap() / norm);
+                    q.set(&[i, j], *v.get(&[i]).expect("index within bounds") / norm);
                 }
             }
         }
@@ -743,7 +743,7 @@ impl Matrix {
             for j in 0..n {
                 let mut sum = 0.0;
                 for p in 0..k {
-                    sum += a.get(&[i, p]).unwrap() * b.get(&[p, j]).unwrap();
+                    sum += a.get(&[i, p]).expect("index within bounds") * b.get(&[p, j]).expect("index within bounds");
                 }
                 result.set(&[i, j], sum);
             }
@@ -783,7 +783,7 @@ impl Matrix {
         // Singular values are square roots of eigenvalues
         let mut singular_values = Tensor::zeros(alloc::vec![n]);
         for i in 0..n {
-            let ev = *eigen_result.eigenvalues.get(&[i]).unwrap();
+            let ev = *eigen_result.eigenvalues.get(&[i]).expect("index within bounds");
             singular_values.set(&[i], if ev > 0.0 { sqrtf(ev) } else { 0.0 });
         }
 
@@ -795,10 +795,10 @@ impl Matrix {
 
         let mut u = Tensor::zeros(alloc::vec![m, n.min(m)]);
         for j in 0..n.min(m) {
-            let s = *singular_values.get(&[j]).unwrap();
+            let s = *singular_values.get(&[j]).expect("index within bounds");
             if s > tolerance {
                 for i in 0..m {
-                    u.set(&[i, j], *av.get(&[i, j]).unwrap() / s);
+                    u.set(&[i, j], *av.get(&[i, j]).expect("index within bounds") / s);
                 }
             }
         }
@@ -806,7 +806,7 @@ impl Matrix {
         // Create diagonal matrix S
         let mut s_matrix = Tensor::zeros(alloc::vec![m.min(n), n.min(m)]);
         for i in 0..m.min(n) {
-            s_matrix.set(&[i, i], *singular_values.get(&[i]).unwrap());
+            s_matrix.set(&[i, i], *singular_values.get(&[i]).expect("index within bounds"));
         }
 
         Ok((u, s_matrix, v))
@@ -829,7 +829,7 @@ impl Matrix {
         let mut min_sv = f32::MAX;
 
         for i in 0..n {
-            let sv = *s.get(&[i, i]).unwrap();
+            let sv = *s.get(&[i, i]).expect("index within bounds");
             if sv > max_sv {
                 max_sv = sv;
             }
@@ -875,7 +875,7 @@ impl Matrix {
         for i in 0..n {
             let mut sum = 0.0;
             for j in 0..n {
-                sum += q.get(&[j, i]).unwrap() * b.get(&[j]).unwrap();
+                sum += q.get(&[j, i]).expect("index within bounds") * b.get(&[j]).expect("index within bounds");
             }
             y.set(&[i], sum);
         }
@@ -883,14 +883,14 @@ impl Matrix {
         // Then: R * x = y (back substitution)
         let mut x = Tensor::zeros(alloc::vec![n]);
         for i in (0..n).rev() {
-            let r_ii = *r.get(&[i, i]).unwrap();
+            let r_ii = *r.get(&[i, i]).expect("index within bounds");
             if r_ii.abs() < 1e-10 {
                 return Err(MatrixError::Singular);
             }
 
-            let mut sum = *y.get(&[i]).unwrap();
+            let mut sum = *y.get(&[i]).expect("index within bounds");
             for j in (i + 1)..n {
-                sum -= r.get(&[i, j]).unwrap() * x.get(&[j]).unwrap();
+                sum -= r.get(&[i, j]).expect("index within bounds") * x.get(&[j]).expect("index within bounds");
             }
             x.set(&[i], sum / r_ii);
         }
@@ -908,7 +908,7 @@ impl Matrix {
         let mut rank = 0;
 
         for i in 0..n {
-            if s.get(&[i, i]).unwrap().abs() > tolerance {
+            if s.get(&[i, i]).expect("index within bounds").abs() > tolerance {
                 rank += 1;
             }
         }
@@ -936,7 +936,7 @@ impl Matrix {
         let mut s_inv = Tensor::zeros(alloc::vec![n, m]);
 
         for i in 0..k {
-            let sv = *s.get(&[i, i]).unwrap();
+            let sv = *s.get(&[i, i]).expect("index within bounds");
             if sv > tolerance {
                 s_inv.set(&[i, i], 1.0 / sv);
             }
@@ -1046,8 +1046,8 @@ mod tests {
         for i in 0..2 {
             for j in 0..2 {
                 assert_near(
-                    *product.get(&[i, j]).unwrap(),
-                    *id.get(&[i, j]).unwrap(),
+                    *product.get(&[i, j]).expect("index within bounds"),
+                    *id.get(&[i, j]).expect("index within bounds"),
                     EPSILON,
                 );
             }
@@ -1067,8 +1067,8 @@ mod tests {
         for i in 0..3 {
             for j in 0..3 {
                 assert_near(
-                    *product.get(&[i, j]).unwrap(),
-                    *id.get(&[i, j]).unwrap(),
+                    *product.get(&[i, j]).expect("index within bounds"),
+                    *id.get(&[i, j]).expect("index within bounds"),
                     EPSILON,
                 );
             }
@@ -1095,8 +1095,8 @@ mod tests {
         for i in 0..4 {
             for j in 0..4 {
                 assert_near(
-                    *product.get(&[i, j]).unwrap(),
-                    *id.get(&[i, j]).unwrap(),
+                    *product.get(&[i, j]).expect("index within bounds"),
+                    *id.get(&[i, j]).expect("index within bounds"),
                     EPSILON,
                 );
             }
@@ -1192,7 +1192,7 @@ mod tests {
             for j in 0..n {
                 let mut sum = 0.0;
                 for p in 0..k {
-                    sum += a.get(&[i, p]).unwrap() * b.get(&[p, j]).unwrap();
+                    sum += a.get(&[i, p]).expect("index within bounds") * b.get(&[p, j]).expect("index within bounds");
                 }
                 result.set(&[i, j], sum);
             }
@@ -1218,7 +1218,7 @@ mod tests {
         assert_near(eigenvalue, 4.0, 0.01); // Largest eigenvalue
 
         // Eigenvector should be approximately [1, 0, 0] (normalized)
-        let v0 = eigenvector.get(&[0]).unwrap().abs();
+        let v0 = eigenvector.get(&[0]).expect("index within bounds").abs();
         assert!(v0 > 0.9); // Dominant component
     }
 
@@ -1253,7 +1253,7 @@ mod tests {
         for i in 0..3 {
             for j in 0..3 {
                 let expected = if i == j { 1.0 } else { 0.0 };
-                assert_near(*qtq.get(&[i, j]).unwrap(), expected, 0.001);
+                assert_near(*qtq.get(&[i, j]).expect("index within bounds"), expected, 0.001);
             }
         }
 
@@ -1261,14 +1261,14 @@ mod tests {
         let qr = multiply_matrices(&q, &r);
         for i in 0..3 {
             for j in 0..3 {
-                assert_near(*qr.get(&[i, j]).unwrap(), *m.get(&[i, j]).unwrap(), 0.001);
+                assert_near(*qr.get(&[i, j]).expect("index within bounds"), *m.get(&[i, j]).expect("index within bounds"), 0.001);
             }
         }
 
         // R should be upper triangular
         for i in 0..3 {
             for j in 0..i {
-                assert_near(*r.get(&[i, j]).unwrap(), 0.0, 0.001);
+                assert_near(*r.get(&[i, j]).expect("index within bounds"), 0.0, 0.001);
             }
         }
     }
@@ -1283,7 +1283,7 @@ mod tests {
 
         // Eigenvalues should be 5, 3, 1 (in some order)
         let mut evs: std::vec::Vec<f32> = (0..3)
-            .map(|i| *result.eigenvalues.get(&[i]).unwrap())
+            .map(|i| *result.eigenvalues.get(&[i]).expect("index within bounds"))
             .collect();
         evs.sort_by(|a, b| b.partial_cmp(a).unwrap()); // Sort descending
 
@@ -1300,8 +1300,8 @@ mod tests {
         let result = Matrix::eigenvalues_qr(&m, 100, 1e-6).unwrap();
 
         // Eigenvalues should be 3 and 1
-        let ev0 = *result.eigenvalues.get(&[0]).unwrap();
-        let ev1 = *result.eigenvalues.get(&[1]).unwrap();
+        let ev0 = *result.eigenvalues.get(&[0]).expect("index within bounds");
+        let ev1 = *result.eigenvalues.get(&[1]).expect("index within bounds");
 
         let max_ev = ev0.max(ev1);
         let min_ev = ev0.min(ev1);
@@ -1318,8 +1318,8 @@ mod tests {
         let (u, s, v) = Matrix::svd(&m, 100, 1e-6).unwrap();
 
         // Singular values should be 3 and 2 (in some order)
-        let s0 = *s.get(&[0, 0]).unwrap();
-        let s1 = *s.get(&[1, 1]).unwrap();
+        let s0 = *s.get(&[0, 0]).expect("index within bounds");
+        let s1 = *s.get(&[1, 1]).expect("index within bounds");
 
         let max_s = s0.max(s1);
         let min_s = s0.min(s1);
@@ -1330,12 +1330,12 @@ mod tests {
         // U should be orthogonal
         let ut = Matrix::transpose(&u).unwrap();
         let utu = multiply_matrices(&ut, &u);
-        assert_near(*utu.get(&[0, 0]).unwrap(), 1.0, 0.1);
+        assert_near(*utu.get(&[0, 0]).expect("index within bounds"), 1.0, 0.1);
 
         // V should be orthogonal
         let vt = Matrix::transpose(&v).unwrap();
         let vtv = multiply_matrices(&vt, &v);
-        assert_near(*vtv.get(&[0, 0]).unwrap(), 1.0, 0.1);
+        assert_near(*vtv.get(&[0, 0]).expect("index within bounds"), 1.0, 0.1);
     }
 
     #[test]
@@ -1347,8 +1347,8 @@ mod tests {
 
         let x = Matrix::solve_qr(&a, &b).unwrap();
 
-        assert_near(*x.get(&[0]).unwrap(), 1.6, 0.01);
-        assert_near(*x.get(&[1]).unwrap(), 1.8, 0.01);
+        assert_near(*x.get(&[0]).expect("index within bounds"), 1.6, 0.01);
+        assert_near(*x.get(&[1]).expect("index within bounds"), 1.8, 0.01);
     }
 
     #[test]
@@ -1359,9 +1359,9 @@ mod tests {
 
         let x = Matrix::solve_qr(&a, &b).unwrap();
 
-        assert_near(*x.get(&[0]).unwrap(), 1.0, 0.001);
-        assert_near(*x.get(&[1]).unwrap(), 2.0, 0.001);
-        assert_near(*x.get(&[2]).unwrap(), 3.0, 0.001);
+        assert_near(*x.get(&[0]).expect("index within bounds"), 1.0, 0.001);
+        assert_near(*x.get(&[1]).expect("index within bounds"), 2.0, 0.001);
+        assert_near(*x.get(&[2]).expect("index within bounds"), 3.0, 0.001);
     }
 
     #[test]
@@ -1406,10 +1406,10 @@ mod tests {
 
         // m * pinv should be approximately identity
         let product = multiply_matrices(&m, &pinv);
-        assert_near(*product.get(&[0, 0]).unwrap(), 1.0, 0.1);
-        assert_near(*product.get(&[0, 1]).unwrap(), 0.0, 0.1);
-        assert_near(*product.get(&[1, 0]).unwrap(), 0.0, 0.1);
-        assert_near(*product.get(&[1, 1]).unwrap(), 1.0, 0.1);
+        assert_near(*product.get(&[0, 0]).expect("index within bounds"), 1.0, 0.1);
+        assert_near(*product.get(&[0, 1]).expect("index within bounds"), 0.0, 0.1);
+        assert_near(*product.get(&[1, 0]).expect("index within bounds"), 0.0, 0.1);
+        assert_near(*product.get(&[1, 1]).expect("index within bounds"), 1.0, 0.1);
     }
 
     #[test]
@@ -1454,8 +1454,8 @@ mod tests {
         for i in 0..2 {
             for j in 0..2 {
                 assert_near(
-                    *product.get(&[i, j]).unwrap(),
-                    *id.get(&[i, j]).unwrap(),
+                    *product.get(&[i, j]).expect("index within bounds"),
+                    *id.get(&[i, j]).expect("index within bounds"),
                     0.01, // Larger tolerance for ill-conditioned matrix
                 );
             }
@@ -1510,8 +1510,8 @@ mod tests {
         let (_u, s, _v) = Matrix::svd(&m, 100, 1e-10).unwrap();
 
         // Should compute both singular values correctly
-        let s0 = *s.get(&[0, 0]).unwrap();
-        let s1 = *s.get(&[1, 1]).unwrap();
+        let s0 = *s.get(&[0, 0]).expect("index within bounds");
+        let s1 = *s.get(&[1, 1]).expect("index within bounds");
 
         let max_s = s0.max(s1);
         let min_s = s0.min(s1);
@@ -1539,7 +1539,7 @@ mod tests {
         for i in 0..3 {
             for j in 0..3 {
                 let expected = if i == j { 1.0 } else { 0.0 };
-                assert_near(*qtq.get(&[i, j]).unwrap(), expected, 0.01);
+                assert_near(*qtq.get(&[i, j]).expect("index within bounds"), expected, 0.01);
             }
         }
     }
@@ -1576,8 +1576,8 @@ mod tests {
         for i in 0..2 {
             for j in 0..3 {
                 assert_near(
-                    *a_pinv_a.get(&[i, j]).unwrap(),
-                    *m.get(&[i, j]).unwrap(),
+                    *a_pinv_a.get(&[i, j]).expect("index within bounds"),
+                    *m.get(&[i, j]).expect("index within bounds"),
                     0.1,
                 );
             }
@@ -1601,7 +1601,7 @@ mod tests {
 
         // Eigenvalues should be real and positive for this symmetric matrix
         for i in 0..3 {
-            let ev = *result.eigenvalues.get(&[i]).unwrap();
+            let ev = *result.eigenvalues.get(&[i]).expect("index within bounds");
             assert!(ev > 0.0);
         }
     }

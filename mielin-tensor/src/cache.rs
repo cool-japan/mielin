@@ -151,7 +151,7 @@ pub fn blocked_matmul(
             for j in 0..n {
                 let mut sum = 0.0;
                 for p in 0..k {
-                    sum += a.get(&[i, p]).copied().unwrap() * b.get(&[p, j]).copied().unwrap();
+                    sum += a.get(&[i, p]).copied().expect("i < m and p < k within bounds") * b.get(&[p, j]).copied().expect("p < k and j < n within bounds");
                 }
                 result[i * n + j] = sum;
             }
@@ -172,8 +172,8 @@ pub fn blocked_matmul(
                         for j in j_block..j_end {
                             let mut sum = result[i * n + j];
                             for p in k_block..k_end {
-                                sum += a.get(&[i, p]).copied().unwrap()
-                                    * b.get(&[p, j]).copied().unwrap();
+                                sum += a.get(&[i, p]).copied().expect("i < m and p < k within block bounds")
+                                    * b.get(&[p, j]).copied().expect("p < k and j < n within block bounds");
                             }
                             result[i * n + j] = sum;
                         }
@@ -208,7 +208,7 @@ pub fn blocked_transpose(tensor: &Tensor<f32>, config: &CacheConfig) -> TensorRe
         // Naive transpose
         for i in 0..rows {
             for j in 0..cols {
-                result[j * rows + i] = *tensor.get(&[i, j]).unwrap();
+                result[j * rows + i] = *tensor.get(&[i, j]).expect("i < rows and j < cols within bounds");
             }
         }
     } else {
@@ -222,7 +222,7 @@ pub fn blocked_transpose(tensor: &Tensor<f32>, config: &CacheConfig) -> TensorRe
 
                 for i in i_block..i_end {
                     for j in j_block..j_end {
-                        result[j * rows + i] = *tensor.get(&[i, j]).unwrap();
+                        result[j * rows + i] = *tensor.get(&[i, j]).expect("i,j within block bounds");
                     }
                 }
             }

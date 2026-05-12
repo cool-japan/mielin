@@ -631,7 +631,7 @@ impl HierarchicalGossip {
         let local_member = ZoneMember::new(node_id, local_zone);
         zones
             .get_mut(&local_zone)
-            .unwrap()
+            .expect("local_zone was just inserted above")
             .insert(node_id, local_member);
 
         Self {

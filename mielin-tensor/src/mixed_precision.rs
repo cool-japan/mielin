@@ -183,11 +183,11 @@ impl MixedPrecisionTensor {
             Self::F32(tensor) => tensor.clone(),
             Self::F16 { data, shape } => {
                 let f32_data: Vec<f32> = data.iter().map(|v| v.to_f32()).collect();
-                Tensor::from_vec(f32_data, shape.clone()).unwrap()
+                Tensor::from_vec(f32_data, shape.clone()).expect("f16 data length matches its shape")
             }
             Self::BF16 { data, shape } => {
                 let f32_data: Vec<f32> = data.iter().map(|v| v.to_f32()).collect();
-                Tensor::from_vec(f32_data, shape.clone()).unwrap()
+                Tensor::from_vec(f32_data, shape.clone()).expect("bf16 data length matches its shape")
             }
         }
     }

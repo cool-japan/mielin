@@ -134,7 +134,7 @@ impl Tensor<f32> {
     /// Create a 1D tensor (vector)
     pub fn vector(data: Vec<f32>) -> Self {
         let len = data.len();
-        Self::from_vec(data, alloc::vec![len]).unwrap()
+        Self::from_vec(data, alloc::vec![len]).expect("data length matches 1D shape")
     }
 
     /// Create a 2D tensor (matrix)
@@ -189,7 +189,7 @@ impl Tensor<f32> {
 
     /// Create a scalar tensor (0D tensor with single value)
     pub fn scalar(value: f32) -> Self {
-        Self::from_vec(alloc::vec![value], alloc::vec![1]).unwrap()
+        Self::from_vec(alloc::vec![value], alloc::vec![1]).expect("single element matches shape [1]")
     }
 
     /// Create a tensor filled with zeros

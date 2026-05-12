@@ -186,8 +186,8 @@ pub async fn handle_agent_command(action: AgentCommands, format: OutputFormat) -
                 id: Some(agent_id.clone()),
             };
 
-            if node.is_some() {
-                println!("Target node: {}", node.unwrap());
+            if let Some(node_target) = node {
+                println!("Target node: {}", node_target);
             }
             if !env.is_empty() {
                 println!("Environment: {:?}", env);

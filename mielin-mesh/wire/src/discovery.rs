@@ -386,7 +386,7 @@ impl DiscoveryService {
 
         // Sort by success rate (descending) then latency (ascending)
         peer_list.sort_by(|a, b| {
-            let rate_cmp = b.success_rate().partial_cmp(&a.success_rate()).unwrap();
+            let rate_cmp = b.success_rate().partial_cmp(&a.success_rate()).unwrap_or(std::cmp::Ordering::Equal);
             if rate_cmp == std::cmp::Ordering::Equal {
                 match (a.latency_ms, b.latency_ms) {
                     (Some(a_lat), Some(b_lat)) => a_lat.cmp(&b_lat),
