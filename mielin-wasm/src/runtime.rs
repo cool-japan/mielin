@@ -498,10 +498,11 @@ impl Runtime for WasmerRuntime {
         wasmtime::Engine::new(&wasmtime::Config::new())
             .and_then(|e| wasmtime::Module::validate(&e, wasm_bytes).map(|_| e))
             .map_err(|e| anyhow!("Wasmer (stub) validation failed: {}", e))?;
-        match self.last_wasm.lock() {
-            Ok(mut guard) => *guard = Some(wasm_bytes.to_vec()),
-            Err(_) => return Err(anyhow!("Wasmer (stub) mutex poisoned")),
-        }
+        let mut guard = self
+            .last_wasm
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        *guard = Some(wasm_bytes.to_vec());
         Ok(Arc::new(WasmerModule {
             data: wasm_bytes.to_vec(),
         }))
@@ -797,6 +798,19 @@ mod tests {
         let wasm = wat::parse_str("(module)").expect("Failed to parse WAT");
         let module = runtime.compile(&wasm);
         assert!(module.is_ok());
+    }
+
+    #[cfg(feature = "wasmer-engine")]
+    #[test]
+    fn test_runtime_mutex_access() {
+        let config = RuntimeConfig {
+            engine: RuntimeEngine::Wasmer,
+            ..Default::default()
+        };
+        let runtime = RuntimeFactory::create(config).expect("Failed to create Wasmer runtime");
+        let wasm = wat::parse_str("(module)").expect("Failed to parse WAT");
+        let result = runtime.compile(&wasm);
+        assert!(result.is_ok(), "compile via Wasmer runtime should succeed");
     }
 
     #[test]
