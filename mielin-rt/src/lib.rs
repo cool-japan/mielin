@@ -91,6 +91,8 @@ pub mod adc;
 pub mod agent;
 pub mod battery;
 pub mod ble;
+/// Cortex-M A/B partition bootloader with anti-rollback and trial/confirm semantics.
+pub mod bootloader;
 pub mod coap;
 pub mod config;
 pub mod energy;

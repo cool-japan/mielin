@@ -7,23 +7,21 @@ license.workspace = true
 repository.workspace = true
 description = "Core unikernel implementation providing the foundation for agent execution across heterogeneous hardware platforms"
 keywords = ["kernel", "unikernel", "embedded", "no-std", "operating-system"]
-categories = ["os", "no-std", "embedded", "asynchronous"]
-readme = "README.md"
-documentation = "https://docs.rs/mielin-kernel"
 
 [dependencies]
 # Core dependencies for no_std environment
 spin = "0.10.0"
 lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
-bitflags = "2.11.0"
+bitflags = "2.10.0"
 
 # Bootloader support (optional - requires nightly Rust)
-bootloader = { version = "0.11.15", optional = true }
+bootloader = { version = "0.11.14", optional = true }
 
 [features]
 default = []
 bootable = ["bootloader"]
 std = []  # Enable std for testing and benchmarking
+bpf-maps = []  # Enable BPF map helpers (MapLookup, MapUpdate, MapAdd)
 
 # Debug features - enable additional checks and diagnostics
 debug = []           # Enable debug assertions and extra validation

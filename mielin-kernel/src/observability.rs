@@ -392,6 +392,9 @@ pub fn trace_event(event: EventType) {
         event,
     };
 
+    // Run any attached BPF program for this tracepoint
+    crate::bpf::run_attached(&trace_event);
+
     // Push to ring buffer
     TRACING.ring_buffer.lock().push(trace_event);
     TRACING.total_events.fetch_add(1, Ordering::Relaxed);

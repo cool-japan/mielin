@@ -14,7 +14,7 @@
 - [ ] Set up discussions forum
 - [ ] Investigate compiler-rt optimizations
 - [ ] Explore kernel bypass techniques (DPDK-style)
-- [ ] Investigate eBPF-style extensibility
+- [x] Investigate eBPF-style extensibility — MielinBPF VM implemented (bpf/ subdir: ISA, verifier, interpreter, tracepoint registry; 67 tests)
 
 ### Future Enhancements
 - [ ] Virtual memory enhancements

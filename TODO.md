@@ -26,7 +26,7 @@
 - [ ] Tutorial series (10+ tutorials)
 
 ### Medium Priority - Features
-- [ ] Cortex-M bootloader
+- [x] Cortex-M bootloader — A/B partition selection, image validation, trial/confirm rollback, flash abstraction, host-testable; 31 tests in mielin-rt/src/bootloader.rs
 - [x] Low-power features for IoT — EnergyPolicy, PowerDomainTracker, EnergyAwareScheduler, EnergyAdaptiveController in mielin-rt
 - [ ] NPU support expansion
 - [x] Distributed inference — DistributedInferenceEngine with ShardedTensor, Cannon's algorithm matmul, ModelParallelPipeline in mielin-tensor
@@ -44,9 +44,9 @@
 - [x] Arm SVE2/SME kernel integration — SVE2 dispatcher fully wired in mielin-tensor
 - [ ] Quantum-ready cryptography
 - [ ] Self-evolving agents
-- [ ] Federated learning
-- [ ] Machine learning for migration prediction
-- [ ] Novel consensus algorithms
+- [x] Federated learning — FedAvg + UniformAvg aggregation, FederatedCoordinator, LocalTrainer; 20 tests in mielin-tensor/src/federated.rs
+- [x] Machine learning for migration prediction — Holt double-exponential smoothing + ridge regression + R² confidence in mielin-cells/src/resource/predictor_ml.rs; 16 tests
+- [x] Novel consensus algorithms — complete super-peer term election (record_vote tallying + promote_super_peer) in mielin-mesh/core/src/gossip.rs
 
 ### Future - Ecosystem
 - [ ] MielinCloud SaaS control plane

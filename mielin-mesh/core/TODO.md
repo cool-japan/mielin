@@ -15,8 +15,8 @@
 
 ### Low Priority
 - [ ] Support for alternative discovery mechanisms
-- [ ] Configurable gossip protocols
-- [ ] Historical membership queries
+- [x] Configurable gossip protocols — GossipConfig struct with gossip_interval/heartbeat_timeout/failure_timeout/fanout/max_history; GossipState::with_config()
+- [x] Historical membership queries — MembershipEvent log with membership_history/history_for/history_since; bounded VecDeque ring
 - [ ] Networking architecture guide
 - [ ] Deployment guide
 - [ ] Gossip protocol documentation

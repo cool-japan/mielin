@@ -19,9 +19,8 @@ pub mod cache;
 pub mod complex;
 pub mod conv;
 pub mod data;
-#[cfg(feature = "std")]
-pub mod distributed;
 pub mod error;
+pub mod federated;
 pub mod formats;
 pub mod gpu;
 pub mod loss;
@@ -56,13 +55,6 @@ pub use cache::{
 pub use complex::{Complex, Complex32, Complex64, ComplexTensor};
 pub use conv::{ConvError, ConvOps, PaddingMode, PoolingMode};
 pub use data::{tensor_utils, DataLoader, Dataset, SimpleRng};
-#[cfg(feature = "std")]
-pub use distributed::{
-    distributed_matmul, ActivationFn, CompiledModel, DistributedError, DistributedInferenceEngine,
-    DistributedTransport, InferenceMetrics, LayerSpec, LocalTransport, ModelParallelLayer,
-    ModelParallelPipeline, NodeCapabilities, NodeId, PartitionStrategy, ReduceOp, ShardId,
-    ShardedTensor, TensorShard,
-};
 pub use error::{ErrorCategory, TensorError, TensorResult};
 pub use formats::{
     AttributeValue, ExportModel, GraphNode, ImportedModel, ModelExporter, ModelFormat, ModelGraph,
@@ -103,6 +95,10 @@ pub use quant::{
 };
 pub use serialize::{DataType, Deserializer, ModelMetadata, Serializer};
 pub use sparse::{SparseFormat, SparseTensor};
+pub use federated::{
+    Aggregator, ClientUpdate, FedAvg, FederatedCoordinator, FederatedError, LocalTrainer,
+    RoundMetrics, UniformAvg,
+};
 pub use tensor::Tensor;
 pub use view::{IndexIterator, SliceRange, TensorView, TensorViewMut, ViewIterator};
 

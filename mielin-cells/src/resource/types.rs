@@ -1061,23 +1061,45 @@ impl AnomalyDetector {
         self.anomalies.clear();
     }
 }
-/// Predicts future resource usage based on history
+/// Predicts future resource usage based on history.
+///
+/// For histories with at least `min_samples` data points this delegates to
+/// `EnhancedPredictor` (Holt double exponential smoothing + ridge-regularised
+/// linear regression with R²-based confidence).  Shorter histories fall
+/// back to the original simple linear extrapolation so callers always
+/// receive `Some` whenever `history.len() >= min_samples`.
 #[derive(Debug)]
 pub struct ResourcePredictor {
     /// Minimum samples needed for prediction
     pub(super) min_samples: usize,
+    /// Minimum samples required before the ML path is preferred over linear
+    pub(super) ml_min_samples: usize,
+    /// Cached ML predictor (re-created on each call — kept for future
+    /// stateful extension via `ResourceMonitor`)
+    pub(super) enhanced: super::predictor_ml::EnhancedPredictor,
 }
 impl ResourcePredictor {
     /// Create a new resource predictor
     pub fn new() -> Self {
-        Self { min_samples: 5 }
+        Self {
+            min_samples: 5,
+            // Require a richer history before switching to the ML path so that
+            // the Holt smoothing has enough observations to converge.
+            ml_min_samples: 15,
+            enhanced: super::predictor_ml::EnhancedPredictor::new(),
+        }
     }
     /// Set the minimum samples needed
     pub fn with_min_samples(mut self, min_samples: usize) -> Self {
         self.min_samples = min_samples.max(2);
+        self.ml_min_samples = self.min_samples;
         self
     }
-    /// Predict resource usage at a future time
+    /// Predict resource usage at a future time.
+    ///
+    /// Uses the ML-enhanced (Holt + ridge) path when sufficient data is
+    /// available, otherwise falls back to plain linear extrapolation.
+    /// The function signature is unchanged from the original implementation.
     pub fn predict(
         &self,
         history: &ResourceHistory,
@@ -1088,6 +1110,16 @@ impl ResourcePredictor {
         }
         let snapshots = history.snapshots();
         let n = snapshots.len();
+
+        // ── ML-enhanced path ───────────────────────────────────────────────
+        if n >= self.ml_min_samples {
+            return Some(
+                self.enhanced
+                    .predict_from_history(snapshots, horizon_us),
+            );
+        }
+
+        // ── Fallback: original linear extrapolation ────────────────────────
         let memory_pred = self.linear_predict(
             snapshots
                 .iter()
@@ -1145,7 +1177,7 @@ impl ResourcePredictor {
             horizon_us,
         })
     }
-    /// Simple linear regression prediction
+    /// Simple linear regression prediction (fallback path)
     fn linear_predict<I>(&self, points: I, target_x: f64) -> Option<f64>
     where
         I: Iterator<Item = (f64, f64)>,
@@ -1167,7 +1199,10 @@ impl ResourcePredictor {
         let intercept = (sum_y - slope * sum_x) / n;
         Some(slope * target_x + intercept)
     }
-    /// Predict when a quota will be exceeded
+    /// Predict when a quota will be exceeded.
+    ///
+    /// Signature is unchanged; uses ridge-based memory slope when
+    /// sufficient history is available, otherwise uses simple linear rate.
     pub fn predict_quota_breach(
         &self,
         history: &ResourceHistory,
@@ -1178,9 +1213,32 @@ impl ResourcePredictor {
         }
         let latest = history.latest()?;
         let snapshots = history.snapshots();
-        if snapshots.len() >= 2 {
+        let n = snapshots.len();
+
+        // Use Holt-extrapolated memory slope when we have enough data
+        if n >= self.ml_min_samples {
+            let horizon_us = 1_000_000u64; // 1 second probe
+            let probe = self.enhanced.predict_from_history(snapshots, horizon_us);
+            let current_mem = latest.memory_bytes;
+            if probe.memory_bytes > current_mem {
+                let memory_rate_per_us =
+                    (probe.memory_bytes - current_mem) as f64 / horizon_us as f64;
+                let remaining = quota
+                    .memory
+                    .max_total_bytes
+                    .saturating_sub(current_mem);
+                if memory_rate_per_us > 0.0 {
+                    let time_to_breach = (remaining as f64 / memory_rate_per_us) as u64;
+                    return Some(latest.timestamp_us + time_to_breach);
+                }
+            }
+            return None;
+        }
+
+        // Fallback: simple linear memory rate
+        if n >= 2 {
             let first = &snapshots[0];
-            let last = &snapshots[snapshots.len() - 1];
+            let last = &snapshots[n - 1];
             let time_delta = (last.timestamp_us - first.timestamp_us) as f64;
             if time_delta > 0.0 && last.memory_bytes > first.memory_bytes {
                 let memory_rate = (last.memory_bytes - first.memory_bytes) as f64 / time_delta;

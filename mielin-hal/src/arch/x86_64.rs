@@ -52,9 +52,9 @@
 //!     println!("AVX2 is available");
 //! }
 //!
-//! if caps.capabilities.contains(capabilities::HardwareCapabilities::AVX512F) {
+//! if caps.capabilities.contains(capabilities::HardwareCapabilities::AVX512) {
 //!     println!("AVX-512 Foundation available");
-//!     println!("Vector width: {} bits", caps.vector_width());
+//!     println!("Vector width: {} bits", caps.max_vector_width());
 //! }
 //! ```
 //!
@@ -66,9 +66,9 @@
 //! let cache = CacheTopology::detect();
 //!
 //! // Optimize loop tiling based on cache size
-//! let l1_size = cache.l1_data_size();
-//! let l2_size = cache.l2_size();
-//! let block_size = cache.blocking_factor();
+//! let l1_size = cache.l1_data.size;
+//! let l2_size = cache.l2.size;
+//! let block_size = cache.optimal_block_size::<f32>();
 //!
 //! println!("L1: {} KB, L2: {} KB", l1_size / 1024, l2_size / 1024);
 //! println!("Optimal block size: {}", block_size);
@@ -84,11 +84,11 @@
 //! println!("CPU Frequency: {} - {} MHz",
 //!     power.frequency.min_mhz, power.frequency.max_mhz);
 //!
-//! if power.supports_hwp {
+//! if power.hwp_supported {
 //!     println!("Hardware P-States (HWP) supported");
 //! }
 //!
-//! if power.supports_turbo {
+//! if power.turbo_supported {
 //!     println!("Turbo Boost available");
 //! }
 //! ```

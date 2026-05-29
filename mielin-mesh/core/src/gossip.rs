@@ -9,7 +9,7 @@
 
 use crate::{Node, NodeId};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use thiserror::Error;
@@ -24,6 +24,88 @@ const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Failure timeout - consider node dead after this duration
 const FAILURE_TIMEOUT: Duration = Duration::from_secs(30);
+
+// ============================================================================
+// GossipConfig — configurable flat (SWIM-style) gossip parameters
+// ============================================================================
+
+/// Configuration for the flat (SWIM-style) gossip protocol.
+#[derive(Debug, Clone)]
+pub struct GossipConfig {
+    /// How often gossip messages are sent (default: 5 s)
+    pub gossip_interval: Duration,
+    /// After this duration without heartbeat, mark suspect (default: 15 s)
+    pub heartbeat_timeout: Duration,
+    /// After this duration without heartbeat, declare failed (default: 30 s)
+    pub failure_timeout: Duration,
+    /// Number of nodes to gossip to per round (default: 3)
+    pub fanout: usize,
+    /// Maximum number of membership event entries to retain (default: 512)
+    pub max_history: usize,
+}
+
+impl Default for GossipConfig {
+    fn default() -> Self {
+        Self {
+            gossip_interval: GOSSIP_INTERVAL,
+            heartbeat_timeout: HEARTBEAT_TIMEOUT,
+            failure_timeout: FAILURE_TIMEOUT,
+            fanout: 3,
+            max_history: 512,
+        }
+    }
+}
+
+// ============================================================================
+// Membership event log
+// ============================================================================
+
+/// Kind of membership change recorded in the event log.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MembershipEventKind {
+    /// Node joined the membership.
+    Joined,
+    /// Node voluntarily left.
+    Left,
+    /// Node was declared failed by failure detection.
+    Failed,
+    /// Node recovered (incarnation bump after being suspected/dead).
+    Recovered,
+    /// Node health status changed.
+    StatusChanged {
+        from: HealthStatus,
+        to: HealthStatus,
+    },
+    /// Incarnation number was updated (e.g. refutation).
+    IncarnationUpdated { old: u64, new: u64 },
+}
+
+/// A single membership-change event stored in the history ring-buffer.
+#[derive(Debug, Clone)]
+pub struct MembershipEvent {
+    /// The node this event concerns.
+    pub node_id: NodeId,
+    /// The kind of change that occurred.
+    pub kind: MembershipEventKind,
+    /// Incarnation number at the time of the event.
+    pub incarnation: u64,
+    /// Wall-clock time of the event.
+    pub timestamp: SystemTime,
+    /// Optional human-readable annotation.
+    pub metadata: Option<String>,
+}
+
+impl MembershipEvent {
+    fn new(node_id: NodeId, kind: MembershipEventKind, incarnation: u64) -> Self {
+        Self {
+            node_id,
+            kind,
+            incarnation,
+            timestamp: SystemTime::now(),
+            metadata: None,
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum GossipError {
@@ -120,10 +202,20 @@ pub struct GossipState {
     members: Arc<RwLock<HashMap<NodeId, MemberInfo>>>,
     local_incarnation: Arc<RwLock<u64>>,
     state_store: Arc<RwLock<HashMap<String, StateValue>>>,
+    /// Runtime configuration for the flat gossip protocol.
+    config: Arc<GossipConfig>,
+    /// Bounded ring-buffer of historical membership change events.
+    history: Arc<RwLock<VecDeque<MembershipEvent>>>,
 }
 
 impl GossipState {
+    /// Create a new `GossipState` with default configuration.
     pub fn new(node: Arc<Node>) -> Self {
+        Self::with_config(node, GossipConfig::default())
+    }
+
+    /// Create a new `GossipState` with explicit configuration.
+    pub fn with_config(node: Arc<Node>, config: GossipConfig) -> Self {
         let node_id = *node.id();
         let mut members = HashMap::new();
         members.insert(node_id, MemberInfo::new(node_id));
@@ -133,7 +225,69 @@ impl GossipState {
             members: Arc::new(RwLock::new(members)),
             local_incarnation: Arc::new(RwLock::new(0)),
             state_store: Arc::new(RwLock::new(HashMap::new())),
+            config: Arc::new(config),
+            history: Arc::new(RwLock::new(VecDeque::new())),
         }
+    }
+
+    /// Return a reference to the active configuration.
+    pub fn config(&self) -> &GossipConfig {
+        &self.config
+    }
+
+    // -----------------------------------------------------------------------
+    // Membership history helpers
+    // -----------------------------------------------------------------------
+
+    /// Append a membership event to the history ring-buffer.
+    /// Evicts the oldest entry if capacity is exceeded.
+    fn record_membership_event(&self, event: MembershipEvent) {
+        let history = self.history.clone();
+        let max = self.config.max_history;
+        tokio::spawn(async move {
+            let mut h = history.write().await;
+            if h.len() >= max {
+                h.pop_front();
+            }
+            h.push_back(event);
+        });
+    }
+
+    /// Return a snapshot of the entire membership history.
+    pub async fn membership_history(&self) -> Vec<MembershipEvent> {
+        self.history.read().await.iter().cloned().collect()
+    }
+
+    /// Return all history entries for a specific node.
+    pub async fn history_for(&self, node_id: &NodeId) -> Vec<MembershipEvent> {
+        self.history
+            .read()
+            .await
+            .iter()
+            .filter(|e| &e.node_id == node_id)
+            .cloned()
+            .collect()
+    }
+
+    /// Return all history entries whose timestamp is ≥ `since`.
+    pub async fn history_since(&self, since: SystemTime) -> Vec<MembershipEvent> {
+        self.history
+            .read()
+            .await
+            .iter()
+            .filter(|e| e.timestamp >= since)
+            .cloned()
+            .collect()
+    }
+
+    /// Return the maximum number of events the history can hold.
+    pub fn history_capacity(&self) -> usize {
+        self.config.max_history
+    }
+
+    /// Return the current number of events stored in history.
+    pub async fn history_count(&self) -> usize {
+        self.history.read().await.len()
     }
 
     /// Start the gossip protocol
@@ -155,9 +309,10 @@ impl GossipState {
         let members = self.members.clone();
         let incarnation = self.local_incarnation.clone();
         let node_id = *self.local_node.id();
+        let interval_dur = self.config.gossip_interval;
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(GOSSIP_INTERVAL);
+            let mut interval = tokio::time::interval(interval_dur);
             loop {
                 interval.tick().await;
 
@@ -175,41 +330,61 @@ impl GossipState {
     fn spawn_failure_detection_task(&self) {
         let members = self.members.clone();
         let node_id = *self.local_node.id();
+        let heartbeat_timeout = self.config.heartbeat_timeout;
+        let failure_timeout = self.config.failure_timeout;
+        let history = self.history.clone();
+        let max_history = self.config.max_history;
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(5));
             loop {
                 interval.tick().await;
 
-                let mut members = members.write().await;
-                let mut updates = Vec::new();
+                let mut members_guard = members.write().await;
+                let mut updates: Vec<(NodeId, HealthStatus, HealthStatus, u64)> = Vec::new();
 
-                for (id, member) in members.iter() {
+                for (id, member) in members_guard.iter() {
                     if *id == node_id {
-                        continue; // Skip self
+                        continue;
                     }
 
-                    if member.should_declare_dead() {
-                        updates.push((*id, HealthStatus::Dead));
+                    let age = member.heartbeat_age();
+                    if member.is_suspect() && age > failure_timeout {
+                        updates.push((*id, member.status, HealthStatus::Dead, member.incarnation));
                         warn!(
                             "Declaring node {} as dead (no heartbeat for {:?})",
-                            id,
-                            member.heartbeat_age()
+                            id, age
                         );
-                    } else if member.should_suspect() {
-                        updates.push((*id, HealthStatus::Suspect));
-                        debug!(
-                            "Marking node {} as suspect (no heartbeat for {:?})",
-                            id,
-                            member.heartbeat_age()
-                        );
+                    } else if member.is_alive() && age > heartbeat_timeout {
+                        updates.push((
+                            *id,
+                            member.status,
+                            HealthStatus::Suspect,
+                            member.incarnation,
+                        ));
+                        debug!("Marking node {} as suspect (no heartbeat for {:?})", id, age);
                     }
                 }
 
-                for (id, status) in updates {
-                    if let Some(member) = members.get_mut(&id) {
-                        member.status = status;
+                for (id, old_status, new_status, inc) in updates {
+                    if let Some(member) = members_guard.get_mut(&id) {
+                        member.status = new_status;
                     }
+                    // Record failure event outside members lock
+                    let kind = if new_status == HealthStatus::Dead {
+                        MembershipEventKind::Failed
+                    } else {
+                        MembershipEventKind::StatusChanged {
+                            from: old_status,
+                            to: new_status,
+                        }
+                    };
+                    let event = MembershipEvent::new(id, kind, inc);
+                    let mut h = history.write().await;
+                    if h.len() >= max_history {
+                        h.pop_front();
+                    }
+                    h.push_back(event);
                 }
             }
         });
@@ -218,9 +393,11 @@ impl GossipState {
     /// Spawn gossip propagation task
     fn spawn_gossip_task(&self) {
         let members = self.members.clone();
+        let interval_dur = self.config.gossip_interval;
+        let _fanout = self.config.fanout;
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(GOSSIP_INTERVAL);
+            let mut interval = tokio::time::interval(interval_dur);
             loop {
                 interval.tick().await;
 
@@ -235,7 +412,7 @@ impl GossipState {
                 );
 
                 // In a real implementation, this would:
-                // 1. Select random peers to gossip with
+                // 1. Select random peers to gossip with (up to _fanout)
                 // 2. Send member updates
                 // 3. Exchange state information
             }
@@ -280,25 +457,57 @@ impl GossipState {
 
     /// Handle heartbeat from a peer
     async fn handle_heartbeat(&self, node_id: NodeId, incarnation: u64) -> Result<(), GossipError> {
-        let mut members = self.members.write().await;
+        let event = {
+            let mut members = self.members.write().await;
 
-        if let Some(member) = members.get_mut(&node_id) {
-            // Update if incarnation is newer
-            if incarnation > member.incarnation {
+            if let Some(member) = members.get_mut(&node_id) {
+                if incarnation > member.incarnation {
+                    let old_inc = member.incarnation;
+                    let was_unhealthy = !member.is_alive();
+                    member.incarnation = incarnation;
+                    member.last_seen = SystemTime::now();
+                    member.status = HealthStatus::Alive;
+                    debug!(
+                        "Updated heartbeat for node {} (incarnation: {})",
+                        node_id, incarnation
+                    );
+                    if was_unhealthy {
+                        Some(MembershipEvent::new(
+                            node_id,
+                            MembershipEventKind::Recovered,
+                            incarnation,
+                        ))
+                    } else if old_inc != incarnation {
+                        Some(MembershipEvent::new(
+                            node_id,
+                            MembershipEventKind::IncarnationUpdated {
+                                old: old_inc,
+                                new: incarnation,
+                            },
+                            incarnation,
+                        ))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                // New member discovered via heartbeat
+                let mut member = MemberInfo::new(node_id);
                 member.incarnation = incarnation;
-                member.last_seen = SystemTime::now();
-                member.status = HealthStatus::Alive;
-                debug!(
-                    "Updated heartbeat for node {} (incarnation: {})",
-                    node_id, incarnation
-                );
+                members.insert(node_id, member);
+                info!("Discovered new member {} via heartbeat", node_id);
+                Some(MembershipEvent::new(
+                    node_id,
+                    MembershipEventKind::Joined,
+                    incarnation,
+                ))
             }
-        } else {
-            // New member discovered via heartbeat
-            let mut member = MemberInfo::new(node_id);
-            member.incarnation = incarnation;
-            members.insert(node_id, member);
-            info!("Discovered new member {} via heartbeat", node_id);
+        };
+
+        if let Some(ev) = event {
+            self.record_membership_event(ev);
         }
 
         Ok(())
@@ -306,18 +515,47 @@ impl GossipState {
 
     /// Handle member update from gossip
     async fn handle_member_update(&self, new_info: MemberInfo) -> Result<(), GossipError> {
-        let mut members = self.members.write().await;
+        let event = {
+            let mut members = self.members.write().await;
 
-        if let Some(existing) = members.get_mut(&new_info.node_id) {
-            // Update if incarnation is newer
-            if new_info.incarnation > existing.incarnation {
-                *existing = new_info;
-                debug!("Updated member info for {}", existing.node_id);
+            if let Some(existing) = members.get_mut(&new_info.node_id) {
+                if new_info.incarnation > existing.incarnation {
+                    let old_status = existing.status;
+                    let new_status = new_info.status;
+                    let node_id = new_info.node_id;
+                    let inc = new_info.incarnation;
+                    *existing = new_info;
+                    debug!("Updated member info for {}", node_id);
+                    if old_status != new_status {
+                        Some(MembershipEvent::new(
+                            node_id,
+                            MembershipEventKind::StatusChanged {
+                                from: old_status,
+                                to: new_status,
+                            },
+                            inc,
+                        ))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                let node_id = new_info.node_id;
+                let inc = new_info.incarnation;
+                members.insert(node_id, new_info);
+                info!("Added new member {} to membership", node_id);
+                Some(MembershipEvent::new(
+                    node_id,
+                    MembershipEventKind::Joined,
+                    inc,
+                ))
             }
-        } else {
-            // New member
-            members.insert(new_info.node_id, new_info.clone());
-            info!("Added new member {} to membership", new_info.node_id);
+        };
+
+        if let Some(ev) = event {
+            self.record_membership_event(ev);
         }
 
         Ok(())
@@ -379,8 +617,59 @@ impl GossipState {
         if let std::collections::hash_map::Entry::Vacant(e) = members.entry(node_id) {
             e.insert(MemberInfo::new(node_id));
             info!("Added member {} to membership", node_id);
+            drop(members);
+            self.record_membership_event(MembershipEvent::new(
+                node_id,
+                MembershipEventKind::Joined,
+                0,
+            ));
         }
 
+        Ok(())
+    }
+
+    /// Remove a member from the membership, recording a `Left` event.
+    pub async fn remove_member(&self, node_id: NodeId) -> Result<(), GossipError> {
+        let inc = {
+            let mut members = self.members.write().await;
+            if let Some(removed) = members.remove(&node_id) {
+                info!("Removed member {} from membership", node_id);
+                removed.incarnation
+            } else {
+                return Err(GossipError::NodeNotFound(node_id));
+            }
+        };
+        self.record_membership_event(MembershipEvent::new(
+            node_id,
+            MembershipEventKind::Left,
+            inc,
+        ));
+        Ok(())
+    }
+
+    /// Update the status of an existing member, recording a `StatusChanged` event.
+    pub async fn update_member_status(
+        &self,
+        node_id: NodeId,
+        new_status: HealthStatus,
+    ) -> Result<(), GossipError> {
+        let (old_status, inc) = {
+            let mut members = self.members.write().await;
+            let member = members
+                .get_mut(&node_id)
+                .ok_or(GossipError::NodeNotFound(node_id))?;
+            let old = member.status;
+            let inc = member.incarnation;
+            member.status = new_status;
+            (old, inc)
+        };
+        if old_status != new_status {
+            let kind = MembershipEventKind::StatusChanged {
+                from: old_status,
+                to: new_status,
+            };
+            self.record_membership_event(MembershipEvent::new(node_id, kind, inc));
+        }
         Ok(())
     }
 
@@ -607,8 +896,10 @@ pub struct HierarchicalGossip {
     super_peers: Arc<RwLock<HashMap<ZoneId, HashSet<NodeId>>>>,
     /// Zone statistics
     zone_stats: Arc<RwLock<HashMap<ZoneId, ZoneStats>>>,
-    /// Election state: (term, voted_for)
+    /// Election state: (current_term, last_voted_for)
     election_state: Arc<RwLock<(u64, Option<NodeId>)>>,
+    /// Per-term vote tally: term → (voter_id → candidate_id).
+    votes_received: Arc<RwLock<HashMap<u64, HashMap<NodeId, NodeId>>>>,
     /// Message queue for outgoing messages
     outbox: Arc<RwLock<Vec<(NodeId, HierarchicalMessage)>>>,
 }
@@ -631,7 +922,7 @@ impl HierarchicalGossip {
         let local_member = ZoneMember::new(node_id, local_zone);
         zones
             .get_mut(&local_zone)
-            .expect("local_zone was just inserted above")
+            .unwrap()
             .insert(node_id, local_member);
 
         Self {
@@ -643,6 +934,7 @@ impl HierarchicalGossip {
             super_peers: Arc::new(RwLock::new(HashMap::new())),
             zone_stats: Arc::new(RwLock::new(zone_stats)),
             election_state: Arc::new(RwLock::new((0, None))),
+            votes_received: Arc::new(RwLock::new(HashMap::new())),
             outbox: Arc::new(RwLock::new(Vec::new())),
         }
     }
@@ -828,13 +1120,13 @@ impl HierarchicalGossip {
 
             HierarchicalMessage::SuperPeerVote {
                 zone_id,
-                voter: _,
+                voter,
                 candidate,
                 term,
                 granted,
             } => {
                 if zone_id == self.local_zone && candidate == self.local_node_id && granted {
-                    self.record_vote(term).await;
+                    self.record_vote(term, voter, candidate).await;
                 }
             }
         }
@@ -922,13 +1214,112 @@ impl HierarchicalGossip {
         }
     }
 
-    /// Record a vote received
-    async fn record_vote(&self, term: u64) {
-        let state = self.election_state.read().await;
-        if term == state.0 {
-            // In a full implementation, count votes and promote if majority
-            debug!("Received vote for term {}", term);
+    /// Record a received vote, and promote the winner when a majority is reached.
+    ///
+    /// `voter_id` is the node that cast the vote; `candidate_id` is whom they
+    /// voted for.  A node counts itself as its own first vote when it calls
+    /// `start_election`, so the tally will include that self-vote too.
+    pub async fn record_vote(&self, term: u64, voter_id: NodeId, candidate_id: NodeId) {
+        let winner = {
+            let mut votes = self.votes_received.write().await;
+            let term_votes = votes.entry(term).or_insert_with(HashMap::new);
+            term_votes.insert(voter_id, candidate_id);
+
+            // Tally votes for each candidate in this term.
+            let mut tally: HashMap<NodeId, usize> = HashMap::new();
+            for cand in term_votes.values() {
+                *tally.entry(*cand).or_insert(0) += 1;
+            }
+
+            // Majority threshold across all known members (≥1 to handle degenerate case).
+            let total_members = {
+                // We can't hold the votes write-lock and the zones read-lock at the
+                // same time without risking lock-order inversion, so we read the
+                // tally size as a lower bound.  The real count will be fetched below.
+                term_votes.len().max(1)
+            };
+
+            let majority = total_members / 2 + 1;
+
+            tally
+                .into_iter()
+                .find(|(_, count)| *count >= majority)
+                .map(|(cand, _)| cand)
+        };
+
+        if let Some(candidate) = winner {
+            // Re-check with the authoritative zone membership count.
+            let total_members = {
+                let zones = self.zones.read().await;
+                zones
+                    .values()
+                    .flat_map(|z| z.keys())
+                    .count()
+                    .max(1)
+            };
+            let votes_for_winner = {
+                let votes = self.votes_received.read().await;
+                votes
+                    .get(&term)
+                    .map(|tv| tv.values().filter(|&&c| c == candidate).count())
+                    .unwrap_or(0)
+            };
+            let majority = total_members / 2 + 1;
+            if votes_for_winner >= majority {
+                self.promote_super_peer(term, candidate).await;
+            }
         }
+    }
+
+    /// Promote `candidate` as a super-peer in their zone and record the
+    /// election outcome in `election_state`.
+    async fn promote_super_peer(&self, term: u64, candidate: NodeId) {
+        {
+            let mut zones = self.zones.write().await;
+            for zone_members in zones.values_mut() {
+                if let Some(member) = zone_members.get_mut(&candidate) {
+                    member.role = GossipRole::SuperPeer;
+                    info!(
+                        "Node {} promoted to SuperPeer in zone {} (term {})",
+                        candidate, member.zone_id, term
+                    );
+                }
+            }
+        }
+
+        // Register the winner in the super_peers index.
+        {
+            let zones = self.zones.read().await;
+            for (zone_id, zone_members) in zones.iter() {
+                if zone_members.contains_key(&candidate) {
+                    let mut sp = self.super_peers.write().await;
+                    sp.entry(*zone_id)
+                        .or_insert_with(HashSet::new)
+                        .insert(candidate);
+                    break;
+                }
+            }
+        }
+
+        let mut state = self.election_state.write().await;
+        *state = (term, Some(candidate));
+    }
+
+    /// Return the list of current super-peers, one per zone that has one.
+    pub async fn current_super_peers(&self) -> Vec<(ZoneId, NodeId)> {
+        let super_peers = self.super_peers.read().await;
+        let mut result = Vec::new();
+        for (zone_id, peers) in super_peers.iter() {
+            for &node_id in peers {
+                result.push((*zone_id, node_id));
+            }
+        }
+        result
+    }
+
+    /// Return the current election term and the winning candidate (if any).
+    pub async fn get_election_state(&self) -> (u64, Option<NodeId>) {
+        *self.election_state.read().await
     }
 
     /// Start super-peer election for local zone
@@ -1048,443 +1439,5 @@ impl HierarchicalGossip {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::NodeRole;
-
-    #[test]
-    fn test_member_info_creation() {
-        let node_id = NodeId::new_v4();
-        let member = MemberInfo::new(node_id);
-
-        assert_eq!(member.node_id, node_id);
-        assert!(member.is_alive());
-        assert!(!member.is_suspect());
-        assert!(!member.is_dead());
-    }
-
-    #[test]
-    fn test_heartbeat_timeout_detection() {
-        let node_id = NodeId::new_v4();
-        let mut member = MemberInfo::new(node_id);
-        member.last_seen = SystemTime::now() - Duration::from_secs(20);
-
-        assert!(member.should_suspect());
-        assert!(!member.should_declare_dead());
-    }
-
-    #[test]
-    fn test_failure_timeout_detection() {
-        let node_id = NodeId::new_v4();
-        let mut member = MemberInfo::new(node_id);
-        member.status = HealthStatus::Suspect;
-        member.last_seen = SystemTime::now() - Duration::from_secs(35);
-
-        assert!(member.should_declare_dead());
-    }
-
-    #[tokio::test]
-    async fn test_gossip_state_creation() {
-        let node = Arc::new(Node::new(NodeRole::Relay));
-        let gossip = GossipState::new(node.clone());
-
-        let members = gossip.get_all_members().await;
-        assert_eq!(members.len(), 1);
-        assert_eq!(members[0].node_id, *node.id());
-    }
-
-    #[tokio::test]
-    async fn test_add_member() {
-        let node = Arc::new(Node::new(NodeRole::Relay));
-        let gossip = GossipState::new(node.clone());
-
-        let new_node_id = NodeId::new_v4();
-        gossip.add_member(new_node_id).await.unwrap();
-
-        let members = gossip.get_all_members().await;
-        assert_eq!(members.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_heartbeat_handling() {
-        let node = Arc::new(Node::new(NodeRole::Relay));
-        let gossip = GossipState::new(node.clone());
-
-        let peer_id = NodeId::new_v4();
-        gossip.handle_heartbeat(peer_id, 1).await.unwrap();
-
-        let members = gossip.get_all_members().await;
-        assert_eq!(members.len(), 2);
-
-        let peer_member = members.iter().find(|m| m.node_id == peer_id).unwrap();
-        assert_eq!(peer_member.incarnation, 1);
-        assert!(peer_member.is_alive());
-    }
-
-    #[tokio::test]
-    async fn test_state_updates() {
-        let node = Arc::new(Node::new(NodeRole::Relay));
-        let gossip = GossipState::new(node.clone());
-
-        let key = "test_key".to_string();
-        let value = vec![1, 2, 3, 4];
-
-        gossip
-            .publish_state(key.clone(), value.clone())
-            .await
-            .unwrap();
-
-        let retrieved = gossip.get_state(&key).await;
-        assert_eq!(retrieved, Some(value));
-    }
-
-    #[tokio::test]
-    async fn test_sync_request_response() {
-        let node = Arc::new(Node::new(NodeRole::Relay));
-        let gossip = GossipState::new(node.clone());
-
-        // Add some members
-        gossip.add_member(NodeId::new_v4()).await.unwrap();
-        gossip.add_member(NodeId::new_v4()).await.unwrap();
-
-        let request = GossipMessage::SyncRequest {
-            from_node: NodeId::new_v4(),
-        };
-
-        let response = gossip.handle_message(request).await.unwrap();
-        assert!(response.is_some());
-
-        if let Some(GossipMessage::SyncResponse { members }) = response {
-            assert_eq!(members.len(), 3); // local + 2 added
-        } else {
-            panic!("Expected SyncResponse");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_member_stats() {
-        let node = Arc::new(Node::new(NodeRole::Relay));
-        let gossip = GossipState::new(node.clone());
-
-        gossip.add_member(NodeId::new_v4()).await.unwrap();
-        gossip.add_member(NodeId::new_v4()).await.unwrap();
-
-        let (alive, suspect, dead) = gossip.get_member_stats().await;
-        assert_eq!(alive, 3);
-        assert_eq!(suspect, 0);
-        assert_eq!(dead, 0);
-    }
-
-    // ========================================================================
-    // Hierarchical Gossip Tests
-    // ========================================================================
-
-    #[test]
-    fn test_zone_id_from_node() {
-        let node1 = NodeId::new_v4();
-        let node2 = NodeId::new_v4();
-        let num_zones = 4;
-
-        let zone1 = ZoneId::from_node_id(&node1, num_zones);
-        let zone2 = ZoneId::from_node_id(&node2, num_zones);
-
-        // Both should be within valid range
-        assert!(zone1.0 < num_zones);
-        assert!(zone2.0 < num_zones);
-
-        // Same node should always get same zone
-        assert_eq!(zone1, ZoneId::from_node_id(&node1, num_zones));
-    }
-
-    #[test]
-    fn test_zone_member_creation() {
-        let node_id = NodeId::new_v4();
-        let zone_id = ZoneId::new(1);
-        let member = ZoneMember::new(node_id, zone_id);
-
-        assert_eq!(member.node_id, node_id);
-        assert_eq!(member.zone_id, zone_id);
-        assert_eq!(member.role, GossipRole::Regular);
-        assert!(member.reachable);
-        assert!(!member.is_super_peer());
-    }
-
-    #[test]
-    fn test_zone_member_with_role() {
-        let node_id = NodeId::new_v4();
-        let zone_id = ZoneId::new(2);
-        let member = ZoneMember::new(node_id, zone_id).with_role(GossipRole::SuperPeer);
-
-        assert!(member.is_super_peer());
-        assert_eq!(member.role, GossipRole::SuperPeer);
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_gossip_creation() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig::default();
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        assert_eq!(gossip.local_node_id(), node_id);
-        assert!(gossip.local_zone().0 < 4); // Default is 4 zones
-        assert_eq!(gossip.role().await, GossipRole::Regular);
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_add_member() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig::default();
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        let peer_id = NodeId::new_v4();
-        let member = ZoneMember::new(peer_id, gossip.local_zone());
-        gossip.add_member(member).await;
-
-        let members = gossip.local_zone_members().await;
-        assert_eq!(members.len(), 2); // Self + peer
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_role_change() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig::default();
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        gossip.set_role(GossipRole::SuperPeer).await;
-        assert_eq!(gossip.role().await, GossipRole::SuperPeer);
-
-        gossip.set_role(GossipRole::ZoneLeader).await;
-        assert_eq!(gossip.role().await, GossipRole::ZoneLeader);
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_intra_zone_message() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig::default();
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        let from = NodeId::new_v4();
-        let message = HierarchicalMessage::IntraZone {
-            zone_id: gossip.local_zone(),
-            payload: GossipMessage::Heartbeat {
-                node_id: from,
-                incarnation: 1,
-            },
-        };
-
-        let responses = gossip.handle_message(from, message).await;
-        assert!(responses.is_empty()); // Heartbeat doesn't generate response
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_zone_announce() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig::default();
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        let peer_id = NodeId::new_v4();
-        let member = ZoneMember::new(peer_id, gossip.local_zone());
-        let message = HierarchicalMessage::ZoneAnnounce {
-            member: member.clone(),
-        };
-
-        gossip.handle_message(peer_id, message).await;
-
-        let members = gossip.local_zone_members().await;
-        assert!(members.iter().any(|m| m.node_id == peer_id));
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_election() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig::default();
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        // Add some peers to local zone
-        for _ in 0..3 {
-            let peer = ZoneMember::new(NodeId::new_v4(), gossip.local_zone());
-            gossip.add_member(peer).await;
-        }
-
-        let election_messages = gossip.start_election().await;
-        assert_eq!(election_messages.len(), 3); // 3 peers
-
-        for (_, msg) in &election_messages {
-            if let HierarchicalMessage::SuperPeerElection {
-                zone_id,
-                candidate,
-                term,
-            } = msg
-            {
-                assert_eq!(*zone_id, gossip.local_zone());
-                assert_eq!(*candidate, node_id);
-                assert_eq!(*term, 1);
-            } else {
-                panic!("Expected SuperPeerElection message");
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_vote() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig::default();
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        let candidate = NodeId::new_v4();
-        let message = HierarchicalMessage::SuperPeerElection {
-            zone_id: gossip.local_zone(),
-            candidate,
-            term: 1,
-        };
-
-        let responses = gossip.handle_message(candidate, message).await;
-        assert_eq!(responses.len(), 1);
-
-        if let HierarchicalMessage::SuperPeerVote {
-            granted,
-            term,
-            candidate: vote_for,
-            ..
-        } = &responses[0].1
-        {
-            assert!(*granted);
-            assert_eq!(*term, 1);
-            assert_eq!(*vote_for, candidate);
-        } else {
-            panic!("Expected SuperPeerVote message");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_vote_only_once_per_term() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig::default();
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        let candidate1 = NodeId::new_v4();
-        let candidate2 = NodeId::new_v4();
-
-        // First vote should be granted
-        let msg1 = HierarchicalMessage::SuperPeerElection {
-            zone_id: gossip.local_zone(),
-            candidate: candidate1,
-            term: 1,
-        };
-        let responses1 = gossip.handle_message(candidate1, msg1).await;
-        if let HierarchicalMessage::SuperPeerVote { granted, .. } = &responses1[0].1 {
-            assert!(*granted);
-        }
-
-        // Second vote in same term should not be granted
-        let msg2 = HierarchicalMessage::SuperPeerElection {
-            zone_id: gossip.local_zone(),
-            candidate: candidate2,
-            term: 1,
-        };
-        let responses2 = gossip.handle_message(candidate2, msg2).await;
-        if let HierarchicalMessage::SuperPeerVote { granted, .. } = &responses2[0].1 {
-            assert!(!*granted);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_zone_stats() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig::default();
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        // Add members and update stats
-        for _ in 0..5 {
-            let peer = ZoneMember::new(NodeId::new_v4(), gossip.local_zone());
-            gossip.add_member(peer).await;
-        }
-
-        gossip.update_local_stats().await;
-
-        let stats = gossip.get_zone_stats(gossip.local_zone()).await;
-        assert!(stats.is_some());
-        assert_eq!(stats.unwrap().member_count, 6); // Self + 5 peers
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_total_member_count() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig {
-            num_zones: 2,
-            ..Default::default()
-        };
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        // Add members to different zones
-        let zone0 = ZoneId::new(0);
-        let zone1 = ZoneId::new(1);
-
-        gossip
-            .add_member(ZoneMember::new(NodeId::new_v4(), zone0))
-            .await;
-        gossip
-            .add_member(ZoneMember::new(NodeId::new_v4(), zone1))
-            .await;
-
-        let total = gossip.total_member_count().await;
-        // 1 (self) + 2 added (but one might be in same zone as self)
-        assert!(total >= 2);
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_message_queue() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig::default();
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        let target = NodeId::new_v4();
-        let message = HierarchicalMessage::ZoneAnnounce {
-            member: ZoneMember::new(node_id, gossip.local_zone()),
-        };
-
-        gossip.queue_message(target, message).await;
-
-        let outbox = gossip.drain_outbox().await;
-        assert_eq!(outbox.len(), 1);
-        assert_eq!(outbox[0].0, target);
-
-        // Queue should be empty after drain
-        let empty = gossip.drain_outbox().await;
-        assert!(empty.is_empty());
-    }
-
-    #[test]
-    fn test_zone_id_display() {
-        let zone = ZoneId::new(42);
-        assert_eq!(format!("{}", zone), "zone-42");
-    }
-
-    #[test]
-    fn test_hierarchical_config_default() {
-        let config = HierarchicalGossipConfig::default();
-        assert_eq!(config.num_zones, 4);
-        assert_eq!(config.super_peers_per_zone, 3);
-        assert_eq!(config.fanout, 3);
-        assert_eq!(config.max_inter_zone_ttl, 4);
-    }
-
-    #[tokio::test]
-    async fn test_hierarchical_remove_member() {
-        let node_id = NodeId::new_v4();
-        let config = HierarchicalGossipConfig::default();
-        let gossip = HierarchicalGossip::new(node_id, config);
-
-        let peer_id = NodeId::new_v4();
-        let member = ZoneMember::new(peer_id, gossip.local_zone());
-        gossip.add_member(member).await;
-
-        let before = gossip.local_zone_members().await;
-        assert!(before.iter().any(|m| m.node_id == peer_id));
-
-        gossip.remove_member(&peer_id).await;
-
-        let after = gossip.local_zone_members().await;
-        assert!(!after.iter().any(|m| m.node_id == peer_id));
-    }
-}
+#[path = "gossip_tests.rs"]
+mod tests;
