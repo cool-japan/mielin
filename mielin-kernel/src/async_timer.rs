@@ -148,8 +148,7 @@ impl Default for AsyncTimerRegistry {
 ///
 /// The lock is only held for the brief duration of [`register`](AsyncTimerRegistry::register)
 /// and [`tick`](AsyncTimerRegistry::tick) calls, so contention is minimal.
-pub static ASYNC_TIMER_REGISTRY: Mutex<AsyncTimerRegistry> =
-    Mutex::new(AsyncTimerRegistry::new());
+pub static ASYNC_TIMER_REGISTRY: Mutex<AsyncTimerRegistry> = Mutex::new(AsyncTimerRegistry::new());
 
 /// Tick the async timer registry with the current jiffy value.
 ///
@@ -390,12 +389,8 @@ mod tests {
 
     /// A minimal no-op waker that does nothing when woken.
     fn noop_waker() -> Waker {
-        static VTABLE: RawWakerVTable = RawWakerVTable::new(
-            |p| RawWaker::new(p, &VTABLE),
-            |_| {},
-            |_| {},
-            |_| {},
-        );
+        static VTABLE: RawWakerVTable =
+            RawWakerVTable::new(|p| RawWaker::new(p, &VTABLE), |_| {}, |_| {}, |_| {});
         unsafe { Waker::from_raw(RawWaker::new(core::ptr::null(), &VTABLE)) }
     }
 

@@ -49,11 +49,7 @@ impl fmt::Display for CertRotationError {
                 write!(f, "A certificate rotation is already in progress")
             }
             CertRotationError::MaxRotationsExceeded { max } => {
-                write!(
-                    f,
-                    "Maximum rotations per hour exceeded (limit: {})",
-                    max
-                )
+                write!(f, "Maximum rotations per hour exceeded (limit: {})", max)
             }
         }
     }
@@ -443,13 +439,11 @@ impl CertRotator {
 
 /// Generate a self-signed certificate for localhost and return
 /// `(CertificateDer, PrivateKeyDer)` in `'static` form.
-pub fn generate_self_signed_cert_der()
--> Result<(CertificateDer<'static>, PrivateKeyDer<'static>), String> {
-    let cert_key = rcgen::generate_simple_self_signed(vec![
-        "localhost".to_string(),
-        "127.0.0.1".to_string(),
-    ])
-    .map_err(|e| e.to_string())?;
+pub fn generate_self_signed_cert_der(
+) -> Result<(CertificateDer<'static>, PrivateKeyDer<'static>), String> {
+    let cert_key =
+        rcgen::generate_simple_self_signed(vec!["localhost".to_string(), "127.0.0.1".to_string()])
+            .map_err(|e| e.to_string())?;
 
     let cert_der = CertificateDer::from(cert_key.cert.der().to_vec());
     let key_der = PrivateKeyDer::try_from(cert_key.signing_key.serialize_der())
@@ -493,8 +487,7 @@ mod tests {
         init_crypto();
         let (cert_der, key_der) = fresh_cert_key();
         let initial = Arc::new(
-            CertRotator::build_server_config(&cert_der, &key_der)
-                .expect("build must succeed"),
+            CertRotator::build_server_config(&cert_der, &key_der).expect("build must succeed"),
         );
         let (_rotator, handle) = CertRotator::new(initial.clone(), CertRotationConfig::default());
         // Handle should expose the initial config
@@ -516,8 +509,7 @@ mod tests {
     async fn test_rotate_succeeds_with_fresh_cert() {
         init_crypto();
         let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         let (new_cert, new_key) = fresh_cert_key();
         let result = rotator.rotate(&new_cert, &new_key).await;
@@ -528,8 +520,7 @@ mod tests {
     async fn test_rotate_updates_watch_channel() {
         init_crypto();
         let (rotator, handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         let initial_ptr = Arc::as_ptr(&handle.current());
 
@@ -548,8 +539,7 @@ mod tests {
     async fn test_handle_changed_receives_new_config() {
         init_crypto();
         let (rotator, mut handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         // Drive rotation in background so `changed()` can observe it
         let (new_cert, new_key) = fresh_cert_key();
@@ -561,11 +551,7 @@ mod tests {
             rotator2.rotate(&new_cert, &new_key).await.expect("rotate");
         });
 
-        let timeout_result = tokio::time::timeout(
-            Duration::from_secs(2),
-            handle.changed(),
-        )
-        .await;
+        let timeout_result = tokio::time::timeout(Duration::from_secs(2), handle.changed()).await;
 
         assert!(timeout_result.is_ok(), "timed out waiting for changed()");
         assert!(timeout_result.unwrap().is_some());
@@ -581,8 +567,7 @@ mod tests {
     async fn test_stats_track_total_rotations() {
         init_crypto();
         let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         for _ in 0..3 {
             let (c, k) = fresh_cert_key();
@@ -599,14 +584,13 @@ mod tests {
     async fn test_stats_track_failed_rotations() {
         init_crypto();
         let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         // Attempt rotation with garbage DER bytes
         let bad_cert = CertificateDer::from(vec![0xDE, 0xAD, 0xBE, 0xEF]);
-        let bad_key = PrivateKeyDer::Pkcs8(rustls::pki_types::PrivatePkcs8KeyDer::from(
-            vec![0xDE, 0xAD],
-        ));
+        let bad_key = PrivateKeyDer::Pkcs8(rustls::pki_types::PrivatePkcs8KeyDer::from(vec![
+            0xDE, 0xAD,
+        ]));
         let _ = rotator.rotate(&bad_cert, &bad_key).await;
 
         let stats = rotator.stats().await;
@@ -617,8 +601,7 @@ mod tests {
     async fn test_rotation_counter_increments() {
         init_crypto();
         let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         assert_eq!(rotator.rotation_count(), 0);
         let (c, k) = fresh_cert_key();
@@ -638,8 +621,7 @@ mod tests {
             min_rotation_interval: Duration::ZERO,
             require_valid_before_swap: true,
         };
-        let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(config).expect("init");
+        let (rotator, _handle) = CertRotator::with_self_signed_initial(config).expect("init");
 
         // First two should succeed
         for _ in 0..2 {
@@ -649,7 +631,10 @@ mod tests {
 
         // Third should be rejected
         let (c, k) = fresh_cert_key();
-        let err = rotator.rotate(&c, &k).await.expect_err("should be rate-limited");
+        let err = rotator
+            .rotate(&c, &k)
+            .await
+            .expect_err("should be rate-limited");
         assert!(
             matches!(err, CertRotationError::MaxRotationsExceeded { max: 2 }),
             "unexpected error: {}",
@@ -665,16 +650,21 @@ mod tests {
             min_rotation_interval: Duration::from_secs(3600),
             require_valid_before_swap: true,
         };
-        let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(config).expect("init");
+        let (rotator, _handle) = CertRotator::with_self_signed_initial(config).expect("init");
 
         let (c1, k1) = fresh_cert_key();
         rotator.rotate(&c1, &k1).await.expect("first rotation");
 
         // Immediate second rotation should fail (interval not elapsed)
         let (c2, k2) = fresh_cert_key();
-        let err = rotator.rotate(&c2, &k2).await.expect_err("should fail due to interval");
-        assert!(matches!(err, CertRotationError::MaxRotationsExceeded { .. }));
+        let err = rotator
+            .rotate(&c2, &k2)
+            .await
+            .expect_err("should fail due to interval");
+        assert!(matches!(
+            err,
+            CertRotationError::MaxRotationsExceeded { .. }
+        ));
     }
 
     // -----------------------------------------------------------------------
@@ -685,12 +675,14 @@ mod tests {
     async fn test_rotation_fails_with_empty_cert() {
         init_crypto();
         let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         let empty_cert = CertificateDer::from(vec![]);
         let (_, valid_key) = fresh_cert_key();
-        let err = rotator.rotate(&empty_cert, &valid_key).await.expect_err("empty cert must fail");
+        let err = rotator
+            .rotate(&empty_cert, &valid_key)
+            .await
+            .expect_err("empty cert must fail");
         assert!(matches!(err, CertRotationError::InvalidCertificate(_)));
     }
 
@@ -698,14 +690,15 @@ mod tests {
     async fn test_rotation_fails_with_invalid_key_material() {
         init_crypto();
         let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         let (valid_cert, _) = fresh_cert_key();
-        let garbage_key = PrivateKeyDer::Pkcs8(rustls::pki_types::PrivatePkcs8KeyDer::from(
-            vec![0xFF; 32],
-        ));
-        let err = rotator.rotate(&valid_cert, &garbage_key).await.expect_err("bad key must fail");
+        let garbage_key =
+            PrivateKeyDer::Pkcs8(rustls::pki_types::PrivatePkcs8KeyDer::from(vec![0xFF; 32]));
+        let err = rotator
+            .rotate(&valid_cert, &garbage_key)
+            .await
+            .expect_err("bad key must fail");
         assert!(
             matches!(err, CertRotationError::TlsConfigBuild(_)),
             "unexpected variant: {}",
@@ -754,8 +747,7 @@ mod tests {
         let cfg = CertRotationConfig::permissive();
         let (rotator_a, handle_a) =
             CertRotator::with_self_signed_initial(cfg.clone()).expect("init a");
-        let (_rotator_b, handle_b) =
-            CertRotator::with_self_signed_initial(cfg).expect("init b");
+        let (_rotator_b, handle_b) = CertRotator::with_self_signed_initial(cfg).expect("init b");
 
         let ptr_a_initial = Arc::as_ptr(&handle_a.current());
         let ptr_b_initial = Arc::as_ptr(&handle_b.current());
@@ -780,8 +772,7 @@ mod tests {
     async fn test_subscribe_to_renewal_triggers_on_event() {
         init_crypto();
         let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         let (tx, rx) = broadcast::channel::<RenewalEvent>(16);
         let _jh = rotator.subscribe_to_renewal(rx);
@@ -809,8 +800,7 @@ mod tests {
     async fn test_subscribe_to_renewal_ignores_non_succeeded_events() {
         init_crypto();
         let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         let (tx, rx) = broadcast::channel::<RenewalEvent>(16);
         let _jh = rotator.subscribe_to_renewal(rx);
@@ -828,15 +818,17 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let stats = rotator.stats().await;
-        assert_eq!(stats.total_rotations, 0, "failed renewal must not increment rotations");
+        assert_eq!(
+            stats.total_rotations, 0,
+            "failed renewal must not increment rotations"
+        );
     }
 
     #[tokio::test]
     async fn test_subscribe_to_renewal_handles_channel_close() {
         init_crypto();
         let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         let (tx, rx) = broadcast::channel::<RenewalEvent>(4);
         let jh = rotator.subscribe_to_renewal(rx);
@@ -846,11 +838,11 @@ mod tests {
 
         // The subscriber task should exit cleanly
         let timeout = tokio::time::timeout(Duration::from_secs(1), jh).await;
-        assert!(timeout.is_ok(), "subscriber task should exit after channel close");
         assert!(
-            timeout.unwrap().is_ok(),
-            "subscriber task must not panic"
+            timeout.is_ok(),
+            "subscriber task should exit after channel close"
         );
+        assert!(timeout.unwrap().is_ok(), "subscriber task must not panic");
     }
 
     // -----------------------------------------------------------------------
@@ -861,8 +853,7 @@ mod tests {
     async fn test_multiple_handles_receive_rotation() {
         init_crypto();
         let (rotator, handle1) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         // Get a second receiver from the sender
         let handle2 = CertRotationHandle {
@@ -908,8 +899,7 @@ mod tests {
     async fn test_rotation_in_progress_flag_resets_on_failure() {
         init_crypto();
         let (rotator, _handle) =
-            CertRotator::with_self_signed_initial(CertRotationConfig::permissive())
-                .expect("init");
+            CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
         // Force a failure
         let empty = CertificateDer::from(vec![]);
@@ -933,9 +923,8 @@ mod tests {
     async fn test_stats_last_rotation_at_initially_none() {
         init_crypto();
         let (cert_der, key_der) = fresh_cert_key();
-        let initial = Arc::new(
-            CertRotator::build_server_config(&cert_der, &key_der).expect("build"),
-        );
+        let initial =
+            Arc::new(CertRotator::build_server_config(&cert_der, &key_der).expect("build"));
         let (rotator2, _h2) = CertRotator::new(initial, CertRotationConfig::permissive());
         let stats = rotator2.stats().await;
         assert_eq!(stats.total_rotations, 0);

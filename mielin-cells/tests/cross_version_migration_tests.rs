@@ -51,7 +51,11 @@ fn make_dna() -> Dna {
 fn reg(registry: &VersionRegistry, major: u32, minor: u32, patch: u32) -> Version {
     let v = Version::new(major, minor, patch);
     registry
-        .register_version(VersionMetadata::new(v, make_dna(), format!("v{major}.{minor}.{patch}")))
+        .register_version(VersionMetadata::new(
+            v,
+            make_dna(),
+            format!("v{major}.{minor}.{patch}"),
+        ))
         .expect("register_version must succeed");
     v
 }
@@ -79,8 +83,12 @@ fn reg_deprecated(registry: &VersionRegistry, major: u32, minor: u32, patch: u32
     let v = Version::new(major, minor, patch);
     registry
         .register_version(
-            VersionMetadata::new(v, make_dna(), format!("v{major}.{minor}.{patch} [deprecated]"))
-                .deprecate(),
+            VersionMetadata::new(
+                v,
+                make_dna(),
+                format!("v{major}.{minor}.{patch} [deprecated]"),
+            )
+            .deprecate(),
         )
         .expect("register deprecated version must succeed");
     v
@@ -130,7 +138,10 @@ fn migration_v1_to_v2_direct() {
         .can_migrate(&v1, &v2)
         .expect("can_migrate must not error when both versions registered");
 
-    assert!(ok, "v1.0.0 → v2.0.0 must be migratable when v1 is in migration path");
+    assert!(
+        ok,
+        "v1.0.0 → v2.0.0 must be migratable when v1 is in migration path"
+    );
 
     registry
         .update_agent_version(agent.id(), v2)
@@ -154,7 +165,9 @@ fn migration_v1_to_v1_5_to_v2_chain() {
     let v2 = reg_with_path(&registry, 2, 0, 0, vec![v1_5]);
 
     let agent = Agent::new(minimal_wasm());
-    registry.register_agent(agent.id(), v1).expect("register at v1");
+    registry
+        .register_agent(agent.id(), v1)
+        .expect("register at v1");
 
     // Hop 1: v1.0.0 → v1.5.0 (same major, minor >= source)
     let hop1 = registry
@@ -278,14 +291,14 @@ fn migration_chain_three_hops() {
     let v2_0_0 = reg_with_path(&registry, 2, 0, 0, vec![v1_9_0]);
 
     let agent = Agent::new(minimal_wasm());
-    registry.register_agent(agent.id(), v1_0_0).expect("register agent");
+    registry
+        .register_agent(agent.id(), v1_0_0)
+        .expect("register agent");
 
-    for (from, to) in [
-        (v1_0_0, v1_5_0),
-        (v1_5_0, v1_9_0),
-        (v1_9_0, v2_0_0),
-    ] {
-        let ok = registry.can_migrate(&from, &to).expect("can_migrate must not error");
+    for (from, to) in [(v1_0_0, v1_5_0), (v1_5_0, v1_9_0), (v1_9_0, v2_0_0)] {
+        let ok = registry
+            .can_migrate(&from, &to)
+            .expect("can_migrate must not error");
         assert!(ok, "hop {from} → {to} must be allowed");
         registry
             .update_agent_version(agent.id(), to)
@@ -308,11 +321,17 @@ fn migration_chain_finds_intermediate() {
 
     // Direct v1.0.0 → v2.0.0: v1.0.0 not in migration_path [v1.5.0]
     let direct = registry.can_migrate(&v1_0_0, &v2_0_0).expect("can_migrate");
-    assert!(!direct, "v1.0.0 → v2.0.0 must fail; intermediate v1.5.0 required");
+    assert!(
+        !direct,
+        "v1.0.0 → v2.0.0 must fail; intermediate v1.5.0 required"
+    );
 
     // Via intermediate v1.5.0 → v2.0.0: v1.5.0 IS in migration_path
     let via_intermediate = registry.can_migrate(&v1_5_0, &v2_0_0).expect("can_migrate");
-    assert!(via_intermediate, "v1.5.0 → v2.0.0 must succeed via migration_path");
+    assert!(
+        via_intermediate,
+        "v1.5.0 → v2.0.0 must succeed via migration_path"
+    );
 }
 
 // ── A-9 ──────────────────────────────────────────────────────────────────────
@@ -339,7 +358,9 @@ fn migration_self_migration_noop() {
     let registry = VersionRegistry::new();
     let v1 = reg(&registry, 1, 0, 0);
 
-    let ok = registry.can_migrate(&v1, &v1).expect("can_migrate must not error");
+    let ok = registry
+        .can_migrate(&v1, &v1)
+        .expect("can_migrate must not error");
     // v1.is_compatible_with(v1) => major==major && minor>=minor => true
     assert!(ok, "self-migration must be permitted (idempotent)");
 }
@@ -377,7 +398,10 @@ fn deprecated_source_migration_allowed() {
     let ok = registry
         .can_migrate(&v1_deprecated, &v1_1)
         .expect("can_migrate must not error");
-    assert!(ok, "migration FROM a deprecated source must still be allowed");
+    assert!(
+        ok,
+        "migration FROM a deprecated source must still be allowed"
+    );
 }
 
 // ── B-13 ─────────────────────────────────────────────────────────────────────
@@ -395,14 +419,20 @@ fn multiple_deprecated_versions_in_chain() {
     let hop_to_dep = registry
         .can_migrate(&v1_0_0, &v1_5_0_dep)
         .expect("can_migrate must not error");
-    assert!(!hop_to_dep, "migration to deprecated intermediate must be rejected");
+    assert!(
+        !hop_to_dep,
+        "migration to deprecated intermediate must be rejected"
+    );
 
     // Even though v2.0.0 has migration_path=[v1.5.0 (deprecated)],
     // v1.0.0 → v2.0.0 is only possible via that path, but v1.0.0 is not v1.5.0
     let hop_to_v2 = registry
         .can_migrate(&v1_0_0, &_v2_0_0)
         .expect("can_migrate must not error");
-    assert!(!hop_to_v2, "v1.0.0 → v2.0.0 via deprecated intermediate is also not permitted");
+    assert!(
+        !hop_to_v2,
+        "v1.0.0 → v2.0.0 via deprecated intermediate is also not permitted"
+    );
 }
 
 // ── B-14 ─────────────────────────────────────────────────────────────────────
@@ -412,11 +442,20 @@ fn multiple_deprecated_versions_in_chain() {
 fn deprecation_timeline() {
     let v = Version::new(3, 0, 0);
     let meta = VersionMetadata::new(v, make_dna(), "pre-deprecation".to_string());
-    assert!(!meta.deprecated, "newly created version must NOT be deprecated");
+    assert!(
+        !meta.deprecated,
+        "newly created version must NOT be deprecated"
+    );
 
     let deprecated_meta = meta.deprecate();
-    assert!(deprecated_meta.deprecated, "after .deprecate() the flag must be true");
-    assert_eq!(deprecated_meta.version, v, "version must be unchanged after deprecation");
+    assert!(
+        deprecated_meta.deprecated,
+        "after .deprecate() the flag must be true"
+    );
+    assert_eq!(
+        deprecated_meta.version, v,
+        "version must be unchanged after deprecation"
+    );
 }
 
 // ── B-15 ─────────────────────────────────────────────────────────────────────
@@ -443,7 +482,9 @@ async fn rollout_to_deprecated_target_rejected() {
     };
 
     let agent_id = AgentId::new_v4();
-    registry.register_agent(agent_id, v1).expect("register agent at v1");
+    registry
+        .register_agent(agent_id, v1)
+        .expect("register agent at v1");
 
     let deployer = VersionDeployer::new(registry);
     let config = RollingUpdateConfig::new(v1, v2_dep)
@@ -492,7 +533,10 @@ fn canary_to_deprecated_rejects() {
     let ok = registry
         .can_migrate(&v_stable, &v_canary_dep)
         .expect("can_migrate must not error");
-    assert!(!ok, "migration to deprecated canary version must be rejected");
+    assert!(
+        !ok,
+        "migration to deprecated canary version must be rejected"
+    );
 }
 
 // ── B-17 ─────────────────────────────────────────────────────────────────────
@@ -523,7 +567,10 @@ fn ab_test_with_deprecated_version_b() {
     let ok = registry
         .can_migrate(&v_a, &v_b_dep)
         .expect("can_migrate must not error");
-    assert!(!ok, "A/B test: migration to deprecated version B must be rejected");
+    assert!(
+        !ok,
+        "A/B test: migration to deprecated version B must be rejected"
+    );
 
     let deployer = VersionDeployer::new(registry.clone());
     // start_ab_test only verifies versions are registered — does not check deprecated
@@ -543,7 +590,10 @@ fn ab_test_with_deprecated_version_b() {
 
     let stats = ab.stats();
     // With traffic_split=1.0 all 20 must be assigned to version B
-    assert_eq!(stats.version_b_count, 20, "all agents must be assigned to version B");
+    assert_eq!(
+        stats.version_b_count, 20,
+        "all agents must be assigned to version B"
+    );
     assert_eq!(stats.version_a_count, 0, "no agents should be in version A");
 }
 
@@ -566,7 +616,10 @@ fn register_deprecated_version_metadata() {
         .get_version(&v)
         .expect("get_version must succeed for registered version");
 
-    assert!(meta.deprecated, "retrieved metadata must show deprecated=true");
+    assert!(
+        meta.deprecated,
+        "retrieved metadata must show deprecated=true"
+    );
     assert_eq!(meta.version, v);
     assert!(!meta.changelog.is_empty(), "changelog must be preserved");
 }
@@ -664,7 +717,10 @@ async fn rolling_update_exceeds_failure_threshold_halts() {
         .with_max_failures(3);
 
     let result = deployer.rolling_update(config, agents).await;
-    assert!(result.is_err(), "update to deprecated target must fail (incompatible)");
+    assert!(
+        result.is_err(),
+        "update to deprecated target must fail (incompatible)"
+    );
 }
 
 // ── C-22 ─────────────────────────────────────────────────────────────────────
@@ -704,7 +760,10 @@ fn rolling_update_fault_injected_during_rollout() {
         "all agents accounted for"
     );
     // At p=0.3 over 30 trials we'd expect ~9 faults; allow wide CI for low trial count
-    assert!(fault_count < n_agents, "not all operations can fail at p=0.3");
+    assert!(
+        fault_count < n_agents,
+        "not all operations can fail at p=0.3"
+    );
 }
 
 // ── C-23 ─────────────────────────────────────────────────────────────────────
@@ -740,7 +799,10 @@ async fn rolling_update_rollback_restores_old_version() {
     // All agents must still be at v1 (rollout failed before any agent was updated)
     for id in &agents {
         let ver = registry.get_agent_version(id).expect("must have version");
-        assert_eq!(ver, v1, "agent must remain at v1 after failed/rolled-back update");
+        assert_eq!(
+            ver, v1,
+            "agent must remain at v1 after failed/rolled-back update"
+        );
     }
 }
 
@@ -769,7 +831,11 @@ async fn rolling_update_wave_strategy() {
         .await
         .expect("batched update must succeed");
 
-    assert_eq!(updated.len(), 9, "all 9 agents must be updated in 3 batches of 3");
+    assert_eq!(
+        updated.len(),
+        9,
+        "all 9 agents must be updated in 3 batches of 3"
+    );
     for id in &agents {
         assert_eq!(registry.get_agent_version(id).unwrap(), v2);
     }
@@ -799,7 +865,11 @@ async fn rolling_update_one_at_a_time() {
         .await
         .expect("sequential update must succeed");
 
-    assert_eq!(updated.len(), 5, "all 5 agents must be updated sequentially");
+    assert_eq!(
+        updated.len(),
+        5,
+        "all 5 agents must be updated sequentially"
+    );
     for id in &agents {
         assert_eq!(registry.get_agent_version(id).unwrap(), v2);
     }
@@ -932,7 +1002,11 @@ fn rolling_update_100_agents_stress() {
     // Verify registry consistency: agents at v1 + agents at v2 == 100
     let at_v1 = registry.get_agents_by_version(&v1).len();
     let at_v2 = registry.get_agents_by_version(&v2).len();
-    assert_eq!(at_v1 + at_v2, 100, "all 100 agents must be in exactly one version group");
+    assert_eq!(
+        at_v1 + at_v2,
+        100,
+        "all 100 agents must be in exactly one version group"
+    );
     assert_eq!(at_v2, upgraded, "upgraded count must match registry");
     assert_eq!(at_v1, faulted, "faulted (stayed at v1) must match registry");
 }
@@ -951,7 +1025,9 @@ fn agent_version_tracking_on_migration() {
     let v2 = reg_with_path(&registry, 2, 0, 0, vec![v1]);
 
     let agent = Agent::new(minimal_wasm());
-    registry.register_agent(agent.id(), v1).expect("register agent");
+    registry
+        .register_agent(agent.id(), v1)
+        .expect("register agent");
 
     // Simulate migration by updating version
     let old_ver = registry
@@ -1009,11 +1085,13 @@ fn multi_agent_concurrent_migration() {
     let targets: Vec<Version> = (1..=5).map(|i| reg(&registry, 1, i, 0)).collect();
 
     // Create 5 agents, each starting at v_base
-    let agents: Vec<AgentId> = (0..5).map(|_| {
-        let id = AgentId::new_v4();
-        registry.register_agent(id, v_base).expect("register agent");
-        id
-    }).collect();
+    let agents: Vec<AgentId> = (0..5)
+        .map(|_| {
+            let id = AgentId::new_v4();
+            registry.register_agent(id, v_base).expect("register agent");
+            id
+        })
+        .collect();
 
     // Each agent migrates to its own unique target version
     for (i, &agent_id) in agents.iter().enumerate() {
@@ -1024,8 +1102,14 @@ fn multi_agent_concurrent_migration() {
 
     // Verify: each agent is at the correct target
     for (i, &agent_id) in agents.iter().enumerate() {
-        let ver = registry.get_agent_version(&agent_id).expect("must have version");
-        assert_eq!(ver, targets[i], "agent {i} must be at target version {}", targets[i]);
+        let ver = registry
+            .get_agent_version(&agent_id)
+            .expect("must have version");
+        assert_eq!(
+            ver, targets[i],
+            "agent {i} must be at target version {}",
+            targets[i]
+        );
     }
 
     // Verify get_agents_by_version: each target version has exactly 1 agent
@@ -1048,8 +1132,8 @@ fn agent_version_snapshot_before_after() {
     registry.register_agent(agent.id(), v1).expect("register");
 
     // Snapshot before migration
-    let snapshot_before = MigrationSnapshot::capture(&agent, None)
-        .expect("capture before migration must succeed");
+    let snapshot_before =
+        MigrationSnapshot::capture(&agent, None).expect("capture before migration must succeed");
     let ver_before = registry.get_agent_version(&agent.id()).unwrap();
 
     // Perform migration
@@ -1091,8 +1175,16 @@ fn version_registry_agent_count_by_version() {
         .collect();
 
     // Before migration: all 6 at v1, 0 at v2
-    assert_eq!(registry.get_agents_by_version(&v1).len(), 6, "pre-migration: 6 at v1");
-    assert_eq!(registry.get_agents_by_version(&v2).len(), 0, "pre-migration: 0 at v2");
+    assert_eq!(
+        registry.get_agents_by_version(&v1).len(),
+        6,
+        "pre-migration: 6 at v1"
+    );
+    assert_eq!(
+        registry.get_agents_by_version(&v2).len(),
+        0,
+        "pre-migration: 0 at v2"
+    );
 
     // Migrate 4 agents to v2
     for &id in agents.iter().take(4) {
@@ -1102,8 +1194,16 @@ fn version_registry_agent_count_by_version() {
     }
 
     // After migration: 2 at v1, 4 at v2
-    assert_eq!(registry.get_agents_by_version(&v1).len(), 2, "post-migration: 2 remaining at v1");
-    assert_eq!(registry.get_agents_by_version(&v2).len(), 4, "post-migration: 4 at v2");
+    assert_eq!(
+        registry.get_agents_by_version(&v1).len(),
+        2,
+        "post-migration: 2 remaining at v1"
+    );
+    assert_eq!(
+        registry.get_agents_by_version(&v2).len(),
+        4,
+        "post-migration: 4 at v2"
+    );
 }
 
 // ── D-34 ─────────────────────────────────────────────────────────────────────
@@ -1144,16 +1244,16 @@ fn version_registry_concurrent_updates() {
         .map(|&target| {
             let reg_clone = Arc::clone(&registry);
             let ctr = Arc::clone(&update_count);
-            std::thread::spawn(move || {
-                match reg_clone.update_agent_version(agent_id, target) {
+            std::thread::spawn(
+                move || match reg_clone.update_agent_version(agent_id, target) {
                     Ok(_) => {
                         ctr.fetch_add(1, Ordering::Relaxed);
                     }
                     Err(e) => {
                         panic!("concurrent update failed unexpectedly: {e}");
                     }
-                }
-            })
+                },
+            )
         })
         .collect();
 
@@ -1189,27 +1289,49 @@ fn migration_telemetry_records_hops() {
     let v2 = reg_with_path(&registry, 2, 0, 0, vec![v1_5]);
 
     let agent = Agent::new(minimal_wasm());
-    registry.register_agent(agent.id(), v1).expect("register agent");
+    registry
+        .register_agent(agent.id(), v1)
+        .expect("register agent");
 
     let mut manager = MigrationManager::new();
-    assert_eq!(manager.pending_count(), 0, "no pending migrations initially");
+    assert_eq!(
+        manager.pending_count(),
+        0,
+        "no pending migrations initially"
+    );
 
     // Hop 1: v1.0.0 → v1.5.0
     let snap1 = manager
         .initiate_migration(&agent, None)
         .expect("initiate migration hop 1 must succeed");
-    assert_eq!(manager.pending_count(), 1, "one pending migration after hop 1");
-    assert_eq!(&snap1.agent_id, agent.id().as_bytes(), "snapshot agent_id must match");
+    assert_eq!(
+        manager.pending_count(),
+        1,
+        "one pending migration after hop 1"
+    );
+    assert_eq!(
+        &snap1.agent_id,
+        agent.id().as_bytes(),
+        "snapshot agent_id must match"
+    );
 
     manager.complete_migration(&snap1.agent_id);
-    assert_eq!(manager.pending_count(), 0, "pending count must be 0 after completing hop 1");
+    assert_eq!(
+        manager.pending_count(),
+        0,
+        "pending count must be 0 after completing hop 1"
+    );
 
     // Update registry to reflect hop 1 completion
-    registry.update_agent_version(agent.id(), v1_5).expect("update to v1.5");
+    registry
+        .update_agent_version(agent.id(), v1_5)
+        .expect("update to v1.5");
 
     // Verify can proceed to v2 from v1.5
     assert!(
-        registry.can_migrate(&v1_5, &v2).expect("can_migrate v1.5→v2"),
+        registry
+            .can_migrate(&v1_5, &v2)
+            .expect("can_migrate v1.5→v2"),
         "v1.5 → v2 must be allowed"
     );
 
@@ -1217,7 +1339,11 @@ fn migration_telemetry_records_hops() {
     let snap2 = manager
         .initiate_migration(&agent, None)
         .expect("initiate migration hop 2 must succeed");
-    assert_eq!(manager.pending_count(), 1, "one pending migration during hop 2");
+    assert_eq!(
+        manager.pending_count(),
+        1,
+        "one pending migration during hop 2"
+    );
 
     // Serialize and deserialize the hop-2 snapshot to verify round-trip
     let serialized = snap2.serialize().expect("serialize hop-2 snapshot");
@@ -1233,9 +1359,15 @@ fn migration_telemetry_records_hops() {
     );
 
     manager.complete_migration(&snap2.agent_id);
-    assert_eq!(manager.pending_count(), 0, "all migrations complete after hop 2");
+    assert_eq!(
+        manager.pending_count(),
+        0,
+        "all migrations complete after hop 2"
+    );
 
-    registry.update_agent_version(agent.id(), v2).expect("update to v2");
+    registry
+        .update_agent_version(agent.id(), v2)
+        .expect("update to v2");
     assert_eq!(
         registry.get_agent_version(&agent.id()).unwrap(),
         v2,

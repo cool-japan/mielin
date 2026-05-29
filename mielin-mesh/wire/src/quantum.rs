@@ -13,10 +13,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use ml_kem::{
-    Decapsulate, DecapsulationKey512, DecapsulationKey768, DecapsulationKey1024,
-    EncapsulationKey512, EncapsulationKey768, EncapsulationKey1024,
-    KeyExport, KeyInit, MlKem512, MlKem768, MlKem1024, Seed,
-    kem::Ciphertext,
+    kem::Ciphertext, Decapsulate, DecapsulationKey1024, DecapsulationKey512, DecapsulationKey768,
+    EncapsulationKey1024, EncapsulationKey512, EncapsulationKey768, KeyExport, KeyInit, MlKem1024,
+    MlKem512, MlKem768, Seed,
 };
 
 // ---------------------------------------------------------------------------
@@ -291,8 +290,7 @@ impl MlKemKeyPair {
                         "failed to convert EK bytes for ML-KEM-512".to_string(),
                     )
                 })?;
-                let ek_arr =
-                    ml_kem::kem::Key::<EncapsulationKey512>::from(ek_key_bytes);
+                let ek_arr = ml_kem::kem::Key::<EncapsulationKey512>::from(ek_key_bytes);
                 let ek_parsed = EncapsulationKey512::new(&ek_arr).map_err(|_| {
                     QuantumCryptoError::InvalidEncapsulationKey(
                         "ML-KEM-512 encapsulation key validation failed".to_string(),
@@ -311,8 +309,7 @@ impl MlKemKeyPair {
                         "failed to convert EK bytes for ML-KEM-768".to_string(),
                     )
                 })?;
-                let ek_arr =
-                    ml_kem::kem::Key::<EncapsulationKey768>::from(ek_key_bytes);
+                let ek_arr = ml_kem::kem::Key::<EncapsulationKey768>::from(ek_key_bytes);
                 let ek_parsed = EncapsulationKey768::new(&ek_arr).map_err(|_| {
                     QuantumCryptoError::InvalidEncapsulationKey(
                         "ML-KEM-768 encapsulation key validation failed".to_string(),
@@ -331,8 +328,7 @@ impl MlKemKeyPair {
                         "failed to convert EK bytes for ML-KEM-1024".to_string(),
                     )
                 })?;
-                let ek_arr =
-                    ml_kem::kem::Key::<EncapsulationKey1024>::from(ek_key_bytes);
+                let ek_arr = ml_kem::kem::Key::<EncapsulationKey1024>::from(ek_key_bytes);
                 let ek_parsed = EncapsulationKey1024::new(&ek_arr).map_err(|_| {
                     QuantumCryptoError::InvalidEncapsulationKey(
                         "ML-KEM-1024 encapsulation key validation failed".to_string(),
@@ -483,9 +479,8 @@ impl HybridKexState {
         let sys_rng = ring::rand::SystemRandom::new();
 
         // Generate X25519 ephemeral private key
-        let x25519_private =
-            agreement::EphemeralPrivateKey::generate(&agreement::X25519, &sys_rng)
-                .map_err(|e| QuantumCryptoError::X25519Failure(e.to_string()))?;
+        let x25519_private = agreement::EphemeralPrivateKey::generate(&agreement::X25519, &sys_rng)
+            .map_err(|e| QuantumCryptoError::X25519Failure(e.to_string()))?;
 
         let x25519_public_key = x25519_private
             .compute_public_key()
@@ -526,10 +521,8 @@ impl HybridKexState {
         }
 
         // X25519: agree on shared secret using client's classical share
-        let client_classical = agreement::UnparsedPublicKey::new(
-            &agreement::X25519,
-            &client_share.classical_share,
-        );
+        let client_classical =
+            agreement::UnparsedPublicKey::new(&agreement::X25519, &client_share.classical_share);
 
         // The ring API consumes EphemeralPrivateKey, but we need to keep state,
         // so we need a new ephemeral key for the server side.
@@ -542,13 +535,9 @@ impl HybridKexState {
             .compute_public_key()
             .map_err(|e| QuantumCryptoError::X25519Failure(e.to_string()))?;
 
-        let server_x25519_public_bytes: [u8; 32] = server_x25519_public
-            .as_ref()
-            .try_into()
-            .map_err(|_| {
-                QuantumCryptoError::X25519Failure(
-                    "unexpected X25519 public key length".to_string(),
-                )
+        let server_x25519_public_bytes: [u8; 32] =
+            server_x25519_public.as_ref().try_into().map_err(|_| {
+                QuantumCryptoError::X25519Failure("unexpected X25519 public key length".to_string())
             })?;
 
         let x25519_classical = {
@@ -566,7 +555,9 @@ impl HybridKexState {
                     Ok(())
                 },
             )
-            .map_err(|_| QuantumCryptoError::X25519Failure("X25519 agreement failed".to_string()))??;
+            .map_err(|_| {
+                QuantumCryptoError::X25519Failure("X25519 agreement failed".to_string())
+            })??;
             classical_buf
         };
 
@@ -626,7 +617,9 @@ impl HybridKexState {
                     Ok(())
                 },
             )
-            .map_err(|_| QuantumCryptoError::X25519Failure("X25519 agreement failed".to_string()))??;
+            .map_err(|_| {
+                QuantumCryptoError::X25519Failure("X25519 agreement failed".to_string())
+            })??;
             classical_buf
         };
 
@@ -870,8 +863,7 @@ mod tests {
 
     fn roundtrip_test(variant: MlKemVariant) {
         let seed = [42u8; 64];
-        let kp = MlKemKeyPair::generate(variant, Some(seed))
-            .expect("key generation failed");
+        let kp = MlKemKeyPair::generate(variant, Some(seed)).expect("key generation failed");
 
         let encap = MlKemKeyPair::encapsulate(kp.encapsulation_key(), variant)
             .expect("encapsulation failed");
@@ -943,10 +935,10 @@ mod tests {
     #[test]
     fn test_ml_kem_deterministic_key_gen_same_seed() {
         let seed = [99u8; 64];
-        let kp1 = MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed))
-            .expect("key gen 1 failed");
-        let kp2 = MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed))
-            .expect("key gen 2 failed");
+        let kp1 =
+            MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed)).expect("key gen 1 failed");
+        let kp2 =
+            MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed)).expect("key gen 2 failed");
 
         assert_eq!(
             kp1.encapsulation_key(),
@@ -964,10 +956,10 @@ mod tests {
     fn test_ml_kem_different_seeds_different_keys() {
         let seed_a = [11u8; 64];
         let seed_b = [22u8; 64];
-        let kp_a = MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed_a))
-            .expect("key gen A failed");
-        let kp_b = MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed_b))
-            .expect("key gen B failed");
+        let kp_a =
+            MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed_a)).expect("key gen A failed");
+        let kp_b =
+            MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed_b)).expect("key gen B failed");
 
         assert_ne!(
             kp_a.encapsulation_key(),
@@ -982,10 +974,8 @@ mod tests {
 
     #[test]
     fn test_hybrid_kex_full_handshake() {
-        let client = HybridKexState::new(MlKemVariant::MlKem768)
-            .expect("client init failed");
-        let server = HybridKexState::new(MlKemVariant::MlKem768)
-            .expect("server init failed");
+        let client = HybridKexState::new(MlKemVariant::MlKem768).expect("client init failed");
+        let server = HybridKexState::new(MlKemVariant::MlKem768).expect("server init failed");
 
         let client_share = client.public_key_share();
         let (server_share, server_secret) = server
@@ -1006,10 +996,8 @@ mod tests {
 
     #[test]
     fn test_hybrid_kex_shared_secret_matches_both_sides() {
-        let client = HybridKexState::new(MlKemVariant::MlKem768)
-            .expect("client init failed");
-        let server = HybridKexState::new(MlKemVariant::MlKem768)
-            .expect("server init failed");
+        let client = HybridKexState::new(MlKemVariant::MlKem768).expect("client init failed");
+        let server = HybridKexState::new(MlKemVariant::MlKem768).expect("server init failed");
 
         let client_share = client.public_key_share();
         let (server_share, server_secret) = server
@@ -1035,10 +1023,8 @@ mod tests {
 
     #[test]
     fn test_hybrid_kex_different_ephemeral_keys_each_time() {
-        let kex1 = HybridKexState::new(MlKemVariant::MlKem768)
-            .expect("kex1 init failed");
-        let kex2 = HybridKexState::new(MlKemVariant::MlKem768)
-            .expect("kex2 init failed");
+        let kex1 = HybridKexState::new(MlKemVariant::MlKem768).expect("kex1 init failed");
+        let kex2 = HybridKexState::new(MlKemVariant::MlKem768).expect("kex2 init failed");
 
         let share1 = kex1.public_key_share();
         let share2 = kex2.public_key_share();
@@ -1060,13 +1046,12 @@ mod tests {
 
     #[test]
     fn test_pq_key_share_extension_serialization() {
-        let kex = HybridKexState::new(MlKemVariant::MlKem768)
-            .expect("kex init failed");
+        let kex = HybridKexState::new(MlKemVariant::MlKem768).expect("kex init failed");
         let share = kex.public_key_share();
 
         let encoded = share.encode();
-        let decoded = PqKeyShareExtension::decode(&encoded, MlKemVariant::MlKem768)
-            .expect("decode failed");
+        let decoded =
+            PqKeyShareExtension::decode(&encoded, MlKemVariant::MlKem768).expect("decode failed");
 
         assert_eq!(share.group_id, decoded.group_id);
         assert_eq!(share.classical_share, decoded.classical_share);
@@ -1076,12 +1061,11 @@ mod tests {
 
     #[test]
     fn test_pq_key_share_encode_decode_roundtrip_512() {
-        let kex = HybridKexState::new(MlKemVariant::MlKem512)
-            .expect("kex init failed");
+        let kex = HybridKexState::new(MlKemVariant::MlKem512).expect("kex init failed");
         let share = kex.public_key_share();
         let encoded = share.encode();
-        let decoded = PqKeyShareExtension::decode(&encoded, MlKemVariant::MlKem512)
-            .expect("decode failed");
+        let decoded =
+            PqKeyShareExtension::decode(&encoded, MlKemVariant::MlKem512).expect("decode failed");
         assert_eq!(share.group_id, decoded.group_id);
         assert_eq!(share.pq_share, decoded.pq_share);
     }
@@ -1115,7 +1099,10 @@ mod tests {
         let out_a = hkdf_sha256_combine(&classical_a, &pq_a, info);
         let out_b = hkdf_sha256_combine(&classical_b, &pq_b, info);
 
-        assert_ne!(out_a, out_b, "different inputs must yield different outputs");
+        assert_ne!(
+            out_a, out_b,
+            "different inputs must yield different outputs"
+        );
     }
 
     #[test]
@@ -1126,7 +1113,10 @@ mod tests {
         let out_a = hkdf_sha256_combine(&classical, &pq, b"label-a");
         let out_b = hkdf_sha256_combine(&classical, &pq, b"label-b");
 
-        assert_ne!(out_a, out_b, "different info labels must yield different outputs");
+        assert_ne!(
+            out_a, out_b,
+            "different info labels must yield different outputs"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1135,8 +1125,7 @@ mod tests {
 
     #[test]
     fn test_quantum_security_info_ml_kem_768() {
-        let kp = MlKemKeyPair::generate(MlKemVariant::MlKem768, None)
-            .expect("key gen failed");
+        let kp = MlKemKeyPair::generate(MlKemVariant::MlKem768, None).expect("key gen failed");
         let info = kp.security_info();
 
         assert_eq!(info.variant, MlKemVariant::MlKem768);
@@ -1175,8 +1164,14 @@ mod tests {
     fn test_quantum_crypto_error_display() {
         let err = QuantumCryptoError::InvalidSeedLength { actual: 32 };
         let msg = err.to_string();
-        assert!(msg.contains("64"), "error message should mention expected length");
-        assert!(msg.contains("32"), "error message should mention actual length");
+        assert!(
+            msg.contains("64"),
+            "error message should mention expected length"
+        );
+        assert!(
+            msg.contains("32"),
+            "error message should mention actual length"
+        );
     }
 
     #[test]
@@ -1196,7 +1191,11 @@ mod tests {
         ];
         for err in &errs {
             let msg = err.to_string();
-            assert!(!msg.is_empty(), "error display should not be empty: {:?}", err);
+            assert!(
+                !msg.is_empty(),
+                "error display should not be empty: {:?}",
+                err
+            );
         }
     }
 
@@ -1218,8 +1217,8 @@ mod tests {
     #[test]
     fn test_encapsulation_key_length_768() {
         let seed = [0u8; 64];
-        let kp = MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed))
-            .expect("key gen failed");
+        let kp =
+            MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed)).expect("key gen failed");
         assert_eq!(
             kp.encapsulation_key().len(),
             1184,
@@ -1230,8 +1229,8 @@ mod tests {
     #[test]
     fn test_decapsulation_key_length_768() {
         let seed = [0u8; 64];
-        let kp = MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed))
-            .expect("key gen failed");
+        let kp =
+            MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed)).expect("key gen failed");
         // Seed (compact representation) is always 64 bytes
         assert_eq!(
             kp.decapsulation_key().len(),
@@ -1243,8 +1242,8 @@ mod tests {
     #[test]
     fn test_ciphertext_length_768() {
         let seed = [0u8; 64];
-        let kp = MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed))
-            .expect("key gen failed");
+        let kp =
+            MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed)).expect("key gen failed");
         let encap = MlKemKeyPair::encapsulate(kp.encapsulation_key(), MlKemVariant::MlKem768)
             .expect("encapsulation failed");
         assert_eq!(
@@ -1257,8 +1256,8 @@ mod tests {
     #[test]
     fn test_shared_secret_length() {
         let seed = [0u8; 64];
-        let kp = MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed))
-            .expect("key gen failed");
+        let kp =
+            MlKemKeyPair::generate(MlKemVariant::MlKem768, Some(seed)).expect("key gen failed");
         let encap = MlKemKeyPair::encapsulate(kp.encapsulation_key(), MlKemVariant::MlKem768)
             .expect("encapsulation failed");
         assert_eq!(
@@ -1268,15 +1267,17 @@ mod tests {
         );
 
         let ss_decap = kp.decapsulate(encap.ciphertext()).expect("decap failed");
-        assert_eq!(ss_decap.len(), 32, "decapsulated shared secret must be 32 bytes");
+        assert_eq!(
+            ss_decap.len(),
+            32,
+            "decapsulated shared secret must be 32 bytes"
+        );
     }
 
     #[test]
     fn test_hybrid_shared_secret_combined_length() {
-        let client = HybridKexState::new(MlKemVariant::MlKem768)
-            .expect("client init failed");
-        let server = HybridKexState::new(MlKemVariant::MlKem768)
-            .expect("server init failed");
+        let client = HybridKexState::new(MlKemVariant::MlKem768).expect("client init failed");
+        let server = HybridKexState::new(MlKemVariant::MlKem768).expect("server init failed");
 
         let client_share = client.public_key_share();
         let (server_share, server_secret) = server
@@ -1299,28 +1300,24 @@ mod tests {
 
     #[test]
     fn test_group_id_x25519_mlkem768() {
-        let kex = HybridKexState::new(MlKemVariant::MlKem768)
-            .expect("kex init failed");
+        let kex = HybridKexState::new(MlKemVariant::MlKem768).expect("kex init failed");
         let share = kex.public_key_share();
         assert_eq!(
-            share.group_id,
-            0x11EC,
+            share.group_id, 0x11EC,
             "X25519MLKEM768 group ID must be 0x11EC"
         );
     }
 
     #[test]
     fn test_group_id_x25519_mlkem512() {
-        let kex = HybridKexState::new(MlKemVariant::MlKem512)
-            .expect("kex init failed");
+        let kex = HybridKexState::new(MlKemVariant::MlKem512).expect("kex init failed");
         let share = kex.public_key_share();
         assert_eq!(share.group_id, 0x11EB);
     }
 
     #[test]
     fn test_group_id_x25519_mlkem1024() {
-        let kex = HybridKexState::new(MlKemVariant::MlKem1024)
-            .expect("kex init failed");
+        let kex = HybridKexState::new(MlKemVariant::MlKem1024).expect("kex init failed");
         let share = kex.public_key_share();
         assert_eq!(share.group_id, 0x11ED);
     }
@@ -1344,10 +1341,10 @@ mod tests {
         assert_eq!(kp1.decapsulation_key(), kp2.decapsulation_key());
 
         // But encapsulation uses fresh randomness, so ciphertexts differ
-        let encap1 = MlKemKeyPair::encapsulate(kp1.encapsulation_key(), MlKemVariant::MlKem768)
-            .unwrap();
-        let encap2 = MlKemKeyPair::encapsulate(kp2.encapsulation_key(), MlKemVariant::MlKem768)
-            .unwrap();
+        let encap1 =
+            MlKemKeyPair::encapsulate(kp1.encapsulation_key(), MlKemVariant::MlKem768).unwrap();
+        let encap2 =
+            MlKemKeyPair::encapsulate(kp2.encapsulation_key(), MlKemVariant::MlKem768).unwrap();
 
         // Both round-trips must succeed
         let ss1 = kp1.decapsulate(encap1.ciphertext()).unwrap();
@@ -1363,19 +1360,14 @@ mod tests {
 
     #[test]
     fn test_hybrid_kex_variant_mismatch_fails() {
-        let client = HybridKexState::new(MlKemVariant::MlKem512)
-            .expect("client init failed");
-        let server = HybridKexState::new(MlKemVariant::MlKem768)
-            .expect("server init failed");
+        let client = HybridKexState::new(MlKemVariant::MlKem512).expect("client init failed");
+        let server = HybridKexState::new(MlKemVariant::MlKem768).expect("server init failed");
 
         let client_share = client.public_key_share();
         // Server expects MlKem768, but client offered MlKem512
         let result = server.server_respond(&client_share);
 
-        assert!(
-            result.is_err(),
-            "server should reject mismatched variant"
-        );
+        assert!(result.is_err(), "server should reject mismatched variant");
     }
 
     // -----------------------------------------------------------------------
@@ -1460,8 +1452,8 @@ mod tests {
     #[test]
     fn test_encapsulation_accessors() {
         let kp = MlKemKeyPair::generate(MlKemVariant::MlKem768, None).unwrap();
-        let encap = MlKemKeyPair::encapsulate(kp.encapsulation_key(), MlKemVariant::MlKem768)
-            .unwrap();
+        let encap =
+            MlKemKeyPair::encapsulate(kp.encapsulation_key(), MlKemVariant::MlKem768).unwrap();
         assert!(!encap.ciphertext().is_empty());
         assert_eq!(encap.shared_secret().len(), 32);
     }

@@ -195,7 +195,10 @@ impl AddressSpace {
     }
 
     /// Walk page tables and copy all mappings with COW semantics
-    pub(super) fn walk_and_copy_cow(&mut self, new_space: &mut AddressSpace) -> Result<(), VmmError> {
+    pub(super) fn walk_and_copy_cow(
+        &mut self,
+        new_space: &mut AddressSpace,
+    ) -> Result<(), VmmError> {
         // For each mapped page, map it in the new space as COW
         // This is a simplified implementation - a full implementation would
         // recursively walk the page table tree.

@@ -172,8 +172,7 @@ impl LoadTestResult {
 
     /// Returns `true` when every attempted connection succeeded
     pub fn all_succeeded(&self) -> bool {
-        self.connections_failed == 0
-            && self.connections_succeeded == self.connections_attempted
+        self.connections_failed == 0 && self.connections_succeeded == self.connections_attempted
     }
 
     /// Throughput: connections completed per second
@@ -259,13 +258,12 @@ impl LoadTestRunner {
 
                 // Attempt to acquire a semaphore permit
                 let permit_result = if fail_on_timeout {
-                    tokio::time::timeout(acquire_timeout, sem.acquire_owned()).await
+                    tokio::time::timeout(acquire_timeout, sem.acquire_owned())
+                        .await
                         .map_err(|_| "permit acquire timeout".to_string())
                         .and_then(|r| r.map_err(|e| e.to_string()))
                 } else {
-                    sem.acquire_owned()
-                        .await
-                        .map_err(|e| e.to_string())
+                    sem.acquire_owned().await.map_err(|e| e.to_string())
                 };
 
                 match permit_result {
@@ -290,7 +288,8 @@ impl LoadTestRunner {
                         if hold_ms > 0 {
                             // Seed each task's PRNG from task index to get
                             // deterministic but varied delays.
-                            let mut rng = Xorshift64::new(0xdeadbeef_u64.wrapping_add(task_idx as u64));
+                            let mut rng =
+                                Xorshift64::new(0xdeadbeef_u64.wrapping_add(task_idx as u64));
                             let jitter_us = rng.next_bounded(hold_ms * 1000 + 1);
                             if jitter_us > 0 {
                                 tokio::time::sleep(Duration::from_micros(jitter_us)).await;
@@ -386,7 +385,10 @@ mod tests {
         let mut rng = Xorshift64::new(0);
         // Should not produce an infinite loop or panic
         let v = rng.next();
-        assert_ne!(v, 0, "xorshift64 with 0 seed must use fallback non-zero state");
+        assert_ne!(
+            v, 0,
+            "xorshift64 with 0 seed must use fallback non-zero state"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -627,7 +629,13 @@ mod tests {
                 duration: Duration::from_millis(1),
             };
             let rate = r.success_rate();
-            assert!((0.0..=1.0).contains(&rate), "rate={} for att={} succ={}", rate, att, succ);
+            assert!(
+                (0.0..=1.0).contains(&rate),
+                "rate={} for att={} succ={}",
+                rate,
+                att,
+                succ
+            );
         }
     }
 

@@ -427,7 +427,11 @@ mod tests {
 
         for i in 0..count {
             let page = virt_addr + i * PAGE_SIZE;
-            assert!(addr_space.is_guard_page(page).unwrap(), "page {} not guard", i);
+            assert!(
+                addr_space.is_guard_page(page).unwrap(),
+                "page {} not guard",
+                i
+            );
         }
     }
 

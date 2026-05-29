@@ -9,9 +9,9 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
 #[cfg(test)]
 use std::time::Duration;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -162,11 +162,7 @@ pub struct ExtensionMessage {
 }
 
 impl ExtensionMessage {
-    pub fn new(
-        extension_name: impl Into<String>,
-        sequence: u64,
-        payload: Vec<u8>,
-    ) -> Self {
+    pub fn new(extension_name: impl Into<String>, sequence: u64, payload: Vec<u8>) -> Self {
         Self {
             extension_name: extension_name.into(),
             sequence,
@@ -189,10 +185,7 @@ pub trait ProtocolExtension: Send + Sync {
     fn required_version(&self) -> ProtocolVersion;
 
     /// Handle an incoming extension message, optionally producing a reply.
-    fn handle(
-        &self,
-        msg: &ExtensionMessage,
-    ) -> Result<Option<ExtensionMessage>, ProtocolError>;
+    fn handle(&self, msg: &ExtensionMessage) -> Result<Option<ExtensionMessage>, ProtocolError>;
 
     /// Called when a remote peer confirms support for this extension.
     fn on_capability_negotiated(&self, _remote: &Capability) {}
@@ -366,10 +359,7 @@ impl ProtocolHandler {
     /// Process a `HelloAckMessage` (the initiating side calls this after
     /// receiving the responder's ack).  Verifies nonce and transitions to
     /// `Established`.
-    pub fn process_hello_ack(
-        &mut self,
-        ack: &HelloAckMessage,
-    ) -> Result<(), ProtocolError> {
+    pub fn process_hello_ack(&mut self, ack: &HelloAckMessage) -> Result<(), ProtocolError> {
         self.stats.hello_acks += 1;
 
         let expected_nonce = match self.handshake_state {
@@ -433,18 +423,16 @@ impl ProtocolHandler {
         self.stats.extension_messages_routed += 1;
         self.stats.bytes_processed += msg.payload.len() as u64;
 
-        ext.handle(msg)
-            .map_err(|e| ProtocolError::HandlerError { details: e.to_string() })
+        ext.handle(msg).map_err(|e| ProtocolError::HandlerError {
+            details: e.to_string(),
+        })
     }
 
     /// Dispatch a generic `Message` enum value.  Extension-type messages
     /// must be represented as `Message::LoadInfo` for now (placeholder —
     /// callers that need extension routing should use `route_extension_message`
     /// directly).
-    pub fn handle_message(
-        &mut self,
-        msg: Message,
-    ) -> Result<Option<Message>, WireError> {
+    pub fn handle_message(&mut self, msg: Message) -> Result<Option<Message>, WireError> {
         self.stats.messages_processed += 1;
         self.stats.bytes_processed += 8; // approximate overhead
 
@@ -509,10 +497,7 @@ impl ProtocolExtension for EchoExtension {
         ProtocolVersion::CURRENT
     }
 
-    fn handle(
-        &self,
-        msg: &ExtensionMessage,
-    ) -> Result<Option<ExtensionMessage>, ProtocolError> {
+    fn handle(&self, msg: &ExtensionMessage) -> Result<Option<ExtensionMessage>, ProtocolError> {
         Ok(Some(ExtensionMessage {
             extension_name: msg.extension_name.clone(),
             sequence: msg.sequence,
@@ -577,10 +562,7 @@ impl ProtocolExtension for PingExtension {
         ProtocolVersion::CURRENT
     }
 
-    fn handle(
-        &self,
-        msg: &ExtensionMessage,
-    ) -> Result<Option<ExtensionMessage>, ProtocolError> {
+    fn handle(&self, msg: &ExtensionMessage) -> Result<Option<ExtensionMessage>, ProtocolError> {
         if msg.flags & 0x1 != 0 {
             // This is already a pong reply.
             self.pong_count.fetch_add(1, Ordering::Relaxed);
@@ -683,10 +665,7 @@ impl ProtocolExtension for MetadataExtension {
         ProtocolVersion::CURRENT
     }
 
-    fn handle(
-        &self,
-        msg: &ExtensionMessage,
-    ) -> Result<Option<ExtensionMessage>, ProtocolError> {
+    fn handle(&self, msg: &ExtensionMessage) -> Result<Option<ExtensionMessage>, ProtocolError> {
         let incoming: HashMap<String, String> =
             serde_json::from_slice(&msg.payload).map_err(|e| ProtocolError::DecodeError {
                 details: e.to_string(),
@@ -784,9 +763,7 @@ mod tests {
     fn test_register_duplicate_extension_fails() {
         let mut h = ProtocolHandler::new();
         h.register_extension(Box::new(EchoExtension)).unwrap();
-        let err = h
-            .register_extension(Box::new(EchoExtension))
-            .unwrap_err();
+        let err = h.register_extension(Box::new(EchoExtension)).unwrap_err();
         assert!(matches!(
             err,
             ProtocolError::ExtensionAlreadyRegistered { .. }
@@ -805,10 +782,7 @@ mod tests {
     fn test_unregister_nonexistent_extension_fails() {
         let mut h = ProtocolHandler::new();
         let err = h.unregister_extension("nonexistent").unwrap_err();
-        assert!(matches!(
-            err,
-            ProtocolError::ExtensionNotFound { .. }
-        ));
+        assert!(matches!(err, ProtocolError::ExtensionNotFound { .. }));
     }
 
     #[test]
@@ -821,7 +795,8 @@ mod tests {
     fn test_extension_names_after_register() {
         let mut h = ProtocolHandler::new();
         h.register_extension(Box::new(EchoExtension)).unwrap();
-        h.register_extension(Box::new(PingExtension::new())).unwrap();
+        h.register_extension(Box::new(PingExtension::new()))
+            .unwrap();
         let names = h.extension_names();
         assert_eq!(names.len(), 2);
         assert!(names.contains(&"echo"));
@@ -858,9 +833,13 @@ mod tests {
     #[test]
     fn test_process_hello_version_match() {
         let mut responder = ProtocolHandler::new();
-        responder.register_extension(Box::new(EchoExtension)).unwrap();
+        responder
+            .register_extension(Box::new(EchoExtension))
+            .unwrap();
         let mut initiator = ProtocolHandler::new();
-        initiator.register_extension(Box::new(EchoExtension)).unwrap();
+        initiator
+            .register_extension(Box::new(EchoExtension))
+            .unwrap();
 
         let hello = initiator.build_hello("initiator");
         let ack = responder.process_hello(&hello).unwrap();
@@ -914,10 +893,7 @@ mod tests {
             reply_nonce: 1,
         };
         let err = initiator.process_hello_ack(&ack).unwrap_err();
-        assert!(matches!(
-            err,
-            ProtocolError::NegotiationFailed { .. }
-        ));
+        assert!(matches!(err, ProtocolError::NegotiationFailed { .. }));
         assert_eq!(initiator.handshake_state(), HandshakeState::Failed);
     }
 
@@ -981,10 +957,7 @@ mod tests {
         let mut h = ProtocolHandler::new();
         let msg = ExtensionMessage::new("unknown", 1, vec![]);
         let err = h.route_extension_message(&msg).unwrap_err();
-        assert!(matches!(
-            err,
-            ProtocolError::ExtensionNotFound { .. }
-        ));
+        assert!(matches!(err, ProtocolError::ExtensionNotFound { .. }));
     }
 
     #[test]
@@ -1096,7 +1069,13 @@ mod tests {
             .handle_message(Message::Ping { timestamp: 12345 })
             .unwrap()
             .unwrap();
-        assert!(matches!(reply, Message::Pong { timestamp: 12345, .. }));
+        assert!(matches!(
+            reply,
+            Message::Pong {
+                timestamp: 12345,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -1163,9 +1142,7 @@ mod tests {
 
     #[test]
     fn test_protocol_error_display() {
-        let e = ProtocolError::ExtensionNotFound {
-            name: "foo".into(),
-        };
+        let e = ProtocolError::ExtensionNotFound { name: "foo".into() };
         assert!(e.to_string().contains("foo"));
 
         let e = ProtocolError::IncompatibleVersion {
@@ -1190,7 +1167,9 @@ mod tests {
     #[test]
     fn test_full_three_extension_handshake() {
         let mut initiator = ProtocolHandler::new();
-        initiator.register_extension(Box::new(EchoExtension)).unwrap();
+        initiator
+            .register_extension(Box::new(EchoExtension))
+            .unwrap();
         initiator
             .register_extension(Box::new(PingExtension::new()))
             .unwrap();
@@ -1199,7 +1178,9 @@ mod tests {
             .unwrap();
 
         let mut responder = ProtocolHandler::new();
-        responder.register_extension(Box::new(EchoExtension)).unwrap();
+        responder
+            .register_extension(Box::new(EchoExtension))
+            .unwrap();
         // Responder only supports echo — metadata/ping not registered
 
         let hello = initiator.build_hello("init");
@@ -1264,10 +1245,7 @@ mod tests {
             reply_nonce: 0,
         };
         let err = h.process_hello_ack(&ack).unwrap_err();
-        assert!(matches!(
-            err,
-            ProtocolError::HandshakeNotEstablished
-        ));
+        assert!(matches!(err, ProtocolError::HandshakeNotEstablished));
     }
 
     #[test]
@@ -1277,17 +1255,26 @@ mod tests {
         // simulate failed handshake to reset state so we can send another hello
         h.handshake_state = HandshakeState::Uninitiated;
         let hello2 = h.build_hello("n");
-        assert_ne!(hello1.nonce, hello2.nonce, "nonce must differ across hellos");
+        assert_ne!(
+            hello1.nonce, hello2.nonce,
+            "nonce must differ across hellos"
+        );
     }
 
     #[test]
     fn test_capability_negotiation_accepted_list() {
         let mut initiator = ProtocolHandler::new();
-        initiator.register_extension(Box::new(EchoExtension)).unwrap();
-        initiator.register_extension(Box::new(PingExtension::new())).unwrap();
+        initiator
+            .register_extension(Box::new(EchoExtension))
+            .unwrap();
+        initiator
+            .register_extension(Box::new(PingExtension::new()))
+            .unwrap();
 
         let mut responder = ProtocolHandler::new();
-        responder.register_extension(Box::new(EchoExtension)).unwrap();
+        responder
+            .register_extension(Box::new(EchoExtension))
+            .unwrap();
         // responder does NOT have ping
 
         let hello = initiator.build_hello("i");
@@ -1339,6 +1326,9 @@ mod tests {
         std::thread::sleep(Duration::from_millis(1));
         let payload = ext.build_ping_payload();
         let ts = u64::from_le_bytes(payload.try_into().unwrap());
-        assert!(ts > 0, "elapsed microseconds must be non-zero after 1ms sleep");
+        assert!(
+            ts > 0,
+            "elapsed microseconds must be non-zero after 1ms sleep"
+        );
     }
 }

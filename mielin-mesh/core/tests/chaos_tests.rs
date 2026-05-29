@@ -60,11 +60,27 @@ impl Xorshift64 {
 
 #[derive(Debug)]
 enum ChaosEvent {
-    NodeKilled { node_idx: usize, at_tick: u64 },
-    NodeRecovered { node_idx: usize, at_tick: u64 },
-    PartitionCreated { side_a: Vec<usize>, side_b: Vec<usize>, at_tick: u64 },
-    PartitionHealed { at_tick: u64 },
-    DelayInjected { node_idx: usize, delay_ms: u64, at_tick: u64 },
+    NodeKilled {
+        node_idx: usize,
+        at_tick: u64,
+    },
+    NodeRecovered {
+        node_idx: usize,
+        at_tick: u64,
+    },
+    PartitionCreated {
+        side_a: Vec<usize>,
+        side_b: Vec<usize>,
+        at_tick: u64,
+    },
+    PartitionHealed {
+        at_tick: u64,
+    },
+    DelayInjected {
+        node_idx: usize,
+        delay_ms: u64,
+        at_tick: u64,
+    },
 }
 
 struct ChaosEngine {
@@ -110,10 +126,12 @@ impl ChaosEngine {
             let g = gs.read().await;
             for (ni, id) in ids.iter().enumerate() {
                 if gi != ni {
-                    let _ = g.handle_message(GossipMessage::Heartbeat {
-                        node_id: *id,
-                        incarnation: 1,
-                    }).await;
+                    let _ = g
+                        .handle_message(GossipMessage::Heartbeat {
+                            node_id: *id,
+                            incarnation: 1,
+                        })
+                        .await;
                 }
             }
         }
@@ -134,18 +152,23 @@ impl ChaosEngine {
                 continue;
             }
             let g = gs.read().await;
-            let _ = g.handle_message(GossipMessage::MemberUpdate {
-                member: MemberInfo {
-                    node_id: dead_id,
-                    status: HealthStatus::Dead,
-                    incarnation: inc_dead,
-                    last_seen: SystemTime::UNIX_EPOCH,
-                    metadata: HashMap::new(),
-                },
-            }).await;
+            let _ = g
+                .handle_message(GossipMessage::MemberUpdate {
+                    member: MemberInfo {
+                        node_id: dead_id,
+                        status: HealthStatus::Dead,
+                        incarnation: inc_dead,
+                        last_seen: SystemTime::UNIX_EPOCH,
+                        metadata: HashMap::new(),
+                    },
+                })
+                .await;
         }
 
-        self.event_log.push(ChaosEvent::NodeKilled { node_idx: idx, at_tick: self.tick });
+        self.event_log.push(ChaosEvent::NodeKilled {
+            node_idx: idx,
+            at_tick: self.tick,
+        });
     }
 
     /// Recover node at `idx` — heartbeat it back into all other nodes' gossip states.
@@ -163,13 +186,18 @@ impl ChaosEngine {
                 continue;
             }
             let g = gs.read().await;
-            let _ = g.handle_message(GossipMessage::Heartbeat {
-                node_id,
-                incarnation: inc_live,
-            }).await;
+            let _ = g
+                .handle_message(GossipMessage::Heartbeat {
+                    node_id,
+                    incarnation: inc_live,
+                })
+                .await;
         }
 
-        self.event_log.push(ChaosEvent::NodeRecovered { node_idx: idx, at_tick: self.tick });
+        self.event_log.push(ChaosEvent::NodeRecovered {
+            node_idx: idx,
+            at_tick: self.tick,
+        });
     }
 
     /// Create a partition: nodes in `side_a` cannot communicate with nodes in `side_b`.
@@ -184,15 +212,17 @@ impl ChaosEngine {
             let g = gs.read().await;
             for &bi in &side_b {
                 let dead_id = *self.nodes[bi].id();
-                let _ = g.handle_message(GossipMessage::MemberUpdate {
-                    member: MemberInfo {
-                        node_id: dead_id,
-                        status: HealthStatus::Dead,
-                        incarnation: dead_inc,
-                        last_seen: SystemTime::UNIX_EPOCH,
-                        metadata: HashMap::new(),
-                    },
-                }).await;
+                let _ = g
+                    .handle_message(GossipMessage::MemberUpdate {
+                        member: MemberInfo {
+                            node_id: dead_id,
+                            status: HealthStatus::Dead,
+                            incarnation: dead_inc,
+                            last_seen: SystemTime::UNIX_EPOCH,
+                            metadata: HashMap::new(),
+                        },
+                    })
+                    .await;
             }
         }
 
@@ -202,15 +232,17 @@ impl ChaosEngine {
             let g = gs.read().await;
             for &ai in &side_a {
                 let dead_id = *self.nodes[ai].id();
-                let _ = g.handle_message(GossipMessage::MemberUpdate {
-                    member: MemberInfo {
-                        node_id: dead_id,
-                        status: HealthStatus::Dead,
-                        incarnation: dead_inc,
-                        last_seen: SystemTime::UNIX_EPOCH,
-                        metadata: HashMap::new(),
-                    },
-                }).await;
+                let _ = g
+                    .handle_message(GossipMessage::MemberUpdate {
+                        member: MemberInfo {
+                            node_id: dead_id,
+                            status: HealthStatus::Dead,
+                            incarnation: dead_inc,
+                            last_seen: SystemTime::UNIX_EPOCH,
+                            metadata: HashMap::new(),
+                        },
+                    })
+                    .await;
             }
         }
 
@@ -234,10 +266,12 @@ impl ChaosEngine {
                 for &bi in &side_b {
                     let gs = &self.gossip_states[bi];
                     let g = gs.read().await;
-                    let _ = g.handle_message(GossipMessage::Heartbeat {
-                        node_id,
-                        incarnation: heal_inc,
-                    }).await;
+                    let _ = g
+                        .handle_message(GossipMessage::Heartbeat {
+                            node_id,
+                            incarnation: heal_inc,
+                        })
+                        .await;
                 }
             }
 
@@ -247,14 +281,17 @@ impl ChaosEngine {
                 for &ai in &side_a {
                     let gs = &self.gossip_states[ai];
                     let g = gs.read().await;
-                    let _ = g.handle_message(GossipMessage::Heartbeat {
-                        node_id,
-                        incarnation: heal_inc,
-                    }).await;
+                    let _ = g
+                        .handle_message(GossipMessage::Heartbeat {
+                            node_id,
+                            incarnation: heal_inc,
+                        })
+                        .await;
                 }
             }
 
-            self.event_log.push(ChaosEvent::PartitionHealed { at_tick: self.tick });
+            self.event_log
+                .push(ChaosEvent::PartitionHealed { at_tick: self.tick });
         }
     }
 
@@ -298,9 +335,7 @@ async fn build_detector(
         }
     }
     // Always mark self as visible (a node always sees itself).
-    detector
-        .mark_node_visible(*all_nodes[node_idx].id())
-        .await;
+    detector.mark_node_visible(*all_nodes[node_idx].id()).await;
     for &vi in visible_indices {
         if vi != node_idx {
             detector.mark_node_visible(*all_nodes[vi].id()).await;
@@ -355,7 +390,11 @@ async fn chaos_single_node_kill() {
         );
     }
 
-    assert_eq!(engine.event_log.len(), 1, "exactly one chaos event recorded");
+    assert_eq!(
+        engine.event_log.len(),
+        1,
+        "exactly one chaos event recorded"
+    );
 }
 
 /// Kill 2 of 7 nodes; majority (5) survives with quorum.
@@ -374,10 +413,12 @@ async fn chaos_minority_failure() {
     for (gi, g) in gossips.iter().enumerate() {
         for (ni, n) in all_nodes.iter().enumerate() {
             if gi != ni {
-                let _ = g.handle_message(GossipMessage::Heartbeat {
-                    node_id: *n.id(),
-                    incarnation: 1,
-                }).await;
+                let _ = g
+                    .handle_message(GossipMessage::Heartbeat {
+                        node_id: *n.id(),
+                        incarnation: 1,
+                    })
+                    .await;
             }
         }
     }
@@ -387,9 +428,11 @@ async fn chaos_minority_failure() {
         let dead_id = *all_nodes[killed_idx].id();
         for (gi, g) in gossips.iter().enumerate() {
             if gi != killed_idx {
-                let _ = g.handle_message(GossipMessage::MemberUpdate {
-                    member: dead_member(dead_id, 100),
-                }).await;
+                let _ = g
+                    .handle_message(GossipMessage::MemberUpdate {
+                        member: dead_member(dead_id, 100),
+                    })
+                    .await;
             }
         }
     }
@@ -527,10 +570,7 @@ async fn chaos_last_node_standing() {
     let detector = build_detector(0, &all_nodes, &visible).await;
 
     let has_q = detector.has_quorum().await;
-    assert!(
-        !has_q,
-        "last node standing (1 of 5) must NOT have quorum"
-    );
+    assert!(!has_q, "last node standing (1 of 5) must NOT have quorum");
 
     let vc = detector.visible_count().await;
     assert_eq!(vc, 1, "only 1 node visible");
@@ -550,10 +590,12 @@ async fn chaos_simultaneous_kills() {
 
     // Register all 6 nodes at observer 0.
     for n in &all_nodes[1..] {
-        let _ = gossip_arc.handle_message(GossipMessage::Heartbeat {
-            node_id: *n.id(),
-            incarnation: 1,
-        }).await;
+        let _ = gossip_arc
+            .handle_message(GossipMessage::Heartbeat {
+                node_id: *n.id(),
+                incarnation: 1,
+            })
+            .await;
     }
 
     // Kill nodes 3, 4, 5 simultaneously via concurrent tasks.
@@ -562,9 +604,11 @@ async fn chaos_simultaneous_kills() {
         let g = Arc::clone(&gossip_arc);
         let dead_id = *dead_node.id();
         handles.push(tokio::spawn(async move {
-            let _ = g.handle_message(GossipMessage::MemberUpdate {
-                member: dead_member(dead_id, 500),
-            }).await;
+            let _ = g
+                .handle_message(GossipMessage::MemberUpdate {
+                    member: dead_member(dead_id, 500),
+                })
+                .await;
         }));
     }
     for h in handles {
@@ -583,7 +627,11 @@ async fn chaos_simultaneous_kills() {
     );
 
     let alive = gossip_arc.get_alive_members().await;
-    assert_eq!(alive.len(), 3, "3 nodes remain alive after simultaneous kills");
+    assert_eq!(
+        alive.len(),
+        3,
+        "3 nodes remain alive after simultaneous kills"
+    );
 }
 
 // ============================================================================
@@ -650,7 +698,9 @@ async fn partition_heal_recovers_full_view() {
     let side_a = vec![0, 1, 2];
     let side_b = vec![3, 4, 5];
 
-    engine.create_partition(side_a.clone(), side_b.clone()).await;
+    engine
+        .create_partition(side_a.clone(), side_b.clone())
+        .await;
 
     // Verify partition is effective: side_a only sees side_a alive.
     let alive_after_partition = engine.alive_count_at(0).await;
@@ -752,12 +802,7 @@ async fn partition_cascading_splits() {
 
     // After 2-level cascading splits: 4 quarters of 2 nodes each.
     // Each quarter has only 2 of 8 = 25% — no quorum anywhere.
-    let all_visible: Vec<Vec<usize>> = vec![
-        vec![0, 1],
-        vec![2, 3],
-        vec![4, 5],
-        vec![6, 7],
-    ];
+    let all_visible: Vec<Vec<usize>> = vec![vec![0, 1], vec![2, 3], vec![4, 5], vec![6, 7]];
 
     for quarter in &all_visible {
         let det = build_detector(quarter[0], &all_nodes, quarter).await;
@@ -816,7 +861,9 @@ async fn partition_multiple_overlapping() {
     engine.bootstrap().await;
 
     // Partition 1: nodes [0..2] vs [3..8].
-    engine.create_partition(vec![0, 1, 2], vec![3, 4, 5, 6, 7, 8]).await;
+    engine
+        .create_partition(vec![0, 1, 2], vec![3, 4, 5, 6, 7, 8])
+        .await;
     let alive_p1 = engine.alive_count_at(0).await;
     assert_eq!(alive_p1, 3, "after first partition: [0..2] see 3 alive");
 
@@ -829,7 +876,9 @@ async fn partition_multiple_overlapping() {
     );
 
     // Partition 2: nodes [6..8] isolated.
-    engine.create_partition(vec![0, 1, 2, 3, 4, 5], vec![6, 7, 8]).await;
+    engine
+        .create_partition(vec![0, 1, 2, 3, 4, 5], vec![6, 7, 8])
+        .await;
     let alive_p2 = engine.alive_count_at(0).await;
     assert_eq!(alive_p2, 6, "after second partition: [0..5] see 6 alive");
 
@@ -932,15 +981,18 @@ async fn chaos_network_delay_high_latency() {
 
     // Inject update with `last_seen` more than 500ms in the past.
     let stale_time = SystemTime::now() - Duration::from_millis(600);
-    gossip.handle_message(GossipMessage::MemberUpdate {
-        member: MemberInfo {
-            node_id: peer_id,
-            status: HealthStatus::Suspect,
-            incarnation: 2,
-            last_seen: stale_time,
-            metadata: HashMap::new(),
-        },
-    }).await.unwrap();
+    gossip
+        .handle_message(GossipMessage::MemberUpdate {
+            member: MemberInfo {
+                node_id: peer_id,
+                status: HealthStatus::Suspect,
+                incarnation: 2,
+                last_seen: stale_time,
+                metadata: HashMap::new(),
+            },
+        })
+        .await
+        .unwrap();
 
     let all = gossip.get_all_members().await;
     let peer = all.iter().find(|m| m.node_id == peer_id);
@@ -997,16 +1049,21 @@ async fn chaos_membership_convergence_after_mass_failure() {
     let all_nodes: Vec<Arc<Node>> = (0..node_count)
         .map(|_| Arc::new(Node::new(NodeRole::Relay)))
         .collect();
-    let gossips: Vec<GossipState> = all_nodes.iter().map(|n| GossipState::new(n.clone())).collect();
+    let gossips: Vec<GossipState> = all_nodes
+        .iter()
+        .map(|n| GossipState::new(n.clone()))
+        .collect();
 
     // Bootstrap full mesh.
     for (gi, g) in gossips.iter().enumerate() {
         for (ni, n) in all_nodes.iter().enumerate() {
             if gi != ni {
-                let _ = g.handle_message(GossipMessage::Heartbeat {
-                    node_id: *n.id(),
-                    incarnation: 1,
-                }).await;
+                let _ = g
+                    .handle_message(GossipMessage::Heartbeat {
+                        node_id: *n.id(),
+                        incarnation: 1,
+                    })
+                    .await;
             }
         }
     }
@@ -1014,13 +1071,20 @@ async fn chaos_membership_convergence_after_mass_failure() {
     // Kill nodes 6..9 (4 nodes = 40%).
     let killed_nodes = 4usize;
     let survivors = node_count - killed_nodes; // 6 survivors
-    for (kill_idx, dead_node) in all_nodes.iter().enumerate().take(node_count).skip(survivors) {
+    for (kill_idx, dead_node) in all_nodes
+        .iter()
+        .enumerate()
+        .take(node_count)
+        .skip(survivors)
+    {
         let dead_id = *dead_node.id();
         for (gi, g) in gossips.iter().enumerate() {
             if gi != kill_idx && gi < survivors {
-                let _ = g.handle_message(GossipMessage::MemberUpdate {
-                    member: dead_member(dead_id, 200),
-                }).await;
+                let _ = g
+                    .handle_message(GossipMessage::MemberUpdate {
+                        member: dead_member(dead_id, 200),
+                    })
+                    .await;
             }
         }
     }
@@ -1028,7 +1092,9 @@ async fn chaos_membership_convergence_after_mass_failure() {
     // Propagate convergence: survivors sync with each other.
     for _sync_round in 0..3 {
         let members_at_0 = gossips[0].get_all_members().await;
-        let sync_resp = GossipMessage::SyncResponse { members: members_at_0 };
+        let sync_resp = GossipMessage::SyncResponse {
+            members: members_at_0,
+        };
         for g in gossips.iter().take(survivors).skip(1) {
             let _ = g.handle_message(sync_resp.clone()).await;
         }
@@ -1060,8 +1126,7 @@ async fn chaos_consistent_hash_ring_stability() {
 
     // Compute initial assignments for 100 keys.
     let keys: Vec<String> = (0..100).map(|i| format!("chaos-key-{i:04}")).collect();
-    let initial_assignments: Vec<Option<NodeId>> =
-        keys.iter().map(|k| ring.get_node(k)).collect();
+    let initial_assignments: Vec<Option<NodeId>> = keys.iter().map(|k| ring.get_node(k)).collect();
 
     // Kill 3 nodes (remove from ring).
     ring.remove_node(*all_nodes[7].id());
@@ -1109,10 +1174,13 @@ async fn chaos_incarnation_number_increment() {
     let peer_id = NodeId::new_v4();
 
     // Join at incarnation 1.
-    gossip.handle_message(GossipMessage::Heartbeat {
-        node_id: peer_id,
-        incarnation: 1,
-    }).await.unwrap();
+    gossip
+        .handle_message(GossipMessage::Heartbeat {
+            node_id: peer_id,
+            incarnation: 1,
+        })
+        .await
+        .unwrap();
     {
         let all = gossip.get_all_members().await;
         let peer = all.iter().find(|m| m.node_id == peer_id).unwrap();
@@ -1120,9 +1188,12 @@ async fn chaos_incarnation_number_increment() {
     }
 
     // Kill: Dead with incarnation 2 (must exceed existing to update status).
-    gossip.handle_message(GossipMessage::MemberUpdate {
-        member: dead_member(peer_id, 2),
-    }).await.unwrap();
+    gossip
+        .handle_message(GossipMessage::MemberUpdate {
+            member: dead_member(peer_id, 2),
+        })
+        .await
+        .unwrap();
     {
         let all = gossip.get_all_members().await;
         let peer = all.iter().find(|m| m.node_id == peer_id).unwrap();
@@ -1130,26 +1201,38 @@ async fn chaos_incarnation_number_increment() {
     }
 
     // Recover: new incarnation 5 (must be higher).
-    gossip.handle_message(GossipMessage::Heartbeat {
-        node_id: peer_id,
-        incarnation: 5,
-    }).await.unwrap();
+    gossip
+        .handle_message(GossipMessage::Heartbeat {
+            node_id: peer_id,
+            incarnation: 5,
+        })
+        .await
+        .unwrap();
     {
         let all = gossip.get_all_members().await;
         let peer = all.iter().find(|m| m.node_id == peer_id).unwrap();
         assert!(peer.is_alive(), "peer must be Alive after recovery");
         assert_eq!(peer.incarnation, 5, "recovered incarnation must be 5");
-        assert!(peer.incarnation > 1, "incarnation must be strictly higher after recovery");
+        assert!(
+            peer.incarnation > 1,
+            "incarnation must be strictly higher after recovery"
+        );
     }
 
     // Kill and recover again at incarnation 10.
-    gossip.handle_message(GossipMessage::MemberUpdate {
-        member: dead_member(peer_id, 5),
-    }).await.unwrap();
-    gossip.handle_message(GossipMessage::Heartbeat {
-        node_id: peer_id,
-        incarnation: 10,
-    }).await.unwrap();
+    gossip
+        .handle_message(GossipMessage::MemberUpdate {
+            member: dead_member(peer_id, 5),
+        })
+        .await
+        .unwrap();
+    gossip
+        .handle_message(GossipMessage::Heartbeat {
+            node_id: peer_id,
+            incarnation: 10,
+        })
+        .await
+        .unwrap();
 
     let all = gossip.get_all_members().await;
     let peer = all.iter().find(|m| m.node_id == peer_id).unwrap();
@@ -1174,10 +1257,12 @@ async fn bench_gossip_convergence_10_nodes() {
 
     // Start with only node 0 knowing all others.
     for n in &nodes[1..] {
-        let _ = gossips[0].handle_message(GossipMessage::Heartbeat {
-            node_id: *n.id(),
-            incarnation: 1,
-        }).await;
+        let _ = gossips[0]
+            .handle_message(GossipMessage::Heartbeat {
+                node_id: *n.id(),
+                incarnation: 1,
+            })
+            .await;
     }
 
     let t0 = Instant::now();
@@ -1230,10 +1315,12 @@ async fn bench_gossip_convergence_50_nodes() {
 
     // Seed: node 0 knows all others.
     for n in &nodes[1..] {
-        let _ = gossips[0].handle_message(GossipMessage::Heartbeat {
-            node_id: *n.id(),
-            incarnation: 1,
-        }).await;
+        let _ = gossips[0]
+            .handle_message(GossipMessage::Heartbeat {
+                node_id: *n.id(),
+                incarnation: 1,
+            })
+            .await;
     }
 
     let t0 = Instant::now();
@@ -1290,10 +1377,12 @@ async fn bench_gossip_fanout_effect() {
 
         // Seed: node 0 knows all.
         for n in &nodes[1..] {
-            let _ = gossips[0].handle_message(GossipMessage::Heartbeat {
-                node_id: *n.id(),
-                incarnation: 1,
-            }).await;
+            let _ = gossips[0]
+                .handle_message(GossipMessage::Heartbeat {
+                    node_id: *n.id(),
+                    incarnation: 1,
+                })
+                .await;
         }
 
         let mut rounds = 0u32;
@@ -1319,7 +1408,10 @@ async fn bench_gossip_fanout_effect() {
             if all_agree {
                 break;
             }
-            assert!(rounds < 500, "convergence exceeded 500 rounds at fanout={fanout}");
+            assert!(
+                rounds < 500,
+                "convergence exceeded 500 rounds at fanout={fanout}"
+            );
         }
         rounds
     }
@@ -1487,7 +1579,10 @@ fn partition_info_quorum_math() {
         visible2.insert(NodeId::new_v4());
     }
     let info2 = PartitionInfo::new(visible2, 10);
-    assert!(!info2.can_form_quorum(), "5 of 10 (50%) must NOT form quorum");
+    assert!(
+        !info2.can_form_quorum(),
+        "5 of 10 (50%) must NOT form quorum"
+    );
 }
 
 /// PartitionDetector with a single-node cluster always has quorum.
@@ -1522,7 +1617,11 @@ fn consistent_hash_ring_gradual_growth() {
 
     // After adding all, 10-node replication should return 10 unique nodes.
     let replicas = ring.get_nodes("test-key", 10);
-    assert_eq!(replicas.len(), 10, "must get up to 10 replicas from a 10-node ring");
+    assert_eq!(
+        replicas.len(),
+        10,
+        "must get up to 10 replicas from a 10-node ring"
+    );
     let unique: HashSet<&NodeId> = replicas.iter().collect();
     assert_eq!(unique.len(), 10, "all 10 replicas must be distinct nodes");
 }
@@ -1538,9 +1637,12 @@ async fn chaos_node_kill_leaves_history() {
     tokio::task::yield_now().await;
 
     // Kill: force Dead via MemberUpdate.
-    gossip.handle_message(GossipMessage::MemberUpdate {
-        member: dead_member(peer_id, 2),
-    }).await.unwrap();
+    gossip
+        .handle_message(GossipMessage::MemberUpdate {
+            member: dead_member(peer_id, 2),
+        })
+        .await
+        .unwrap();
     tokio::task::yield_now().await;
 
     let history = gossip.membership_history().await;
@@ -1587,7 +1689,10 @@ fn xorshift64_determinism_and_bounds() {
     let mut rng3 = Xorshift64::new(0xFEED_BABE);
     for _ in 0..1000 {
         let v = rng3.next_range(3, 7);
-        assert!((3..=7).contains(&v), "next_range(3,7) must return 3..=7, got {v}");
+        assert!(
+            (3..=7).contains(&v),
+            "next_range(3,7) must return 3..=7, got {v}"
+        );
     }
 
     // next_bool approximate probability.

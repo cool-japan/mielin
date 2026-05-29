@@ -272,9 +272,7 @@ impl NpuOps for Tensor<f32> {
                 onnxruntime::OnnxRuntimeBackend::infer(model, core::slice::from_ref(self))
             }
             #[cfg(feature = "hailo")]
-            NpuBackend::Hailo8 => {
-                hailo::Hailo8Backend::infer(model, core::slice::from_ref(self))
-            }
+            NpuBackend::Hailo8 => hailo::Hailo8Backend::infer(model, core::slice::from_ref(self)),
             #[allow(unreachable_patterns)]
             _ => Err(TensorError::other("Backend not compiled")),
         }
@@ -306,13 +304,11 @@ pub fn compile_model(
             qualcomm::QualcommNpu::compile(model_data, input_shapes, output_shapes)
         }
         #[cfg(feature = "onnxruntime")]
-        NpuBackend::OnnxRuntime => {
-            onnxruntime::OnnxRuntimeBackend::compile(
-                model_data.to_vec(),
-                input_shapes,
-                output_shapes,
-            )
-        }
+        NpuBackend::OnnxRuntime => onnxruntime::OnnxRuntimeBackend::compile(
+            model_data.to_vec(),
+            input_shapes,
+            output_shapes,
+        ),
         #[cfg(feature = "hailo")]
         NpuBackend::Hailo8 => {
             hailo::Hailo8Backend::compile(model_data.to_vec(), input_shapes, output_shapes)
@@ -527,7 +523,10 @@ mod tests {
         assert_eq!(OnnxExecutionProvider::default(), OnnxExecutionProvider::Cpu);
         // Spot-check distinctness.
         assert_ne!(OnnxExecutionProvider::Cuda, OnnxExecutionProvider::TensorRT);
-        assert_ne!(OnnxExecutionProvider::CoreML, OnnxExecutionProvider::DirectML);
+        assert_ne!(
+            OnnxExecutionProvider::CoreML,
+            OnnxExecutionProvider::DirectML
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────

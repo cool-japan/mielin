@@ -56,7 +56,9 @@ impl TlsHandshakeMetrics {
 
         // p99 index: for n samples the 99th percentile sits at
         // ceil(n * 0.99) - 1 (zero-based), clamped to [0, n-1].
-        let p99_idx = ((samples as f64 * 0.99).ceil() as usize).saturating_sub(1).min(samples - 1);
+        let p99_idx = ((samples as f64 * 0.99).ceil() as usize)
+            .saturating_sub(1)
+            .min(samples - 1);
         let p99_us = latencies_us[p99_idx];
 
         Self {
@@ -147,7 +149,9 @@ pub fn measure_handshakes(
         let (cert_der, key_der) = generate_self_signed_cert_der()?;
 
         let cert_chain: Vec<rustls::pki_types::CertificateDer<'static>> =
-            vec![rustls::pki_types::CertificateDer::from(cert_der.as_ref().to_vec())];
+            vec![rustls::pki_types::CertificateDer::from(
+                cert_der.as_ref().to_vec(),
+            )];
         let private_key: rustls::pki_types::PrivateKeyDer<'static> = key_der.clone_key();
 
         rustls::ServerConfig::builder()

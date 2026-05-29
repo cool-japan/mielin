@@ -354,8 +354,8 @@ impl BuddyAllocator {
         }
 
         // Find the lowest level at or above `order` that has a free block.
-        let found_level = (order_to_level(order)..self.levels)
-            .find(|&lvl| !self.free_lists[lvl].is_empty());
+        let found_level =
+            (order_to_level(order)..self.levels).find(|&lvl| !self.free_lists[lvl].is_empty());
 
         let found_level = found_level.ok_or(BuddyError::OutOfMemory {
             order,
@@ -964,7 +964,11 @@ mod tests {
         let mut a = BuddyAllocator::new(BASE, MB).unwrap();
         let total = a.stats().total_bytes;
         let addr = a.allocate(PAGE).unwrap();
-        assert_eq!(a.stats().total_bytes, total, "total_bytes changed after alloc");
+        assert_eq!(
+            a.stats().total_bytes,
+            total,
+            "total_bytes changed after alloc"
+        );
         a.deallocate(addr, PAGE).unwrap();
         assert_eq!(
             a.stats().total_bytes,

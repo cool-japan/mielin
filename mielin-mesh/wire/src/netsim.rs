@@ -154,22 +154,13 @@ impl NetworkConditions {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SimulationAction {
     /// Deliver the payload after the given delay.
-    Deliver {
-        payload: Vec<u8>,
-        delay: Duration,
-    },
+    Deliver { payload: Vec<u8>, delay: Duration },
     /// Silently discard the packet.
     Drop,
     /// Deliver a duplicate copy after the given delay.
-    Duplicate {
-        payload: Vec<u8>,
-        delay: Duration,
-    },
+    Duplicate { payload: Vec<u8>, delay: Duration },
     /// Deliver a corrupted copy (first byte XOR'd with `0xFF`) after the given delay.
-    Corrupt {
-        payload: Vec<u8>,
-        delay: Duration,
-    },
+    Corrupt { payload: Vec<u8>, delay: Duration },
 }
 
 impl SimulationAction {
@@ -542,7 +533,12 @@ mod tests {
         conditions.packet_loss_rate = 0.20;
         let mut sim = NetworkSimulator::new(conditions, 7);
         let drops: usize = (0..1_000u16)
-            .filter(|i| matches!(sim.decide(&payload((*i % 256) as u8)), SimulationAction::Drop))
+            .filter(|i| {
+                matches!(
+                    sim.decide(&payload((*i % 256) as u8)),
+                    SimulationAction::Drop
+                )
+            })
             .count();
         // Expected 200; allow ±60 for statistical variance (3σ ≈ 48 at p=0.2, n=1000).
         assert!(

@@ -43,7 +43,7 @@ impl Hailo8Backend {
                         "concat",
                     ],
                     max_model_size: 256 * 1024 * 1024, // 256 MB
-                    performance_class: 8,               // high-performance edge AI
+                    performance_class: 8,              // high-performance edge AI
                 });
             }
         }

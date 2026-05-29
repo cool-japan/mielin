@@ -30,17 +30,10 @@ impl OnnxRuntimeBackend {
             backend: NpuBackend::OnnxRuntime,
             name: "ONNX Runtime",
             supported_ops: &[
-                "conv",
-                "matmul",
-                "relu",
-                "softmax",
-                "pool",
-                "norm",
-                "reshape",
-                "gather",
+                "conv", "matmul", "relu", "softmax", "pool", "norm", "reshape", "gather",
             ],
             max_model_size: 4 * 1024 * 1024 * 1024, // 4 GB
-            performance_class: 4,                    // mid-range (software runtime)
+            performance_class: 4,                   // mid-range (software runtime)
         })
     }
 

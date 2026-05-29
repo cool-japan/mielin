@@ -978,11 +978,7 @@ mod tests {
             }
         }
 
-        assert_eq!(
-            w0_count + w1_count,
-            8,
-            "all 8 tasks must be consumed"
-        );
+        assert_eq!(w0_count + w1_count, 8, "all 8 tasks must be consumed");
         // Worker 1 should have stolen at least one task from worker 0.
         assert!(
             w1_count >= 1,
