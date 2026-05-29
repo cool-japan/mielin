@@ -715,7 +715,10 @@ async fn test_history_empty_initially() {
 #[tokio::test]
 async fn test_election_no_majority_no_promotion() {
     let node_id = NodeId::new_v4();
-    let cfg = HierarchicalGossipConfig { num_zones: 1, ..Default::default() };
+    let cfg = HierarchicalGossipConfig {
+        num_zones: 1,
+        ..Default::default()
+    };
     let gossip = HierarchicalGossip::new(node_id, cfg);
 
     // Populate zone so majority threshold is meaningful (5 members → majority 3)
@@ -729,12 +732,8 @@ async fn test_election_no_majority_no_promotion() {
     let cand_b = NodeId::new_v4();
 
     // 2 votes split across two candidates — neither reaches majority of 3.
-    gossip
-        .record_vote(1, NodeId::new_v4(), cand_a)
-        .await;
-    gossip
-        .record_vote(1, NodeId::new_v4(), cand_b)
-        .await;
+    gossip.record_vote(1, NodeId::new_v4(), cand_a).await;
+    gossip.record_vote(1, NodeId::new_v4(), cand_b).await;
 
     let (_, winner) = gossip.get_election_state().await;
     assert!(
@@ -748,7 +747,10 @@ async fn test_election_no_majority_no_promotion() {
 #[tokio::test]
 async fn test_election_majority_promotes_winner() {
     let node_id = NodeId::new_v4();
-    let cfg = HierarchicalGossipConfig { num_zones: 1, ..Default::default() };
+    let cfg = HierarchicalGossipConfig {
+        num_zones: 1,
+        ..Default::default()
+    };
     let gossip = HierarchicalGossip::new(node_id, cfg);
 
     // Add one extra peer and the candidate: total zone = node_id + peer1 + winner = 3
@@ -766,7 +768,9 @@ async fn test_election_majority_promotes_winner() {
     // 3 votes for the winner — majority of 3 members is 2, so 3 >= 2 → promoted.
     gossip.record_vote(1, node_id, winner_candidate).await;
     gossip.record_vote(1, peer1, winner_candidate).await;
-    gossip.record_vote(1, NodeId::new_v4(), winner_candidate).await;
+    gossip
+        .record_vote(1, NodeId::new_v4(), winner_candidate)
+        .await;
 
     let (term, winner) = gossip.get_election_state().await;
     assert_eq!(term, 1);
@@ -781,7 +785,10 @@ async fn test_election_majority_promotes_winner() {
 #[tokio::test]
 async fn test_election_respects_term() {
     let node_id = NodeId::new_v4();
-    let cfg = HierarchicalGossipConfig { num_zones: 1, ..Default::default() };
+    let cfg = HierarchicalGossipConfig {
+        num_zones: 1,
+        ..Default::default()
+    };
     let gossip = HierarchicalGossip::new(node_id, cfg);
 
     // 2 members → majority = 2; one vote each term should not cause promotion.
@@ -790,7 +797,9 @@ async fn test_election_respects_term() {
         .await;
 
     let cand = NodeId::new_v4();
-    gossip.add_member(ZoneMember::new(cand, gossip.local_zone())).await;
+    gossip
+        .add_member(ZoneMember::new(cand, gossip.local_zone()))
+        .await;
 
     gossip.record_vote(1, NodeId::new_v4(), cand).await;
     // Term 2 vote should not combine with term 1 vote.
@@ -814,14 +823,21 @@ async fn test_election_start_increments_term() {
     gossip.start_election().await;
     let (after, _) = gossip.get_election_state().await;
 
-    assert_eq!(after, before + 1, "Term should increment after start_election");
+    assert_eq!(
+        after,
+        before + 1,
+        "Term should increment after start_election"
+    );
 }
 
 /// `get_election_state` returns the current term and winner.
 #[tokio::test]
 async fn test_election_state_query() {
     let node_id = NodeId::new_v4();
-    let cfg = HierarchicalGossipConfig { num_zones: 1, ..Default::default() };
+    let cfg = HierarchicalGossipConfig {
+        num_zones: 1,
+        ..Default::default()
+    };
     let gossip = HierarchicalGossip::new(node_id, cfg);
 
     let (initial_term, initial_winner) = gossip.get_election_state().await;
@@ -837,14 +853,21 @@ async fn test_election_state_query() {
 #[tokio::test]
 async fn test_current_super_peers_after_election() {
     let node_id = NodeId::new_v4();
-    let cfg = HierarchicalGossipConfig { num_zones: 1, ..Default::default() };
+    let cfg = HierarchicalGossipConfig {
+        num_zones: 1,
+        ..Default::default()
+    };
     let gossip = HierarchicalGossip::new(node_id, cfg);
 
     // Three members total → majority = 2
     let peer1 = NodeId::new_v4();
     let peer2 = NodeId::new_v4();
-    gossip.add_member(ZoneMember::new(peer1, gossip.local_zone())).await;
-    gossip.add_member(ZoneMember::new(peer2, gossip.local_zone())).await;
+    gossip
+        .add_member(ZoneMember::new(peer1, gossip.local_zone()))
+        .await;
+    gossip
+        .add_member(ZoneMember::new(peer2, gossip.local_zone()))
+        .await;
 
     // peer1 as candidate with 2 votes (majority of 3)
     gossip.record_vote(1, node_id, peer1).await;

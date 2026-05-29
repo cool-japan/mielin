@@ -8,8 +8,8 @@
 
 extern crate alloc;
 
-pub mod bpf;
 pub mod boot;
+pub mod bpf;
 pub mod config;
 pub mod embedded;
 pub mod executor;

@@ -4,8 +4,8 @@
 
 use super::{
     isa::{
-        AluOp, HelperId, Instruction, Reg, Source, DEFAULT_FUEL,
-        MAX_PROGRAM_LEN, MIN_FUEL, REG_FRAME, SCRATCH_BYTES,
+        AluOp, HelperId, Instruction, Reg, Source, DEFAULT_FUEL, MAX_PROGRAM_LEN, MIN_FUEL,
+        REG_FRAME, SCRATCH_BYTES,
     },
     BpfError,
 };
@@ -26,7 +26,7 @@ use std::vec::Vec;
 #[derive(Debug)]
 pub struct VerifiedProgram {
     pub(super) instructions: Vec<Instruction>,
-    pub(super) fuel:         u64,
+    pub(super) fuel: u64,
 }
 
 impl VerifiedProgram {
@@ -143,7 +143,12 @@ pub fn verify(prog: &[Instruction]) -> Result<VerifiedProgram, BpfError> {
             // ----------------------------------------------------------------
             // JmpIf
             // ----------------------------------------------------------------
-            Instruction::JmpIf { cc: _, dst, src, off } => {
+            Instruction::JmpIf {
+                cc: _,
+                dst,
+                src,
+                off,
+            } => {
                 check_reg(pc, dst)?;
                 check_src_reg(pc, src)?;
                 check_jump(pc, off, prog.len())?;
@@ -265,7 +270,7 @@ mod tests {
     fn test_verify_mov_then_exit() {
         let prog = alloc::vec![
             Instruction::Alu {
-                op:  AluOp::Mov,
+                op: AluOp::Mov,
                 dst: Reg(0),
                 src: Source::Imm(42),
             },
@@ -283,13 +288,13 @@ mod tests {
         // pc=2: Exit
         let prog = alloc::vec![
             Instruction::JmpIf {
-                cc:  crate::bpf::isa::Jcc::Eq,
+                cc: crate::bpf::isa::Jcc::Eq,
                 dst: Reg(1),
                 src: Source::Imm(0),
                 off: 1,
             },
             Instruction::Alu {
-                op:  AluOp::Mov,
+                op: AluOp::Mov,
                 dst: Reg(0),
                 src: Source::Imm(99),
             },
@@ -306,7 +311,7 @@ mod tests {
     #[test]
     fn test_verify_rejects_missing_exit() {
         let prog = alloc::vec![Instruction::Alu {
-            op:  AluOp::Mov,
+            op: AluOp::Mov,
             dst: Reg(0),
             src: Source::Imm(1),
         }];
@@ -332,7 +337,7 @@ mod tests {
     fn test_verify_rejects_invalid_reg() {
         let prog = alloc::vec![
             Instruction::Alu {
-                op:  AluOp::Mov,
+                op: AluOp::Mov,
                 dst: Reg(11), // invalid
                 src: Source::Imm(0),
             },
@@ -348,7 +353,7 @@ mod tests {
     fn test_verify_rejects_write_r10() {
         let prog = alloc::vec![
             Instruction::Alu {
-                op:  AluOp::Mov,
+                op: AluOp::Mov,
                 dst: Reg(10), // frame pointer — read-only
                 src: Source::Imm(0),
             },
@@ -364,7 +369,7 @@ mod tests {
     fn test_verify_rejects_scratch_oob() {
         let prog = alloc::vec![
             Instruction::LoadMem {
-                dst:    Reg(0),
+                dst: Reg(0),
                 offset: SCRATCH_BYTES as u16, // one past the end
             },
             Instruction::Exit,
@@ -372,9 +377,9 @@ mod tests {
         assert_eq!(
             verify(&prog).unwrap_err(),
             BpfError::ScratchOutOfBounds {
-                pc:     0,
+                pc: 0,
                 offset: SCRATCH_BYTES as u16,
-                max:    SCRATCH_BYTES,
+                max: SCRATCH_BYTES,
             }
         );
     }
@@ -382,12 +387,19 @@ mod tests {
     #[test]
     fn test_verify_rejects_unaligned_scratch() {
         let prog = alloc::vec![
-            Instruction::LoadMem { dst: Reg(0), offset: 3 },
+            Instruction::LoadMem {
+                dst: Reg(0),
+                offset: 3
+            },
             Instruction::Exit,
         ];
         assert_eq!(
             verify(&prog).unwrap_err(),
-            BpfError::ScratchOutOfBounds { pc: 0, offset: 3, max: SCRATCH_BYTES }
+            BpfError::ScratchOutOfBounds {
+                pc: 0,
+                offset: 3,
+                max: SCRATCH_BYTES
+            }
         );
     }
 
@@ -395,14 +407,17 @@ mod tests {
     fn test_verify_rejects_backward_jump() {
         let prog = alloc::vec![
             Instruction::JmpIf {
-                cc:  crate::bpf::isa::Jcc::Eq,
+                cc: crate::bpf::isa::Jcc::Eq,
                 dst: Reg(0),
                 src: Source::Imm(0),
                 off: -1,
             },
             Instruction::Exit,
         ];
-        assert_eq!(verify(&prog).unwrap_err(), BpfError::BackwardJump { pc: 0, off: -1 });
+        assert_eq!(
+            verify(&prog).unwrap_err(),
+            BpfError::BackwardJump { pc: 0, off: -1 }
+        );
     }
 
     #[test]
@@ -410,14 +425,17 @@ mod tests {
         // off<=0 → BackwardJump per spec.
         let prog = alloc::vec![
             Instruction::JmpIf {
-                cc:  crate::bpf::isa::Jcc::Eq,
+                cc: crate::bpf::isa::Jcc::Eq,
                 dst: Reg(0),
                 src: Source::Imm(0),
                 off: 0,
             },
             Instruction::Exit,
         ];
-        assert_eq!(verify(&prog).unwrap_err(), BpfError::BackwardJump { pc: 0, off: 0 });
+        assert_eq!(
+            verify(&prog).unwrap_err(),
+            BpfError::BackwardJump { pc: 0, off: 0 }
+        );
     }
 
     #[test]
@@ -425,13 +443,13 @@ mod tests {
         // 3-instruction program; off=100 from pc=0 → target=101, out of bounds
         let prog = alloc::vec![
             Instruction::JmpIf {
-                cc:  crate::bpf::isa::Jcc::Eq,
+                cc: crate::bpf::isa::Jcc::Eq,
                 dst: Reg(0),
                 src: Source::Imm(0),
                 off: 100,
             },
             Instruction::Alu {
-                op:  AluOp::Mov,
+                op: AluOp::Mov,
                 dst: Reg(0),
                 src: Source::Imm(0),
             },
@@ -447,13 +465,16 @@ mod tests {
     fn test_verify_rejects_div_by_zero() {
         let prog = alloc::vec![
             Instruction::Alu {
-                op:  AluOp::Div,
+                op: AluOp::Div,
                 dst: Reg(0),
                 src: Source::Imm(0),
             },
             Instruction::Exit,
         ];
-        assert_eq!(verify(&prog).unwrap_err(), BpfError::DivisionByZero { pc: 0 });
+        assert_eq!(
+            verify(&prog).unwrap_err(),
+            BpfError::DivisionByZero { pc: 0 }
+        );
     }
 
     #[test]
@@ -468,7 +489,7 @@ mod tests {
         // 100-instruction program: 99 Mov insns + Exit
         let mut prog: alloc::vec::Vec<Instruction> = (0..99)
             .map(|_| Instruction::Alu {
-                op:  AluOp::Mov,
+                op: AluOp::Mov,
                 dst: Reg(0),
                 src: Source::Imm(0),
             })
@@ -481,7 +502,10 @@ mod tests {
     #[test]
     fn test_verify_loadctx_valid() {
         let prog = alloc::vec![
-            Instruction::LoadCtx { dst: Reg(0), field: CtxField::Timestamp },
+            Instruction::LoadCtx {
+                dst: Reg(0),
+                field: CtxField::Timestamp
+            },
             Instruction::Exit,
         ];
         assert!(verify(&prog).is_ok());
@@ -492,7 +516,10 @@ mod tests {
         // Last valid offset: SCRATCH_BYTES - 8
         let offset = (SCRATCH_BYTES - 8) as u16;
         let prog = alloc::vec![
-            Instruction::LoadMem { dst: Reg(0), offset },
+            Instruction::LoadMem {
+                dst: Reg(0),
+                offset
+            },
             Instruction::Exit,
         ];
         assert!(verify(&prog).is_ok(), "offset {} should be valid", offset);

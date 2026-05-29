@@ -73,44 +73,43 @@ pub enum BpfError {
 impl core::fmt::Display for BpfError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::EmptyProgram =>
-                write!(f, "BPF program is empty"),
-            Self::ProgramTooLong { len, max } =>
-                write!(f, "BPF program too long: {} instructions (max {})", len, max),
-            Self::MissingExit =>
-                write!(f, "BPF program missing Exit as last instruction"),
-            Self::InvalidRegister { pc, reg } =>
-                write!(f, "BPF pc={}: invalid register R{}", pc, reg),
-            Self::WriteToFramePointer { pc } =>
-                write!(f, "BPF pc={}: write to read-only frame pointer R10", pc),
-            Self::ScratchOutOfBounds { pc, offset, max } =>
-                write!(
-                    f,
-                    "BPF pc={}: scratch offset {} out of bounds (max {})",
-                    pc, offset, max
-                ),
-            Self::JumpOutOfBounds { pc, target } =>
-                write!(f, "BPF pc={}: jump target {} out of bounds", pc, target),
-            Self::BackwardJump { pc, off } =>
-                write!(f, "BPF pc={}: backward/self jump (off={})", pc, off),
-            Self::DivisionByZero { pc } =>
-                write!(f, "BPF pc={}: static division by zero", pc),
-            Self::HelperNotAllowed { pc, helper } =>
-                write!(
-                    f,
-                    "BPF pc={}: helper {} not allowed (missing bpf-maps feature)",
-                    pc, helper
-                ),
-            Self::InvalidOpcode { word } =>
-                write!(f, "BPF invalid opcode in word {:#018x}", word),
-            Self::ImmediateTooWide { imm } =>
-                write!(f, "BPF immediate {} does not fit in i32", imm),
-            Self::FuelExhausted =>
-                write!(f, "BPF program ran out of fuel"),
-            Self::MapFull =>
-                write!(f, "BPF map is full"),
-            Self::InternalCorrupt =>
-                write!(f, "BPF internal state is corrupt"),
+            Self::EmptyProgram => write!(f, "BPF program is empty"),
+            Self::ProgramTooLong { len, max } => write!(
+                f,
+                "BPF program too long: {} instructions (max {})",
+                len, max
+            ),
+            Self::MissingExit => write!(f, "BPF program missing Exit as last instruction"),
+            Self::InvalidRegister { pc, reg } => {
+                write!(f, "BPF pc={}: invalid register R{}", pc, reg)
+            }
+            Self::WriteToFramePointer { pc } => {
+                write!(f, "BPF pc={}: write to read-only frame pointer R10", pc)
+            }
+            Self::ScratchOutOfBounds { pc, offset, max } => write!(
+                f,
+                "BPF pc={}: scratch offset {} out of bounds (max {})",
+                pc, offset, max
+            ),
+            Self::JumpOutOfBounds { pc, target } => {
+                write!(f, "BPF pc={}: jump target {} out of bounds", pc, target)
+            }
+            Self::BackwardJump { pc, off } => {
+                write!(f, "BPF pc={}: backward/self jump (off={})", pc, off)
+            }
+            Self::DivisionByZero { pc } => write!(f, "BPF pc={}: static division by zero", pc),
+            Self::HelperNotAllowed { pc, helper } => write!(
+                f,
+                "BPF pc={}: helper {} not allowed (missing bpf-maps feature)",
+                pc, helper
+            ),
+            Self::InvalidOpcode { word } => write!(f, "BPF invalid opcode in word {:#018x}", word),
+            Self::ImmediateTooWide { imm } => {
+                write!(f, "BPF immediate {} does not fit in i32", imm)
+            }
+            Self::FuelExhausted => write!(f, "BPF program ran out of fuel"),
+            Self::MapFull => write!(f, "BPF map is full"),
+            Self::InternalCorrupt => write!(f, "BPF internal state is corrupt"),
         }
     }
 }
@@ -126,7 +125,7 @@ impl std::error::Error for BpfError {}
 #[derive(Debug, Clone, Copy)]
 pub struct BpfStats {
     /// Number of times the program was executed.
-    pub runs:   u64,
+    pub runs: u64,
     /// Number of times the program returned an error.
     pub errors: u64,
     /// Sum of R0 values returned by successful runs.
@@ -136,18 +135,18 @@ pub struct BpfStats {
 /// Per-slot state: one slot per `TracepointId`.
 struct RegistrySlot {
     program: spin::Mutex<Option<VerifiedProgram>>,
-    runs:    AtomicU64,
-    errors:  AtomicU64,
-    output:  AtomicU64,
+    runs: AtomicU64,
+    errors: AtomicU64,
+    output: AtomicU64,
 }
 
 impl RegistrySlot {
     const fn new() -> Self {
         Self {
             program: spin::Mutex::new(None),
-            runs:    AtomicU64::new(0),
-            errors:  AtomicU64::new(0),
-            output:  AtomicU64::new(0),
+            runs: AtomicU64::new(0),
+            errors: AtomicU64::new(0),
+            output: AtomicU64::new(0),
         }
     }
 }
@@ -158,13 +157,26 @@ impl RegistrySlot {
 macro_rules! registry_slots {
     () => {
         [
-            RegistrySlot::new(), RegistrySlot::new(), RegistrySlot::new(),
-            RegistrySlot::new(), RegistrySlot::new(), RegistrySlot::new(),
-            RegistrySlot::new(), RegistrySlot::new(), RegistrySlot::new(),
-            RegistrySlot::new(), RegistrySlot::new(), RegistrySlot::new(),
-            RegistrySlot::new(), RegistrySlot::new(), RegistrySlot::new(),
-            RegistrySlot::new(), RegistrySlot::new(), RegistrySlot::new(),
-            RegistrySlot::new(), RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
+            RegistrySlot::new(),
         ]
     };
 }
@@ -229,7 +241,7 @@ pub fn read_output(tp: TracepointId) -> u64 {
 pub fn read_stats(tp: TracepointId) -> BpfStats {
     let s = &BPF_REGISTRY.slots[tp as usize];
     BpfStats {
-        runs:   s.runs.load(Ordering::Relaxed),
+        runs: s.runs.load(Ordering::Relaxed),
         errors: s.errors.load(Ordering::Relaxed),
         output: s.output.load(Ordering::Relaxed),
     }
@@ -255,7 +267,7 @@ pub(crate) fn run_attached(ev: &crate::observability::TraceEvent) {
     let tp_idx = ev.event.tracepoint_id() as usize;
     let slot = match BPF_REGISTRY.slots.get(tp_idx) {
         Some(s) => s,
-        None    => return,
+        None => return,
     };
 
     // Non-blocking: if the slot is currently being written (attach/detach),
@@ -292,15 +304,19 @@ mod tests {
     fn clean_slot() {
         detach(TP);
         reset_output(TP);
-        BPF_REGISTRY.slots[TP as usize].runs.store(0, Ordering::Relaxed);
-        BPF_REGISTRY.slots[TP as usize].errors.store(0, Ordering::Relaxed);
+        BPF_REGISTRY.slots[TP as usize]
+            .runs
+            .store(0, Ordering::Relaxed);
+        BPF_REGISTRY.slots[TP as usize]
+            .errors
+            .store(0, Ordering::Relaxed);
     }
 
     fn make_event(tp: TracepointId) -> TraceEvent {
         TraceEvent {
             timestamp: 1234,
-            cpu_id:    0,
-            event:     event_for(tp),
+            cpu_id: 0,
+            event: event_for(tp),
         }
     }
 
@@ -308,13 +324,16 @@ mod tests {
         match tp {
             TracepointId::LockRelease => EventType::LockRelease {
                 lock_addr: 0xDEAD,
-                task_id:   1,
+                task_id: 1,
             },
             TracepointId::TaskSpawn => EventType::TaskSpawn {
-                task_id:  1,
+                task_id: 1,
                 priority: 10,
             },
-            _ => EventType::TaskSpawn { task_id: 0, priority: 0 },
+            _ => EventType::TaskSpawn {
+                task_id: 0,
+                priority: 0,
+            },
         }
     }
 
@@ -353,7 +372,7 @@ mod tests {
         // Attach a program returning 7
         let prog = alloc::vec![
             Instruction::Alu {
-                op:  AluOp::Mov,
+                op: AluOp::Mov,
                 dst: Reg(0),
                 src: Source::Imm(7),
             },
@@ -376,7 +395,11 @@ mod tests {
             BpfError::MissingExit,
             BpfError::InvalidRegister { pc: 0, reg: 11 },
             BpfError::WriteToFramePointer { pc: 0 },
-            BpfError::ScratchOutOfBounds { pc: 0, offset: 0, max: 0 },
+            BpfError::ScratchOutOfBounds {
+                pc: 0,
+                offset: 0,
+                max: 0,
+            },
             BpfError::JumpOutOfBounds { pc: 0, target: 999 },
             BpfError::BackwardJump { pc: 0, off: -1 },
             BpfError::DivisionByZero { pc: 0 },
@@ -398,7 +421,7 @@ mod tests {
         clean_slot();
         let prog = alloc::vec![
             Instruction::Alu {
-                op:  AluOp::Mov,
+                op: AluOp::Mov,
                 dst: Reg(0),
                 src: Source::Imm(7),
             },
@@ -420,7 +443,7 @@ mod tests {
         // Build a 2-instruction program, then force fuel=1 so it exhausts
         let insns = alloc::vec![
             Instruction::Alu {
-                op:  AluOp::Mov,
+                op: AluOp::Mov,
                 dst: Reg(0),
                 src: Source::Imm(1),
             },
@@ -440,10 +463,10 @@ mod tests {
     fn test_context_from_trace_event_sets_fields() {
         let ev = TraceEvent {
             timestamp: 42,
-            cpu_id:    2,
-            event:     EventType::PageAlloc {
+            cpu_id: 2,
+            event: EventType::PageAlloc {
                 page_addr: 0x1000,
-                count:     4,
+                count: 4,
             },
         };
         let ctx = BpfContext::from_trace_event(&ev);

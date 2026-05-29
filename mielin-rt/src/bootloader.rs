@@ -13,8 +13,8 @@ use core::fmt;
 
 use crate::ota::{OtaError, PartitionId, PartitionInfo, MAX_PARTITIONS};
 use crate::security::{
-    BootStage, FirmwareMetadata, HardwareCrypto, HashAlgorithm, SecureBootVerifier,
-    SecurityError, SignatureAlgorithm,
+    BootStage, FirmwareMetadata, HardwareCrypto, HashAlgorithm, SecureBootVerifier, SecurityError,
+    SignatureAlgorithm,
 };
 
 // ---------------------------------------------------------------------------
@@ -291,9 +291,7 @@ impl AppImageEntry {
     /// Return `true` if `initial_sp` lies within `[ram_start, ram_end]` and
     /// is 4-byte aligned.
     pub fn is_sp_plausible(&self, ram_start: u32, ram_end: u32) -> bool {
-        self.initial_sp >= ram_start
-            && self.initial_sp <= ram_end
-            && self.initial_sp & 3 == 0
+        self.initial_sp >= ram_start && self.initial_sp <= ram_end && self.initial_sp & 3 == 0
     }
 
     /// Return `true` if `reset_vector` has its Thumb bit set and the
@@ -337,10 +335,7 @@ pub struct ImageHeader {
 }
 
 /// Parse the 64-byte image header from a flash region at the given offset.
-fn parse_header<F: FlashRegion>(
-    flash: &F,
-    offset: usize,
-) -> Result<ImageHeader, BootloaderError> {
+fn parse_header<F: FlashRegion>(flash: &F, offset: usize) -> Result<ImageHeader, BootloaderError> {
     if offset + IMAGE_HEADER_SIZE > flash.size() {
         return Err(BootloaderError::OutOfBounds);
     }
@@ -531,9 +526,8 @@ impl BootState {
         let mut cursor = 11usize;
         for slot in &self.slots[..self.slot_count] {
             buf[cursor] = partition_id_to_u8(slot.partition);
-            let flags = (slot.confirmed as u8)
-                | ((slot.trial as u8) << 1)
-                | ((slot.bad as u8) << 2);
+            let flags =
+                (slot.confirmed as u8) | ((slot.trial as u8) << 1) | ((slot.bad as u8) << 2);
             buf[cursor + 1] = flags;
             buf[cursor + 2] = slot.boot_attempts;
             buf[cursor + 3..cursor + 7].copy_from_slice(&slot.version.to_le_bytes());
@@ -580,10 +574,8 @@ impl BootState {
             return Err(BootloaderError::CorruptBootState);
         }
 
-        let selected =
-            partition_id_from_u8(bytes[4]).ok_or(BootloaderError::CorruptBootState)?;
-        let rollback_counter =
-            u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
+        let selected = partition_id_from_u8(bytes[4]).ok_or(BootloaderError::CorruptBootState)?;
+        let rollback_counter = u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
         let max_attempts = bytes[9];
         let slot_count = bytes[10] as usize;
 
@@ -600,8 +592,8 @@ impl BootState {
 
         let mut cursor = 11usize;
         for slot in slots[..slot_count].iter_mut() {
-            let partition = partition_id_from_u8(bytes[cursor])
-                .ok_or(BootloaderError::CorruptBootState)?;
+            let partition =
+                partition_id_from_u8(bytes[cursor]).ok_or(BootloaderError::CorruptBootState)?;
             let flags = bytes[cursor + 1];
             let confirmed = flags & 1 != 0;
             let trial = flags & 2 != 0;
@@ -700,10 +692,7 @@ impl<F: FlashRegion> Bootloader<F> {
     /// Register a partition.  Up to [`MAX_PARTITIONS`] partitions may be
     /// registered; returns [`BootloaderError::Ota`] wrapping
     /// [`OtaError::NoSpace`] when the limit is reached.
-    pub fn register_partition(
-        &mut self,
-        info: PartitionInfo,
-    ) -> Result<(), BootloaderError> {
+    pub fn register_partition(&mut self, info: PartitionInfo) -> Result<(), BootloaderError> {
         if self.partition_count >= MAX_PARTITIONS {
             return Err(BootloaderError::Ota(OtaError::NoSpace));
         }
@@ -722,10 +711,7 @@ impl<F: FlashRegion> Bootloader<F> {
     /// Compute the byte offset within `self.flash` for the start of a
     /// partition, given that partitions are addressed by `start_address`
     /// relative to `flash_base`.
-    fn region_offset(
-        &self,
-        partition: &PartitionInfo,
-    ) -> Result<usize, BootloaderError> {
+    fn region_offset(&self, partition: &PartitionInfo) -> Result<usize, BootloaderError> {
         let abs = partition.start_address;
         if abs < self.flash_base {
             return Err(BootloaderError::OutOfBounds);
@@ -1063,10 +1049,7 @@ impl<F: FlashRegion> Bootloader<F> {
     ///
     /// Returns the [`AppImageEntry`] for the chosen partition.  The caller is
     /// responsible for the actual jump (see [`jump_to_application`]).
-    pub fn run_boot_cycle(
-        &mut self,
-        scratch: &mut [u8],
-    ) -> Result<AppImageEntry, BootloaderError> {
+    pub fn run_boot_cycle(&mut self, scratch: &mut [u8]) -> Result<AppImageEntry, BootloaderError> {
         const MAX_ROUNDS: usize = 5;
 
         for _ in 0..MAX_ROUNDS {
@@ -1133,8 +1116,7 @@ pub unsafe fn jump_to_application(table_base: u32, entry: AppImageEntry) -> ! {
 
     cortex_m::register::msp::write(entry.initial_sp);
 
-    let reset_fn: unsafe extern "C" fn() -> ! =
-        core::mem::transmute(entry.reset_vector as usize);
+    let reset_fn: unsafe extern "C" fn() -> ! = core::mem::transmute(entry.reset_vector as usize);
     reset_fn()
 }
 
@@ -1145,8 +1127,8 @@ pub unsafe fn jump_to_application(table_base: u32, entry: AppImageEntry) -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::format;
     use crate::security::HardwareCryptoType;
+    use alloc::format;
 
     // -----------------------------------------------------------------------
     // Helper builders
@@ -1175,7 +1157,7 @@ mod tests {
     ) -> Bootloader<MemoryFlash<N>> {
         Bootloader::new(
             flash,
-            0,           // flash_base = 0
+            0, // flash_base = 0
             state_offset,
             0x2000_0000, // ram_start
             0x2001_0000, // ram_end
@@ -1297,7 +1279,12 @@ mod tests {
 
     /// Helper: write `initial_sp` and `reset_vector` at the header-field offsets
     /// (12 and 16) within the partition so that `prepare_jump` can read them.
-    fn write_header_sp_reset(flash: &mut MemoryFlash<{ 2 * 1024 }>, base: usize, sp: u32, reset: u32) {
+    fn write_header_sp_reset(
+        flash: &mut MemoryFlash<{ 2 * 1024 }>,
+        base: usize,
+        sp: u32,
+        reset: u32,
+    ) {
         flash.load_bytes(base + 12, &sp.to_le_bytes());
         flash.load_bytes(base + 16, &reset.to_le_bytes());
     }
@@ -1671,10 +1658,7 @@ mod tests {
         bl.state.slots[2] = BootSlotState::new(PartitionId::Recovery);
         bl.state.slot_count = 3;
 
-        assert_eq!(
-            bl.select_boot_partition().unwrap(),
-            PartitionId::Recovery
-        );
+        assert_eq!(bl.select_boot_partition().unwrap(), PartitionId::Recovery);
     }
 
     #[test]

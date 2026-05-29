@@ -3,8 +3,8 @@
 
 use super::{
     isa::{
-        AluOp, CtxField, Instruction, Jcc, Source, NUM_REGS, REG_FRAME,
-        REG_RETURN, SCRATCH_BYTES, SCRATCH_WORDS,
+        AluOp, CtxField, Instruction, Jcc, Source, NUM_REGS, REG_FRAME, REG_RETURN, SCRATCH_BYTES,
+        SCRATCH_WORDS,
     },
     verifier::VerifiedProgram,
     BpfError,
@@ -55,8 +55,8 @@ impl BpfContext {
 
         // Numeric tracepoint id
         ctx.fields[CtxField::TracepointId as usize] = ev.event.tracepoint_id() as u64;
-        ctx.fields[CtxField::Timestamp    as usize] = ev.timestamp;
-        ctx.fields[CtxField::CpuId        as usize] = ev.cpu_id as u64;
+        ctx.fields[CtxField::Timestamp as usize] = ev.timestamp;
+        ctx.fields[CtxField::CpuId as usize] = ev.cpu_id as u64;
 
         // Map per-variant fields to Arg0/Arg1/Arg2
         match ev.event {
@@ -97,7 +97,10 @@ impl BpfContext {
                 ctx.fields[CtxField::Arg0 as usize] = irq as u64;
                 ctx.fields[CtxField::Arg1 as usize] = duration_ns;
             }
-            EventType::IpiSent { target_cpu, ipi_type } => {
+            EventType::IpiSent {
+                target_cpu,
+                ipi_type,
+            } => {
                 ctx.fields[CtxField::Arg0 as usize] = target_cpu as u64;
                 ctx.fields[CtxField::Arg1 as usize] = ipi_type as u64;
             }
@@ -112,7 +115,10 @@ impl BpfContext {
                 ctx.fields[CtxField::Arg0 as usize] = from_task as u64;
                 ctx.fields[CtxField::Arg1 as usize] = to_task as u64;
             }
-            EventType::SyscallEntry { syscall_nr, task_id } => {
+            EventType::SyscallEntry {
+                syscall_nr,
+                task_id,
+            } => {
                 ctx.fields[CtxField::Arg0 as usize] = syscall_nr as u64;
                 ctx.fields[CtxField::Arg1 as usize] = task_id as u64;
             }
@@ -154,7 +160,7 @@ impl Default for BpfContext {
 
 /// A MielinBPF virtual machine with registers and a scratch-memory bank.
 pub struct Vm {
-    regs:    [u64; NUM_REGS],
+    regs: [u64; NUM_REGS],
     scratch: [u64; SCRATCH_WORDS],
 }
 
@@ -162,7 +168,7 @@ impl Vm {
     /// Construct a new, zeroed VM.
     pub const fn new() -> Self {
         Self {
-            regs:    [0u64; NUM_REGS],
+            regs: [0u64; NUM_REGS],
             scratch: [0u64; SCRATCH_WORDS],
         }
     }
@@ -175,13 +181,9 @@ impl Vm {
     /// * `InternalCorrupt` — a defensive index-out-of-bounds check failed
     ///
     /// All other errors were ruled out by the verifier.
-    pub fn run(
-        &mut self,
-        prog: &VerifiedProgram,
-        ctx: &BpfContext,
-    ) -> Result<u64, BpfError> {
+    pub fn run(&mut self, prog: &VerifiedProgram, ctx: &BpfContext) -> Result<u64, BpfError> {
         // Reset state
-        self.regs    = [0u64; NUM_REGS];
+        self.regs = [0u64; NUM_REGS];
         self.scratch = [0u64; SCRATCH_WORDS];
         // R10 = top of scratch (frame pointer, read-only by verifier rules)
         self.regs[REG_FRAME as usize] = SCRATCH_BYTES as u64;
@@ -202,10 +204,7 @@ impl Vm {
             }
             fuel -= 1;
 
-            let insn = insns
-                .get(pc)
-                .copied()
-                .ok_or(BpfError::InternalCorrupt)?;
+            let insn = insns.get(pc).copied().ok_or(BpfError::InternalCorrupt)?;
             pc += 1;
 
             match insn {
@@ -214,31 +213,36 @@ impl Vm {
                 // ------------------------------------------------------------
                 Instruction::Alu { op, dst, src } => {
                     let rhs = self.resolve_src(src);
-                    let lhs = *self
-                        .regs
-                        .get(dst.idx())
-                        .ok_or(BpfError::InternalCorrupt)?;
+                    let lhs = *self.regs.get(dst.idx()).ok_or(BpfError::InternalCorrupt)?;
 
                     let result = match op {
-                        AluOp::Add  => lhs.wrapping_add(rhs),
-                        AluOp::Sub  => lhs.wrapping_sub(rhs),
-                        AluOp::Mul  => lhs.wrapping_mul(rhs),
-                        AluOp::Div  => {
-                            if rhs == 0 { 0 } else { lhs / rhs }
+                        AluOp::Add => lhs.wrapping_add(rhs),
+                        AluOp::Sub => lhs.wrapping_sub(rhs),
+                        AluOp::Mul => lhs.wrapping_mul(rhs),
+                        AluOp::Div => {
+                            if rhs == 0 {
+                                0
+                            } else {
+                                lhs / rhs
+                            }
                         }
-                        AluOp::Mod  => {
-                            if rhs == 0 { 0 } else { lhs % rhs }
+                        AluOp::Mod => {
+                            if rhs == 0 {
+                                0
+                            } else {
+                                lhs % rhs
+                            }
                         }
-                        AluOp::And  => lhs & rhs,
-                        AluOp::Or   => lhs | rhs,
-                        AluOp::Xor  => lhs ^ rhs,
-                        AluOp::Lsh  => lhs.wrapping_shl((rhs & 63) as u32),
-                        AluOp::Rsh  => lhs.wrapping_shr((rhs & 63) as u32),
+                        AluOp::And => lhs & rhs,
+                        AluOp::Or => lhs | rhs,
+                        AluOp::Xor => lhs ^ rhs,
+                        AluOp::Lsh => lhs.wrapping_shl((rhs & 63) as u32),
+                        AluOp::Rsh => lhs.wrapping_shr((rhs & 63) as u32),
                         AluOp::Arsh => {
                             let shift = (rhs & 63) as u32;
                             ((lhs as i64).wrapping_shr(shift)) as u64
                         }
-                        AluOp::Mov  => rhs,
+                        AluOp::Mov => rhs,
                     };
 
                     *self
@@ -252,10 +256,7 @@ impl Vm {
                 // ------------------------------------------------------------
                 Instruction::LoadMem { dst, offset } => {
                     let idx = offset as usize / 8;
-                    let val = *self
-                        .scratch
-                        .get(idx)
-                        .ok_or(BpfError::InternalCorrupt)?;
+                    let val = *self.scratch.get(idx).ok_or(BpfError::InternalCorrupt)?;
                     *self
                         .regs
                         .get_mut(dst.idx())
@@ -268,10 +269,7 @@ impl Vm {
                 Instruction::StoreMem { src, offset } => {
                     let val = self.resolve_src(src);
                     let idx = offset as usize / 8;
-                    *self
-                        .scratch
-                        .get_mut(idx)
-                        .ok_or(BpfError::InternalCorrupt)? = val;
+                    *self.scratch.get_mut(idx).ok_or(BpfError::InternalCorrupt)? = val;
                 }
 
                 // ------------------------------------------------------------
@@ -297,19 +295,16 @@ impl Vm {
                 // JmpIf
                 // ------------------------------------------------------------
                 Instruction::JmpIf { cc, dst, src, off } => {
-                    let a = *self
-                        .regs
-                        .get(dst.idx())
-                        .ok_or(BpfError::InternalCorrupt)?;
+                    let a = *self.regs.get(dst.idx()).ok_or(BpfError::InternalCorrupt)?;
                     let b = self.resolve_src(src);
 
                     let taken = match cc {
-                        Jcc::Eq  => a == b,
-                        Jcc::Ne  => a != b,
-                        Jcc::Gt  => a > b,
-                        Jcc::Ge  => a >= b,
-                        Jcc::Lt  => a < b,
-                        Jcc::Le  => a <= b,
+                        Jcc::Eq => a == b,
+                        Jcc::Ne => a != b,
+                        Jcc::Gt => a > b,
+                        Jcc::Ge => a >= b,
+                        Jcc::Lt => a < b,
+                        Jcc::Le => a <= b,
                         Jcc::Sgt => (a as i64) > (b as i64),
                         Jcc::Sge => (a as i64) >= (b as i64),
                         Jcc::Slt => (a as i64) < (b as i64),
@@ -377,7 +372,7 @@ mod tests {
 
     fn mov_imm(dst: u8, v: i64) -> Instruction {
         Instruction::Alu {
-            op:  AluOp::Mov,
+            op: AluOp::Mov,
             dst: Reg(dst),
             src: Source::Imm(v),
         }
@@ -385,7 +380,7 @@ mod tests {
 
     fn mov_reg(dst: u8, src: u8) -> Instruction {
         Instruction::Alu {
-            op:  AluOp::Mov,
+            op: AluOp::Mov,
             dst: Reg(dst),
             src: Source::Reg(Reg(src)),
         }
@@ -421,12 +416,12 @@ mod tests {
             mov_imm(1, 10),
             mov_imm(2, 32),
             Instruction::Alu {
-                op:  AluOp::Add,
+                op: AluOp::Add,
                 dst: Reg(0),
                 src: Source::Reg(Reg(1)),
             },
             Instruction::Alu {
-                op:  AluOp::Add,
+                op: AluOp::Add,
                 dst: Reg(0),
                 src: Source::Reg(Reg(2)),
             },
@@ -440,7 +435,7 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(0, 100),
             Instruction::Alu {
-                op:  AluOp::Sub,
+                op: AluOp::Sub,
                 dst: Reg(0),
                 src: Source::Imm(58),
             },
@@ -454,7 +449,7 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(0, 6),
             Instruction::Alu {
-                op:  AluOp::Mul,
+                op: AluOp::Mul,
                 dst: Reg(0),
                 src: Source::Imm(7),
             },
@@ -468,7 +463,7 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(0, 84),
             Instruction::Alu {
-                op:  AluOp::Div,
+                op: AluOp::Div,
                 dst: Reg(0),
                 src: Source::Imm(2),
             },
@@ -484,9 +479,9 @@ mod tests {
         // verification but we can then use a register-sourced zero at runtime.
         let result = run_prog(alloc::vec![
             mov_imm(0, 100),
-            mov_imm(1, 0),   // R1 = 0 (runtime zero, not caught by verifier)
+            mov_imm(1, 0), // R1 = 0 (runtime zero, not caught by verifier)
             Instruction::Alu {
-                op:  AluOp::Div,
+                op: AluOp::Div,
                 dst: Reg(0),
                 src: Source::Reg(Reg(1)),
             },
@@ -500,7 +495,7 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(0, 45),
             Instruction::Alu {
-                op:  AluOp::Mod,
+                op: AluOp::Mod,
                 dst: Reg(0),
                 src: Source::Imm(3),
             },
@@ -514,7 +509,7 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(0, 0xFF),
             Instruction::Alu {
-                op:  AluOp::And,
+                op: AluOp::And,
                 dst: Reg(0),
                 src: Source::Imm(0x42),
             },
@@ -528,7 +523,7 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(0, 0x40),
             Instruction::Alu {
-                op:  AluOp::Or,
+                op: AluOp::Or,
                 dst: Reg(0),
                 src: Source::Imm(0x02),
             },
@@ -542,7 +537,7 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(0, 0x47),
             Instruction::Alu {
-                op:  AluOp::Xor,
+                op: AluOp::Xor,
                 dst: Reg(0),
                 src: Source::Imm(0x05),
             },
@@ -556,7 +551,7 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(0, 1),
             Instruction::Alu {
-                op:  AluOp::Lsh,
+                op: AluOp::Lsh,
                 dst: Reg(0),
                 src: Source::Imm(6),
             },
@@ -570,7 +565,7 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(0, 84),
             Instruction::Alu {
-                op:  AluOp::Rsh,
+                op: AluOp::Rsh,
                 dst: Reg(0),
                 src: Source::Imm(1),
             },
@@ -585,7 +580,7 @@ mod tests {
         // so R0 remains 0.
         let result = run_prog(alloc::vec![
             Instruction::Jmp { off: 1 },
-            mov_imm(0, 99),          // skipped
+            mov_imm(0, 99), // skipped
             Instruction::Exit,
         ]);
         assert_eq!(result, Ok(0));
@@ -597,12 +592,12 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(1, 42),
             Instruction::JmpIf {
-                cc:  Jcc::Eq,
+                cc: Jcc::Eq,
                 dst: Reg(1),
                 src: Source::Imm(42),
                 off: 1,
             },
-            mov_imm(0, 99),          // skipped
+            mov_imm(0, 99), // skipped
             Instruction::Exit,
         ]);
         assert_eq!(result, Ok(0));
@@ -614,12 +609,12 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(1, 42),
             Instruction::JmpIf {
-                cc:  Jcc::Eq,
+                cc: Jcc::Eq,
                 dst: Reg(1),
                 src: Source::Imm(99),
                 off: 1,
             },
-            mov_imm(0, 7),           // executed
+            mov_imm(0, 7), // executed
             Instruction::Exit,
         ]);
         assert_eq!(result, Ok(7));
@@ -631,7 +626,10 @@ mod tests {
         ctx.set(CtxField::Arg0, 77);
         let result = run_prog_ctx(
             alloc::vec![
-                Instruction::LoadCtx { dst: Reg(0), field: CtxField::Arg0 },
+                Instruction::LoadCtx {
+                    dst: Reg(0),
+                    field: CtxField::Arg0
+                },
                 Instruction::Exit,
             ],
             &ctx,
@@ -645,10 +643,13 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(1, 42),
             Instruction::StoreMem {
-                src:    Source::Reg(Reg(1)),
+                src: Source::Reg(Reg(1)),
                 offset: 0,
             },
-            Instruction::LoadMem { dst: Reg(0), offset: 0 },
+            Instruction::LoadMem {
+                dst: Reg(0),
+                offset: 0
+            },
             Instruction::Exit,
         ]);
         assert_eq!(result, Ok(42));
@@ -671,7 +672,7 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(0, -84_i32 as i64),
             Instruction::Alu {
-                op:  AluOp::Arsh,
+                op: AluOp::Arsh,
                 dst: Reg(0),
                 src: Source::Imm(1),
             },
@@ -694,15 +695,18 @@ mod tests {
     fn test_context_from_trace_event_sets_fields() {
         let ev = TraceEvent {
             timestamp: 9999,
-            cpu_id:    3,
-            event:     EventType::TaskSpawn { task_id: 77, priority: 5 },
+            cpu_id: 3,
+            event: EventType::TaskSpawn {
+                task_id: 77,
+                priority: 5,
+            },
         };
         let ctx = BpfContext::from_trace_event(&ev);
         assert_eq!(ctx.get(CtxField::TracepointId), 0); // TaskSpawn = 0
-        assert_eq!(ctx.get(CtxField::Timestamp),    9999);
-        assert_eq!(ctx.get(CtxField::CpuId),        3);
-        assert_eq!(ctx.get(CtxField::Arg0),         77);
-        assert_eq!(ctx.get(CtxField::Arg1),         5);
+        assert_eq!(ctx.get(CtxField::Timestamp), 9999);
+        assert_eq!(ctx.get(CtxField::CpuId), 3);
+        assert_eq!(ctx.get(CtxField::Arg0), 77);
+        assert_eq!(ctx.get(CtxField::Arg1), 5);
     }
 
     #[test]
@@ -710,7 +714,9 @@ mod tests {
         // Call{Nop} must be a no-op and not crash.
         let result = run_prog(alloc::vec![
             mov_imm(0, 42),
-            Instruction::Call { helper: HelperId::Nop },
+            Instruction::Call {
+                helper: HelperId::Nop
+            },
             Instruction::Exit,
         ]);
         assert_eq!(result, Ok(42));
@@ -722,10 +728,13 @@ mod tests {
         let result = run_prog(alloc::vec![
             mov_imm(1, 0xDEAD_BEEF),
             Instruction::StoreMem {
-                src:    Source::Reg(Reg(1)),
+                src: Source::Reg(Reg(1)),
                 offset: 56,
             },
-            Instruction::LoadMem { dst: Reg(0), offset: 56 },
+            Instruction::LoadMem {
+                dst: Reg(0),
+                offset: 56
+            },
             Instruction::Exit,
         ]);
         assert_eq!(result, Ok(0xDEAD_BEEF));

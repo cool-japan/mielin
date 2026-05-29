@@ -56,6 +56,10 @@ pub use complex::{Complex, Complex32, Complex64, ComplexTensor};
 pub use conv::{ConvError, ConvOps, PaddingMode, PoolingMode};
 pub use data::{tensor_utils, DataLoader, Dataset, SimpleRng};
 pub use error::{ErrorCategory, TensorError, TensorResult};
+pub use federated::{
+    Aggregator, ClientUpdate, FedAvg, FederatedCoordinator, FederatedError, LocalTrainer,
+    RoundMetrics, UniformAvg,
+};
 pub use formats::{
     AttributeValue, ExportModel, GraphNode, ImportedModel, ModelExporter, ModelFormat, ModelGraph,
     ModelImporter, ModelInfo,
@@ -95,10 +99,6 @@ pub use quant::{
 };
 pub use serialize::{DataType, Deserializer, ModelMetadata, Serializer};
 pub use sparse::{SparseFormat, SparseTensor};
-pub use federated::{
-    Aggregator, ClientUpdate, FedAvg, FederatedCoordinator, FederatedError, LocalTrainer,
-    RoundMetrics, UniformAvg,
-};
 pub use tensor::Tensor;
 pub use view::{IndexIterator, SliceRange, TensorView, TensorViewMut, ViewIterator};
 

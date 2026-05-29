@@ -1113,10 +1113,7 @@ impl ResourcePredictor {
 
         // ── ML-enhanced path ───────────────────────────────────────────────
         if n >= self.ml_min_samples {
-            return Some(
-                self.enhanced
-                    .predict_from_history(snapshots, horizon_us),
-            );
+            return Some(self.enhanced.predict_from_history(snapshots, horizon_us));
         }
 
         // ── Fallback: original linear extrapolation ────────────────────────
@@ -1223,10 +1220,7 @@ impl ResourcePredictor {
             if probe.memory_bytes > current_mem {
                 let memory_rate_per_us =
                     (probe.memory_bytes - current_mem) as f64 / horizon_us as f64;
-                let remaining = quota
-                    .memory
-                    .max_total_bytes
-                    .saturating_sub(current_mem);
+                let remaining = quota.memory.max_total_bytes.saturating_sub(current_mem);
                 if memory_rate_per_us > 0.0 {
                     let time_to_breach = (remaining as f64 / memory_rate_per_us) as u64;
                     return Some(latest.timestamp_us + time_to_breach);

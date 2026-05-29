@@ -14,5 +14,5 @@ pub mod storagequota_traits;
 pub mod types;
 
 // Re-export all types
-pub use types::*;
 pub use predictor_ml::{EnhancedPredictor, HoltModel, PredictorWeights, RidgeLinear};
+pub use types::*;

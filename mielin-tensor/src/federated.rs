@@ -202,9 +202,7 @@ impl Aggregator for FedAvg {
                     got: alloc::vec![update.weights.len()],
                 });
             }
-            for (client_weight, &ref_shape) in
-                update.weights.iter().zip(reference_shapes.iter())
-            {
+            for (client_weight, &ref_shape) in update.weights.iter().zip(reference_shapes.iter()) {
                 if client_weight.shape() != ref_shape {
                     return Err(FederatedError::ShapeMismatch {
                         expected: ref_shape.to_vec(),
@@ -271,9 +269,7 @@ impl Aggregator for UniformAvg {
                     got: alloc::vec![update.weights.len()],
                 });
             }
-            for (client_weight, &ref_shape) in
-                update.weights.iter().zip(reference_shapes.iter())
-            {
+            for (client_weight, &ref_shape) in update.weights.iter().zip(reference_shapes.iter()) {
                 if client_weight.shape() != ref_shape {
                     return Err(FederatedError::ShapeMismatch {
                         expected: ref_shape.to_vec(),
@@ -345,10 +341,7 @@ pub struct FederatedCoordinator {
 
 impl FederatedCoordinator {
     /// Create a coordinator with an arbitrary aggregation strategy.
-    pub fn new(
-        initial_weights: Vec<Tensor<f32>>,
-        aggregator: Box<dyn Aggregator>,
-    ) -> Self {
+    pub fn new(initial_weights: Vec<Tensor<f32>>, aggregator: Box<dyn Aggregator>) -> Self {
         Self {
             global_weights: initial_weights,
             pending_updates: Vec::new(),
@@ -570,18 +563,14 @@ impl LocalTrainer {
 
         // Validate that inputs and targets are 2-D.
         if inputs.ndim() != 2 {
-            return Err(FederatedError::TensorError(TensorError::dimension_mismatch(
-                "LocalTrainer::train inputs",
-                2,
-                inputs.ndim(),
-            )));
+            return Err(FederatedError::TensorError(
+                TensorError::dimension_mismatch("LocalTrainer::train inputs", 2, inputs.ndim()),
+            ));
         }
         if targets.ndim() != 2 {
-            return Err(FederatedError::TensorError(TensorError::dimension_mismatch(
-                "LocalTrainer::train targets",
-                2,
-                targets.ndim(),
-            )));
+            return Err(FederatedError::TensorError(
+                TensorError::dimension_mismatch("LocalTrainer::train targets", 2, targets.ndim()),
+            ));
         }
 
         let n_samples = inputs.shape()[0];
@@ -667,14 +656,10 @@ impl LocalTrainer {
                 let mut acc = 0.0f32;
                 for l in 0..k_a {
                     let a_val = *a.get(&[i, l]).ok_or_else(|| {
-                        FederatedError::TensorError(TensorError::other(
-                            "matmul index out of range",
-                        ))
+                        FederatedError::TensorError(TensorError::other("matmul index out of range"))
                     })?;
                     let b_val = *b.get(&[l, j]).ok_or_else(|| {
-                        FederatedError::TensorError(TensorError::other(
-                            "matmul index out of range",
-                        ))
+                        FederatedError::TensorError(TensorError::other("matmul index out of range"))
                     })?;
                     acc += a_val * b_val;
                 }
@@ -683,9 +668,7 @@ impl LocalTrainer {
         }
 
         Tensor::from_vec(result_data, alloc::vec![m, n]).ok_or_else(|| {
-            FederatedError::TensorError(TensorError::other(
-                "matmul result tensor creation failed",
-            ))
+            FederatedError::TensorError(TensorError::other("matmul result tensor creation failed"))
         })
     }
 }
@@ -760,10 +743,7 @@ mod tests {
         ];
         let result = FedAvg.aggregate(&updates).unwrap();
         for val in result[0].data() {
-            assert!(
-                (val - 3.0).abs() < 1e-5,
-                "expected 3.0 but got {val}"
-            );
+            assert!((val - 3.0).abs() < 1e-5, "expected 3.0 but got {val}");
         }
     }
 
@@ -774,10 +754,7 @@ mod tests {
         let updates = alloc::vec![make_update(1.0, 100, 0), make_update(3.0, 100, 0)];
         let result = FedAvg.aggregate(&updates).unwrap();
         for val in result[0].data() {
-            assert!(
-                (val - 2.0).abs() < 1e-5,
-                "expected 2.0 but got {val}"
-            );
+            assert!((val - 2.0).abs() < 1e-5, "expected 2.0 but got {val}");
         }
     }
 
@@ -803,10 +780,7 @@ mod tests {
         let updates = alloc::vec![make_update(5.5, 50, 0)];
         let result = FedAvg.aggregate(&updates).unwrap();
         for val in result[0].data() {
-            assert!(
-                (val - 5.5).abs() < 1e-5,
-                "expected 5.5 but got {val}"
-            );
+            assert!((val - 5.5).abs() < 1e-5, "expected 5.5 but got {val}");
         }
     }
 

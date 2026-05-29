@@ -64,10 +64,8 @@ impl HoltModel {
             self.initialized = true;
         } else {
             let prev_level = self.level;
-            self.level =
-                self.alpha * value + (1.0 - self.alpha) * (prev_level + self.trend);
-            self.trend =
-                self.beta * (self.level - prev_level) + (1.0 - self.beta) * self.trend;
+            self.level = self.alpha * value + (1.0 - self.alpha) * (prev_level + self.trend);
+            self.trend = self.beta * (self.level - prev_level) + (1.0 - self.beta) * self.trend;
             self.last_value = value;
         }
         self.n += 1;
@@ -424,14 +422,10 @@ impl EnhancedPredictor {
         let hw = self.weights.holt_weight;
         let rw = 1.0 - hw;
 
-        let mem_pred =
-            hw * holt_mem.forecast(holt_h) + rw * ridge_mem.predict(t_future_norm);
-        let cpu_pred =
-            hw * holt_cpu.forecast(holt_h) + rw * ridge_cpu.predict(t_future_norm);
-        let net_pred =
-            hw * holt_net.forecast(holt_h) + rw * ridge_net.predict(t_future_norm);
-        let sto_pred =
-            hw * holt_sto.forecast(holt_h) + rw * ridge_sto.predict(t_future_norm);
+        let mem_pred = hw * holt_mem.forecast(holt_h) + rw * ridge_mem.predict(t_future_norm);
+        let cpu_pred = hw * holt_cpu.forecast(holt_h) + rw * ridge_cpu.predict(t_future_norm);
+        let net_pred = hw * holt_net.forecast(holt_h) + rw * ridge_net.predict(t_future_norm);
+        let sto_pred = hw * holt_sto.forecast(holt_h) + rw * ridge_sto.predict(t_future_norm);
 
         // ── CPU %: convert Δcpu_us over horizon → utilisation percentage ──
         let last_cpu_us = snapshots[n - 1].cpu_time_us as f64;
@@ -444,8 +438,8 @@ impl EnhancedPredictor {
         .clamp(0.0, 100.0);
 
         // ── Network rate: Δtotal_bytes over horizon → bytes/sec ──────────
-        let last_net = (snapshots[n - 1].network_sent_bytes
-            + snapshots[n - 1].network_recv_bytes) as f64;
+        let last_net =
+            (snapshots[n - 1].network_sent_bytes + snapshots[n - 1].network_recv_bytes) as f64;
         let net_delta = (net_pred - last_net).max(0.0);
         let network_bytes_per_sec = if horizon_us > 0 {
             net_delta / (horizon_us as f64 / 1_000_000.0)
@@ -497,9 +491,7 @@ mod tests {
 
     // ── helpers ───────────────────────────────────────────────────────────
 
-    fn make_history_with_tuples(
-        snapshots: Vec<(u64, u64, u64, u64, u64, u64)>,
-    ) -> ResourceHistory {
+    fn make_history_with_tuples(snapshots: Vec<(u64, u64, u64, u64, u64, u64)>) -> ResourceHistory {
         // (timestamp_us, memory, cpu_time, net_sent, net_recv, storage)
         let config = HistoryConfig {
             max_snapshots: 1000,
@@ -541,10 +533,7 @@ mod tests {
         let mut m = HoltModel::new(0.3, 0.1);
         m.update(42.0);
         let f = m.forecast(0.0);
-        assert!(
-            (f - 42.0).abs() < 1e-9,
-            "forecast(0) = {f}, expected ≈42.0"
-        );
+        assert!((f - 42.0).abs() < 1e-9, "forecast(0) = {f}, expected ≈42.0");
     }
 
     #[test]
@@ -569,10 +558,7 @@ mod tests {
         let mut m = HoltModel::new(0.3, 0.1);
         m.train(&[5.0, 5.0, 5.0, 5.0, 5.0]);
         let f = m.forecast(1.0);
-        assert!(
-            (f - 5.0).abs() < 0.5,
-            "forecast(1.0) = {f}, expected ≈5.0"
-        );
+        assert!((f - 5.0).abs() < 0.5, "forecast(1.0) = {f}, expected ≈5.0");
     }
 
     #[test]
@@ -594,15 +580,8 @@ mod tests {
         let mut r = RidgeLinear::new(1e-6);
         r.fit(&x, &y);
         let pred = r.predict(5.0 / 4.0);
-        assert!(
-            (pred - 5.0).abs() < 0.3,
-            "predict ≈5.0, got {pred}"
-        );
-        assert!(
-            r.r_squared > 0.99,
-            "R² should be ≈1.0, got {}",
-            r.r_squared
-        );
+        assert!((pred - 5.0).abs() < 0.3, "predict ≈5.0, got {pred}");
+        assert!(r.r_squared > 0.99, "R² should be ≈1.0, got {}", r.r_squared);
     }
 
     #[test]
@@ -628,10 +607,7 @@ mod tests {
         let mut r = RidgeLinear::new(1.0); // strong regularisation
         r.fit(&x, &y);
         let pred = r.predict(10.0); // far extrapolation
-        assert!(
-            pred < 1e12,
-            "prediction should stay bounded, got {pred}"
-        );
+        assert!(pred < 1e12, "prediction should stay bounded, got {pred}");
     }
 
     // ── EnhancedPredictor (4 tests) ───────────────────────────────────────
@@ -669,7 +645,11 @@ mod tests {
         let noisy_snaps: Vec<_> = (0..30)
             .map(|i| {
                 let t = i as u64 * 1_000_000;
-                let mem = if i % 2 == 0 { 1_000_000u64 } else { 9_000_000u64 };
+                let mem = if i % 2 == 0 {
+                    1_000_000u64
+                } else {
+                    9_000_000u64
+                };
                 (t, mem, 0u64, 0u64, 0u64, 0u64)
             })
             .collect();

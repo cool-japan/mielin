@@ -37,8 +37,8 @@ pub use error::{
 pub use export::{JsonExporter, MigrationMetricsExport, PrometheusExporter};
 pub use gossip::{
     GossipConfig, GossipError, GossipMessage, GossipRole, GossipState, HealthStatus,
-    HierarchicalGossip, HierarchicalGossipConfig, HierarchicalMessage, MemberInfo,
-    MembershipEvent, MembershipEventKind, ZoneId, ZoneMember, ZoneStats,
+    HierarchicalGossip, HierarchicalGossipConfig, HierarchicalMessage, MemberInfo, MembershipEvent,
+    MembershipEventKind, ZoneId, ZoneMember, ZoneStats,
 };
 pub use loadbalancer::{
     EndpointStats, HealthCheckConfig, LoadBalancer, LoadBalancerError, LoadBalancingAlgorithm,

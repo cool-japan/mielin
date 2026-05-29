@@ -351,10 +351,7 @@ impl GossipState {
                     let age = member.heartbeat_age();
                     if member.is_suspect() && age > failure_timeout {
                         updates.push((*id, member.status, HealthStatus::Dead, member.incarnation));
-                        warn!(
-                            "Declaring node {} as dead (no heartbeat for {:?})",
-                            id, age
-                        );
+                        warn!("Declaring node {} as dead (no heartbeat for {:?})", id, age);
                     } else if member.is_alive() && age > heartbeat_timeout {
                         updates.push((
                             *id,
@@ -362,7 +359,10 @@ impl GossipState {
                             HealthStatus::Suspect,
                             member.incarnation,
                         ));
-                        debug!("Marking node {} as suspect (no heartbeat for {:?})", id, age);
+                        debug!(
+                            "Marking node {} as suspect (no heartbeat for {:?})",
+                            id, age
+                        );
                     }
                 }
 
@@ -1251,11 +1251,7 @@ impl HierarchicalGossip {
             // Re-check with the authoritative zone membership count.
             let total_members = {
                 let zones = self.zones.read().await;
-                zones
-                    .values()
-                    .flat_map(|z| z.keys())
-                    .count()
-                    .max(1)
+                zones.values().flat_map(|z| z.keys()).count().max(1)
             };
             let votes_for_winner = {
                 let votes = self.votes_received.read().await;

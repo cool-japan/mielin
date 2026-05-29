@@ -67,36 +67,36 @@ impl Reg {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AluOp {
-    Add  = 0,
-    Sub  = 1,
-    Mul  = 2,
-    Div  = 3,
-    Mod  = 4,
-    And  = 5,
-    Or   = 6,
-    Xor  = 7,
-    Lsh  = 8,
-    Rsh  = 9,
+    Add = 0,
+    Sub = 1,
+    Mul = 2,
+    Div = 3,
+    Mod = 4,
+    And = 5,
+    Or = 6,
+    Xor = 7,
+    Lsh = 8,
+    Rsh = 9,
     Arsh = 10,
-    Mov  = 11,
+    Mov = 11,
 }
 
 impl AluOp {
     fn from_u8(v: u8) -> Option<Self> {
         match v {
-            0  => Some(Self::Add),
-            1  => Some(Self::Sub),
-            2  => Some(Self::Mul),
-            3  => Some(Self::Div),
-            4  => Some(Self::Mod),
-            5  => Some(Self::And),
-            6  => Some(Self::Or),
-            7  => Some(Self::Xor),
-            8  => Some(Self::Lsh),
-            9  => Some(Self::Rsh),
+            0 => Some(Self::Add),
+            1 => Some(Self::Sub),
+            2 => Some(Self::Mul),
+            3 => Some(Self::Div),
+            4 => Some(Self::Mod),
+            5 => Some(Self::And),
+            6 => Some(Self::Or),
+            7 => Some(Self::Xor),
+            8 => Some(Self::Lsh),
+            9 => Some(Self::Rsh),
             10 => Some(Self::Arsh),
             11 => Some(Self::Mov),
-            _  => None,
+            _ => None,
         }
     }
 }
@@ -109,12 +109,12 @@ impl AluOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Jcc {
-    Eq  = 0,
-    Ne  = 1,
-    Gt  = 2,
-    Ge  = 3,
-    Lt  = 4,
-    Le  = 5,
+    Eq = 0,
+    Ne = 1,
+    Gt = 2,
+    Ge = 3,
+    Lt = 4,
+    Le = 5,
     Sgt = 6,
     Sge = 7,
     Slt = 8,
@@ -159,11 +159,11 @@ pub enum Source {
 #[repr(u8)]
 pub enum CtxField {
     TracepointId = 0,
-    Timestamp    = 1,
-    CpuId        = 2,
-    Arg0         = 3,
-    Arg1         = 4,
-    Arg2         = 5,
+    Timestamp = 1,
+    CpuId = 2,
+    Arg0 = 3,
+    Arg1 = 4,
+    Arg2 = 5,
 }
 
 impl CtxField {
@@ -192,10 +192,10 @@ impl CtxField {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum HelperId {
-    Nop       = 0,
+    Nop = 0,
     MapLookup = 1,
     MapUpdate = 2,
-    MapAdd    = 3,
+    MapAdd = 3,
 }
 
 impl HelperId {
@@ -213,10 +213,10 @@ impl HelperId {
     /// Number of arguments consumed by each helper.
     pub fn arg_count(self) -> u8 {
         match self {
-            Self::Nop       => 0,
+            Self::Nop => 0,
             Self::MapLookup => 2,
             Self::MapUpdate => 3,
-            Self::MapAdd    => 3,
+            Self::MapAdd => 3,
         }
     }
 }
@@ -300,7 +300,7 @@ impl Instruction {
             Self::Alu { op, dst, src } => {
                 let opc = OPC_ALU as u64;
                 let dst_bits = (dst.0 as u64 & 0xF) << 52;
-                let op_bits  = (op as u64 & 0xF) << 48;
+                let op_bits = (op as u64 & 0xF) << 48;
                 match src {
                     Source::Reg(r) => {
                         // [47:44] = src_reg, [43:40] = 0  → marker 0
@@ -321,7 +321,7 @@ impl Instruction {
             // LoadMem
             // ----------------------------------------------------------------
             Self::LoadMem { dst, offset } => {
-                let opc      = OPC_LOADMEM as u64;
+                let opc = OPC_LOADMEM as u64;
                 let dst_bits = (dst.0 as u64 & 0xF) << 52;
                 let off_bits = (offset as u64) << 32;
                 Ok((opc << 56) | dst_bits | off_bits)
@@ -331,7 +331,7 @@ impl Instruction {
             // StoreMem
             // ----------------------------------------------------------------
             Self::StoreMem { src, offset } => {
-                let opc      = OPC_STOREMEM as u64;
+                let opc = OPC_STOREMEM as u64;
                 let off_bits = (offset as u64) << 32;
                 match src {
                     Source::Reg(r) => {
@@ -339,7 +339,7 @@ impl Instruction {
                         Ok((opc << 56) | src_bits | off_bits)
                     }
                     Source::Imm(v) => {
-                        let imm32    = imm_to_i32(v)?;
+                        let imm32 = imm_to_i32(v)?;
                         let marker: u64 = 0xF << 52;
                         let imm_bits = (imm32 as u32) as u64;
                         Ok((opc << 56) | marker | off_bits | imm_bits)
@@ -351,8 +351,8 @@ impl Instruction {
             // LoadCtx
             // ----------------------------------------------------------------
             Self::LoadCtx { dst, field } => {
-                let opc        = OPC_LOADCTX as u64;
-                let dst_bits   = (dst.0 as u64 & 0xF) << 52;
+                let opc = OPC_LOADCTX as u64;
+                let dst_bits = (dst.0 as u64 & 0xF) << 52;
                 let field_bits = (field as u64 & 0xFF) << 48;
                 Ok((opc << 56) | dst_bits | field_bits)
             }
@@ -361,7 +361,7 @@ impl Instruction {
             // Jmp
             // ----------------------------------------------------------------
             Self::Jmp { off } => {
-                let opc      = OPC_JMP as u64;
+                let opc = OPC_JMP as u64;
                 let off_bits = ((off as u16) as u64) << 32;
                 Ok((opc << 56) | off_bits)
             }
@@ -370,9 +370,9 @@ impl Instruction {
             // JmpIf
             // ----------------------------------------------------------------
             Self::JmpIf { cc, dst, src, off } => {
-                let opc      = OPC_JMPIF as u64;
+                let opc = OPC_JMPIF as u64;
                 let dst_bits = (dst.0 as u64 & 0xF) << 52;
-                let cc_bits  = (cc as u64 & 0xF) << 48;
+                let cc_bits = (cc as u64 & 0xF) << 48;
                 let off_bits = ((off as u16) as u64) << 32;
                 match src {
                     Source::Reg(r) => {
@@ -394,7 +394,7 @@ impl Instruction {
             // Call
             // ----------------------------------------------------------------
             Self::Call { helper } => {
-                let opc    = OPC_CALL as u64;
+                let opc = OPC_CALL as u64;
                 let h_bits = (helper as u64 & 0xFF) << 48;
                 Ok((opc << 56) | h_bits)
             }
@@ -417,8 +417,7 @@ impl Instruction {
             OPC_ALU => {
                 let dst = Reg(((word >> 52) & 0xF) as u8);
                 let op_nibble = ((word >> 48) & 0xF) as u8;
-                let op = AluOp::from_u8(op_nibble)
-                    .ok_or(BpfError::InvalidOpcode { word })?;
+                let op = AluOp::from_u8(op_nibble).ok_or(BpfError::InvalidOpcode { word })?;
                 // [43:40] == 0xF means immediate
                 let marker = ((word >> 40) & 0xF) as u8;
                 let src = if marker == 0xF {
@@ -435,7 +434,7 @@ impl Instruction {
             // LoadMem
             // ----------------------------------------------------------------
             OPC_LOADMEM => {
-                let dst    = Reg(((word >> 52) & 0xF) as u8);
+                let dst = Reg(((word >> 52) & 0xF) as u8);
                 let offset = ((word >> 32) & 0xFFFF) as u16;
                 Ok(Self::LoadMem { dst, offset })
             }
@@ -444,8 +443,8 @@ impl Instruction {
             // StoreMem
             // ----------------------------------------------------------------
             OPC_STOREMEM => {
-                let offset  = ((word >> 32) & 0xFFFF) as u16;
-                let marker  = ((word >> 52) & 0xF) as u8;
+                let offset = ((word >> 32) & 0xFFFF) as u16;
+                let marker = ((word >> 52) & 0xF) as u8;
                 let src = if marker == 0xF {
                     let imm32 = (word & 0xFFFF_FFFF) as u32 as i32;
                     Source::Imm(imm32 as i64)
@@ -459,10 +458,10 @@ impl Instruction {
             // LoadCtx
             // ----------------------------------------------------------------
             OPC_LOADCTX => {
-                let dst        = Reg(((word >> 52) & 0xF) as u8);
+                let dst = Reg(((word >> 52) & 0xF) as u8);
                 let field_byte = ((word >> 48) & 0xFF) as u8;
-                let field      = CtxField::from_u8(field_byte)
-                    .ok_or(BpfError::InvalidOpcode { word })?;
+                let field =
+                    CtxField::from_u8(field_byte).ok_or(BpfError::InvalidOpcode { word })?;
                 Ok(Self::LoadCtx { dst, field })
             }
 
@@ -478,12 +477,11 @@ impl Instruction {
             // JmpIf
             // ----------------------------------------------------------------
             OPC_JMPIF => {
-                let dst      = Reg(((word >> 52) & 0xF) as u8);
-                let cc_nib   = ((word >> 48) & 0xF) as u8;
-                let cc       = Jcc::from_u8(cc_nib)
-                    .ok_or(BpfError::InvalidOpcode { word })?;
-                let off      = ((word >> 32) & 0xFFFF) as u16 as i16;
-                let src_nib  = ((word >> 28) & 0xF) as u8;
+                let dst = Reg(((word >> 52) & 0xF) as u8);
+                let cc_nib = ((word >> 48) & 0xF) as u8;
+                let cc = Jcc::from_u8(cc_nib).ok_or(BpfError::InvalidOpcode { word })?;
+                let off = ((word >> 32) & 0xFFFF) as u16 as i16;
+                let src_nib = ((word >> 28) & 0xF) as u8;
                 let src = if src_nib == 0xF {
                     // Recover i32 from lower 28 bits (sign-extended from bit 27)
                     let lower28 = (word & 0x0FFF_FFFF) as u32;
@@ -504,8 +502,7 @@ impl Instruction {
             // ----------------------------------------------------------------
             OPC_CALL => {
                 let h_byte = ((word >> 48) & 0xFF) as u8;
-                let helper = HelperId::from_u8(h_byte)
-                    .ok_or(BpfError::InvalidOpcode { word })?;
+                let helper = HelperId::from_u8(h_byte).ok_or(BpfError::InvalidOpcode { word })?;
                 Ok(Self::Call { helper })
             }
 
@@ -557,7 +554,7 @@ mod tests {
     #[test]
     fn test_encode_decode_alu_reg() {
         let insn = Instruction::Alu {
-            op:  AluOp::Add,
+            op: AluOp::Add,
             dst: Reg(1),
             src: Source::Reg(Reg(2)),
         };
@@ -567,7 +564,7 @@ mod tests {
     #[test]
     fn test_encode_decode_alu_imm() {
         let insn = Instruction::Alu {
-            op:  AluOp::Mov,
+            op: AluOp::Mov,
             dst: Reg(0),
             src: Source::Imm(42),
         };
@@ -577,7 +574,7 @@ mod tests {
     #[test]
     fn test_encode_decode_jmpif() {
         let insn = Instruction::JmpIf {
-            cc:  Jcc::Eq,
+            cc: Jcc::Eq,
             dst: Reg(1),
             src: Source::Imm(10),
             off: 5,
@@ -587,14 +584,17 @@ mod tests {
 
     #[test]
     fn test_encode_decode_loadmem() {
-        let insn = Instruction::LoadMem { dst: Reg(2), offset: 16 };
+        let insn = Instruction::LoadMem {
+            dst: Reg(2),
+            offset: 16,
+        };
         assert_eq!(roundtrip(insn), insn);
     }
 
     #[test]
     fn test_encode_decode_storemem() {
         let insn = Instruction::StoreMem {
-            src:    Source::Reg(Reg(3)),
+            src: Source::Reg(Reg(3)),
             offset: 32,
         };
         assert_eq!(roundtrip(insn), insn);
@@ -603,13 +603,15 @@ mod tests {
     #[test]
     fn test_encode_rejects_wide_imm() {
         let insn = Instruction::Alu {
-            op:  AluOp::Mov,
+            op: AluOp::Mov,
             dst: Reg(0),
             src: Source::Imm(i32::MAX as i64 + 1),
         };
         assert_eq!(
             insn.to_u64(),
-            Err(BpfError::ImmediateTooWide { imm: i32::MAX as i64 + 1 })
+            Err(BpfError::ImmediateTooWide {
+                imm: i32::MAX as i64 + 1
+            })
         );
     }
 
@@ -645,7 +647,7 @@ mod tests {
     #[test]
     fn test_encode_decode_loadctx() {
         let insn = Instruction::LoadCtx {
-            dst:   Reg(0),
+            dst: Reg(0),
             field: CtxField::Arg0,
         };
         assert_eq!(roundtrip(insn), insn);
@@ -653,7 +655,9 @@ mod tests {
 
     #[test]
     fn test_encode_decode_call() {
-        let insn = Instruction::Call { helper: HelperId::Nop };
+        let insn = Instruction::Call {
+            helper: HelperId::Nop,
+        };
         assert_eq!(roundtrip(insn), insn);
     }
 
@@ -666,7 +670,7 @@ mod tests {
     #[test]
     fn test_encode_decode_jmpif_reg() {
         let insn = Instruction::JmpIf {
-            cc:  Jcc::Ne,
+            cc: Jcc::Ne,
             dst: Reg(2),
             src: Source::Reg(Reg(3)),
             off: 7,
@@ -677,12 +681,25 @@ mod tests {
     #[test]
     fn test_encode_decode_alu_all_ops() {
         let ops = [
-            AluOp::Add, AluOp::Sub, AluOp::Mul, AluOp::Div,
-            AluOp::Mod, AluOp::And, AluOp::Or,  AluOp::Xor,
-            AluOp::Lsh, AluOp::Rsh, AluOp::Arsh, AluOp::Mov,
+            AluOp::Add,
+            AluOp::Sub,
+            AluOp::Mul,
+            AluOp::Div,
+            AluOp::Mod,
+            AluOp::And,
+            AluOp::Or,
+            AluOp::Xor,
+            AluOp::Lsh,
+            AluOp::Rsh,
+            AluOp::Arsh,
+            AluOp::Mov,
         ];
         for op in ops {
-            let insn = Instruction::Alu { op, dst: Reg(0), src: Source::Imm(1) };
+            let insn = Instruction::Alu {
+                op,
+                dst: Reg(0),
+                src: Source::Imm(1),
+            };
             assert_eq!(roundtrip(insn), insn, "roundtrip failed for {:?}", op);
         }
     }
@@ -690,7 +707,7 @@ mod tests {
     #[test]
     fn test_alu_neg_imm() {
         let insn = Instruction::Alu {
-            op:  AluOp::Mov,
+            op: AluOp::Mov,
             dst: Reg(0),
             src: Source::Imm(-1),
         };
