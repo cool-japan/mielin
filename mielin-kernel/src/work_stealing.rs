@@ -14,6 +14,8 @@
 //!   worker id so different workers diverge immediately.
 //! - Metrics are tracked with relaxed atomics and summarised via snapshot.
 
+#![allow(dead_code)]
+
 extern crate alloc;
 
 use crate::lockfree::{Steal, WorkStealingDeque};
@@ -129,10 +131,16 @@ impl PriorityDeques {
             v.push(WorkStealingDeque::new(256));
         }
         let arr: Box<[WorkStealingDeque<TaskEntry>; NUM_PRIORITY_BUCKETS]> =
-            v.into_boxed_slice().try_into().unwrap_or_else(|_| {
-                // This branch is statically impossible.
-                panic!("priority bucket count mismatch")
-            });
+            match v.into_boxed_slice().try_into() {
+                Ok(a) => a,
+                // This branch is statically impossible (we pushed exactly NUM_PRIORITY_BUCKETS).
+                Err(_) => {
+                    // In a no_std kernel we cannot panic; use a spin-loop tombstone.
+                    loop {
+                        core::hint::spin_loop();
+                    }
+                }
+            };
         Self {
             buckets: arr,
             total_len: AtomicUsize::new(0),
@@ -902,5 +910,381 @@ mod tests {
             "work should be distributed; per_worker={:?}",
             per_worker
         );
+    }
+
+    // =========================================================================
+    // Integration tests demonstrating multi-worker coordination
+    // =========================================================================
+
+    /// Spawn task on worker 0, schedule() returns it.
+    #[test]
+    fn test_ws_single_worker_spawn_schedule() {
+        let sched = WorkStealingScheduler::new(1);
+        let h = sched.spawn_task(0, 128).unwrap();
+        let got = sched.schedule(0);
+        assert!(got.is_some(), "schedule must return the spawned task");
+        assert_eq!(got.unwrap().id, h.id);
+        // Queue is now empty.
+        assert!(sched.schedule(0).is_none());
+    }
+
+    /// Spawn 2 tasks on worker 0, schedule from worker 0 gets them (no stealing needed).
+    #[test]
+    fn test_ws_two_workers_no_steal() {
+        let sched = WorkStealingScheduler::new(2);
+        let h0 = sched.spawn_task(0, 50).unwrap();
+        let h1 = sched.spawn_task(0, 50).unwrap();
+
+        // Worker 0 gets its own tasks without stealing.
+        let a = sched.schedule(0).unwrap();
+        let b = sched.schedule(0).unwrap();
+
+        let mut ids: alloc::vec::Vec<usize> = alloc::vec![a.id, b.id];
+        ids.sort();
+        let mut expected: alloc::vec::Vec<usize> = alloc::vec![h0.id, h1.id];
+        expected.sort();
+        assert_eq!(ids, expected);
+
+        // No steals should have occurred.
+        let snap = sched.snapshot_metrics();
+        assert_eq!(snap.total_stolen, 0);
+    }
+
+    /// Spawn 8 tasks on worker 0, let worker 1 steal them via schedule(); verify both workers get tasks.
+    #[test]
+    fn test_ws_work_stealing_imbalance() {
+        let sched = WorkStealingScheduler::new(2);
+
+        // Put all tasks on worker 0.
+        for _ in 0..8 {
+            sched.spawn_task(0, 100).unwrap();
+        }
+
+        let mut w0_count = 0usize;
+        let mut w1_count = 0usize;
+        let mut iters = 0usize;
+
+        // Drain everything, alternating which worker schedules.
+        while w0_count + w1_count < 8 {
+            if sched.schedule(0).is_some() {
+                w0_count += 1;
+            }
+            if sched.schedule(1).is_some() {
+                w1_count += 1;
+            }
+            iters += 1;
+            if iters > 10_000 {
+                break;
+            }
+        }
+
+        assert_eq!(
+            w0_count + w1_count,
+            8,
+            "all 8 tasks must be consumed"
+        );
+        // Worker 1 should have stolen at least one task from worker 0.
+        assert!(
+            w1_count >= 1,
+            "worker 1 should have stolen at least one task; w0={}, w1={}",
+            w0_count,
+            w1_count
+        );
+
+        let snap = sched.snapshot_metrics();
+        assert!(snap.total_stolen >= 1);
+    }
+
+    /// Spawn a task, schedule it (making it "running"), then terminate it.
+    #[test]
+    fn test_ws_terminate_task() {
+        let sched = WorkStealingScheduler::new(2);
+        let h = sched.spawn_task(0, 75).unwrap();
+
+        // Schedule to make it the current task.
+        let got = sched.schedule(0).unwrap();
+        assert_eq!(got.id, h.id);
+
+        // Now terminate.
+        let result = sched.terminate_task(0, h);
+        assert!(result.is_ok(), "terminate of running task must succeed");
+
+        // Queue and current_task are both clear — yield should no-op.
+        sched.yield_task(0);
+        assert!(sched.schedule(0).is_none());
+    }
+
+    /// Spawn tasks with different priorities, schedule() returns highest-priority first.
+    #[test]
+    fn test_ws_priority_ordering() {
+        let sched = WorkStealingScheduler::new(1);
+
+        sched.spawn_task(0, 1).unwrap();
+        sched.spawn_task(0, 255).unwrap();
+        sched.spawn_task(0, 128).unwrap();
+        sched.spawn_task(0, 64).unwrap();
+
+        let p0 = sched.schedule(0).unwrap().priority;
+        let p1 = sched.schedule(0).unwrap().priority;
+        let p2 = sched.schedule(0).unwrap().priority;
+        let p3 = sched.schedule(0).unwrap().priority;
+
+        assert_eq!(p0, 255, "first must be priority 255");
+        assert_eq!(p1, 128, "second must be priority 128");
+        assert_eq!(p2, 64, "third must be priority 64");
+        assert_eq!(p3, 1, "fourth must be priority 1");
+    }
+
+    /// No tasks → schedule() returns None.
+    #[test]
+    fn test_ws_empty_schedule_returns_none() {
+        let sched = WorkStealingScheduler::new(4);
+        for w in 0..4 {
+            assert!(
+                sched.schedule(w).is_none(),
+                "worker {} should get None on empty scheduler",
+                w
+            );
+        }
+    }
+
+    /// Spawn N tasks, metrics.total_scheduled == N.
+    #[test]
+    fn test_ws_metrics_spawn_count() {
+        const N: usize = 37;
+        let sched = WorkStealingScheduler::new(3);
+        for i in 0..N {
+            sched.spawn_task(i % 3, (i % 256) as u8).unwrap();
+        }
+        let snap = sched.snapshot_metrics();
+        assert_eq!(
+            snap.total_scheduled, N as u64,
+            "total_scheduled must equal number of spawned tasks"
+        );
+    }
+
+    /// After work-stealing, metrics.total_stolen > 0.
+    #[test]
+    fn test_ws_metrics_steal_count() {
+        let sched = WorkStealingScheduler::new(2);
+
+        // All tasks on worker 0.
+        for _ in 0..10 {
+            sched.spawn_task(0, 100).unwrap();
+        }
+
+        // Worker 1 tries to steal.
+        let mut stolen = 0u64;
+        for _ in 0..20 {
+            if sched.schedule(1).is_some() {
+                stolen += 1;
+            }
+        }
+
+        let snap = sched.snapshot_metrics();
+        assert!(
+            snap.total_stolen > 0,
+            "at least one steal must have occurred; got {:?}",
+            snap.total_stolen
+        );
+        assert_eq!(
+            snap.total_stolen, stolen,
+            "metrics steal count must match observed steals"
+        );
+    }
+
+    /// Spawn 4 tasks, total_queue_depth() == 4.
+    #[test]
+    fn test_ws_multiple_workers_total_depth() {
+        let sched = WorkStealingScheduler::new(4);
+        sched.spawn_task(0, 10).unwrap();
+        sched.spawn_task(1, 20).unwrap();
+        sched.spawn_task(2, 30).unwrap();
+        sched.spawn_task(3, 40).unwrap();
+
+        assert_eq!(sched.total_queue_depth(), 4);
+
+        // Pop one and check depth decreases.
+        sched.schedule(0);
+        assert_eq!(sched.total_queue_depth(), 3);
+    }
+
+    /// Spawn task, yield it, it goes back in queue, can be scheduled again.
+    #[test]
+    fn test_ws_yield_task() {
+        let sched = WorkStealingScheduler::new(1);
+        let h = sched.spawn_task(0, 200).unwrap();
+
+        // Schedule it (makes it the current task).
+        let first = sched.schedule(0).unwrap();
+        assert_eq!(first.id, h.id);
+
+        // Yield with the original priority.
+        sched.yield_task_with_priority(0, 200);
+
+        // Must be schedulable again with the same id.
+        let second = sched.schedule(0).unwrap();
+        assert_eq!(second.id, h.id, "yielded task must be schedulable again");
+        assert_eq!(second.priority, 200);
+    }
+
+    /// Spawn from worker 0 and worker 1 simultaneously using std::thread.
+    #[test]
+    fn test_ws_concurrent_spawn_from_different_workers() {
+        use std::sync::Barrier;
+
+        const PER_WORKER: usize = 50;
+        let sched = Arc::new(WorkStealingScheduler::new(2));
+        let barrier = Arc::new(Barrier::new(2));
+
+        let s0 = Arc::clone(&sched);
+        let b0 = Arc::clone(&barrier);
+        let t0 = thread::spawn(move || {
+            b0.wait();
+            for _ in 0..PER_WORKER {
+                s0.spawn_task(0, 100).unwrap();
+            }
+        });
+
+        let s1 = Arc::clone(&sched);
+        let b1 = Arc::clone(&barrier);
+        let t1 = thread::spawn(move || {
+            b1.wait();
+            for _ in 0..PER_WORKER {
+                s1.spawn_task(1, 100).unwrap();
+            }
+        });
+
+        t0.join().unwrap();
+        t1.join().unwrap();
+
+        // All spawned tasks must be present.
+        let snap = sched.snapshot_metrics();
+        assert_eq!(
+            snap.total_scheduled,
+            (PER_WORKER * 2) as u64,
+            "both workers must have spawned their tasks"
+        );
+    }
+
+    /// Spawn N, schedule until None (N schedules return tasks).
+    #[test]
+    fn test_ws_drain_all_tasks() {
+        const N: usize = 42;
+        let sched = WorkStealingScheduler::new(2);
+
+        for i in 0..N {
+            sched.spawn_task(i % 2, (i % 256) as u8).unwrap();
+        }
+
+        let mut count = 0usize;
+        // Workers take turns draining.
+        loop {
+            let a = sched.schedule(0);
+            let b = sched.schedule(1);
+            if a.is_some() {
+                count += 1;
+            }
+            if b.is_some() {
+                count += 1;
+            }
+            if a.is_none() && b.is_none() {
+                break;
+            }
+        }
+
+        assert_eq!(count, N, "all {} tasks must be drained", N);
+        assert_eq!(sched.total_queue_depth(), 0);
+    }
+
+    /// Metrics snapshot matches queue state.
+    #[test]
+    fn test_ws_snapshot_metrics_consistent() {
+        let sched = WorkStealingScheduler::new(3);
+
+        for i in 0..15_usize {
+            sched.spawn_task(i % 3, (i * 17 % 256) as u8).unwrap();
+        }
+
+        // Consume 5 via worker 0.
+        let mut consumed = 0u64;
+        for _ in 0..5 {
+            if sched.schedule(0).is_some() {
+                consumed += 1;
+            }
+        }
+
+        let snap = sched.snapshot_metrics();
+        // total_scheduled counts spawns, not pops.
+        assert_eq!(snap.total_scheduled, 15);
+        // peak_queue_depth must have been at least 15 (before any pops).
+        assert!(snap.peak_queue_depth >= 15);
+        // Queue depth should be 15 - consumed.
+        assert_eq!(
+            sched.total_queue_depth() as u64,
+            15 - consumed,
+            "remaining queue depth must match"
+        );
+    }
+
+    /// Spawn 100 tasks spread across all workers.
+    #[test]
+    fn test_ws_large_batch() {
+        const N: usize = 100;
+        let sched = WorkStealingScheduler::new(MAX_WORKERS);
+
+        for i in 0..N {
+            sched.spawn_task(i % MAX_WORKERS, (i % 256) as u8).unwrap();
+        }
+
+        assert_eq!(sched.total_queue_depth(), N);
+
+        let snap = sched.snapshot_metrics();
+        assert_eq!(snap.total_scheduled, N as u64);
+
+        // Drain all with round-robin across workers.
+        let mut drained = 0usize;
+        let mut spin = 0usize;
+        while drained < N {
+            let mut progress = false;
+            for w in 0..MAX_WORKERS {
+                if sched.schedule(w).is_some() {
+                    drained += 1;
+                    progress = true;
+                }
+            }
+            if !progress {
+                spin += 1;
+                if spin > 10_000 {
+                    break;
+                }
+            }
+        }
+        assert_eq!(drained, N, "all {} large-batch tasks must be drained", N);
+    }
+
+    /// Both scheduler types coexist — WorkStealingScheduler is the lock-free alternative
+    /// to the mutex-based array Scheduler in scheduler.rs.
+    #[test]
+    fn test_ws_vs_basic_scheduler_comparison() {
+        use crate::scheduler::Scheduler;
+
+        // Classic array-based scheduler from scheduler.rs.
+        let mut basic = Scheduler::new();
+        let basic_id = basic.spawn_task(100).unwrap();
+        let basic_scheduled = basic.schedule();
+        assert!(basic_scheduled.is_some());
+        basic.terminate_task(basic_id);
+
+        // Lock-free work-stealing scheduler from this module.
+        let ws = WorkStealingScheduler::new(2);
+        let ws_h = ws.spawn_task(0, 100).unwrap();
+        let ws_scheduled = ws.schedule(0);
+        assert!(ws_scheduled.is_some());
+        assert_eq!(ws_scheduled.unwrap().id, ws_h.id);
+
+        // Both coexist in the same binary with no conflicts.
+        let snap = ws.snapshot_metrics();
+        assert_eq!(snap.total_scheduled, 1);
     }
 }

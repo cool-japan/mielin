@@ -13,6 +13,7 @@ pub mod health;
 pub mod lifecycle_hooks;
 pub mod migration;
 pub mod multipath;
+pub mod netsim;
 pub mod peer_lifecycle;
 pub mod priority;
 pub mod protocol;

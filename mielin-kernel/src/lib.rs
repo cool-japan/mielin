@@ -10,6 +10,7 @@ extern crate alloc;
 
 pub mod boot;
 pub mod bpf;
+pub mod buddy;
 pub mod config;
 pub mod embedded;
 pub mod executor;
@@ -29,6 +30,8 @@ pub mod scheduler;
 pub mod tensor;
 pub mod timer;
 pub mod vmm;
+pub mod work_stealing;
+pub use work_stealing::WorkStealingScheduler;
 
 #[cfg(all(not(test), feature = "bootable"))]
 use bootloader::{entry_point, BootInfo};

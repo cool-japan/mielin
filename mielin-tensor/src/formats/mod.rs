@@ -10,7 +10,7 @@
 use crate::error::{TensorError, TensorResult};
 use crate::tensor::Tensor;
 use alloc::collections::BTreeMap;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 #[cfg(feature = "onnx")]

@@ -7,7 +7,7 @@
 
 ### Medium Priority
 - [ ] Explore Rust async runtime integration (tokio/async-std)
-- [ ] Research lock-free algorithms for scheduler
+- [x] Research lock-free algorithms for scheduler — WorkStealingScheduler (Chase-Lev, work_stealing.rs) activated; 32 tests (17 original + 15 new integration)
 
 ### Low Priority
 - [ ] Video tutorial for kernel development
@@ -17,8 +17,8 @@
 - [x] Investigate eBPF-style extensibility — MielinBPF VM implemented (bpf/ subdir: ISA, verifier, interpreter, tracepoint registry; 67 tests)
 
 ### Future Enhancements
-- [ ] Virtual memory enhancements
-- [ ] Advanced memory management features
+- [x] Virtual memory enhancements — vmm.rs split into vmm/ (7 files all <1000 lines); guard pages, flush_tlb_range, map_stack_guarded added
+- [x] Advanced memory management features — BuddyAllocator: power-of-2 split/coalesce, 6-variant error type, fragmentation stats; 36 tests in buddy.rs
 
 ## Completed Features (v0.1.0-rc.1)
 

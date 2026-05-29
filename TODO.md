@@ -28,7 +28,7 @@
 ### Medium Priority - Features
 - [x] Cortex-M bootloader — A/B partition selection, image validation, trial/confirm rollback, flash abstraction, host-testable; 31 tests in mielin-rt/src/bootloader.rs
 - [x] Low-power features for IoT — EnergyPolicy, PowerDomainTracker, EnergyAwareScheduler, EnergyAdaptiveController in mielin-rt
-- [ ] NPU support expansion
+- [x] NPU support expansion — OnnxRuntimeBackend (universal fallback) + Hailo8Backend (device probe); 39 tests with feature flags in mielin-tensor/src/npu/
 - [x] Distributed inference — DistributedInferenceEngine with ShardedTensor, Cannon's algorithm matmul, ModelParallelPipeline in mielin-tensor
 - [x] Energy profiling — PowerDomain per-peripheral accounting, energy-aware scheduling hints integrated in mielin-rt
 

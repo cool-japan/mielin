@@ -7,9 +7,6 @@ license.workspace = true
 repository.workspace = true
 description = "Kernel-level tensor operations with hardware accelerator support (Arm SVE2/SME, CUDA, Metal, NPU)"
 keywords = ["tensor", "machine-learning", "accelerator", "simd", "gpu"]
-categories = ["science", "algorithms", "no-std", "hardware-support"]
-readme = "README.md"
-documentation = "https://docs.rs/mielin-tensor"
 
 [dependencies]
 mielin-hal.workspace = true
@@ -24,7 +21,7 @@ num_cpus = { version = "1.17", optional = true }
 rstest.workspace = true
 
 [features]
-default = ["std"]
+default = []
 # Standard library support (enables file system operations)
 std = []
 # Multi-threading support
@@ -39,8 +36,11 @@ qualcomm-npu = ["std"]
 # Model formats
 onnx = ["std"]
 tflite = ["std"]
+# Software runtime backends
+onnxruntime = ["std"]
+hailo = ["std"]
 # All features
-all = ["parallel", "cuda", "metal", "apple-neural-engine", "edge-tpu", "qualcomm-npu", "onnx", "tflite"]
+all = ["parallel", "cuda", "metal", "apple-neural-engine", "edge-tpu", "qualcomm-npu", "onnx", "tflite", "onnxruntime", "hailo"]
 
 [[bench]]
 name = "quantization_bench"

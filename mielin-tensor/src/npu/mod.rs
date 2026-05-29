@@ -18,6 +18,12 @@ pub mod edgetpu;
 #[cfg(feature = "qualcomm-npu")]
 pub mod qualcomm;
 
+#[cfg(feature = "onnxruntime")]
+pub mod onnxruntime;
+
+#[cfg(feature = "hailo")]
+pub mod hailo;
+
 /// NPU backend types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NpuBackend {
@@ -32,6 +38,12 @@ pub enum NpuBackend {
     /// Qualcomm NPU (Hexagon)
     #[cfg(feature = "qualcomm-npu")]
     QualcommNpu,
+    /// ONNX Runtime execution provider (software, always available when feature is on)
+    #[cfg(feature = "onnxruntime")]
+    OnnxRuntime,
+    /// Hailo-8 edge AI accelerator
+    #[cfg(feature = "hailo")]
+    Hailo8,
 }
 
 /// NPU device information
@@ -146,6 +158,28 @@ impl NpuContext {
             }
         }
 
+        // Hailo-8 hardware probe (Linux only; hardware-specific, tried before software fallback)
+        #[cfg(feature = "hailo")]
+        {
+            if let Ok(device) = hailo::Hailo8Backend::detect() {
+                return Ok(Self {
+                    device,
+                    models: alloc::vec::Vec::new(),
+                });
+            }
+        }
+
+        // ONNX Runtime software fallback (always succeeds when feature is enabled)
+        #[cfg(feature = "onnxruntime")]
+        {
+            if let Ok(device) = onnxruntime::OnnxRuntimeBackend::detect() {
+                return Ok(Self {
+                    device,
+                    models: alloc::vec::Vec::new(),
+                });
+            }
+        }
+
         // CPU fallback
         Ok(Self {
             device: NpuDevice::cpu(),
@@ -233,6 +267,14 @@ impl NpuOps for Tensor<f32> {
             NpuBackend::EdgeTpu => edgetpu::EdgeTpu::infer(self, model),
             #[cfg(feature = "qualcomm-npu")]
             NpuBackend::QualcommNpu => qualcomm::QualcommNpu::infer(self, model),
+            #[cfg(feature = "onnxruntime")]
+            NpuBackend::OnnxRuntime => {
+                onnxruntime::OnnxRuntimeBackend::infer(model, core::slice::from_ref(self))
+            }
+            #[cfg(feature = "hailo")]
+            NpuBackend::Hailo8 => {
+                hailo::Hailo8Backend::infer(model, core::slice::from_ref(self))
+            }
             #[allow(unreachable_patterns)]
             _ => Err(TensorError::other("Backend not compiled")),
         }
@@ -263,6 +305,18 @@ pub fn compile_model(
         NpuBackend::QualcommNpu => {
             qualcomm::QualcommNpu::compile(model_data, input_shapes, output_shapes)
         }
+        #[cfg(feature = "onnxruntime")]
+        NpuBackend::OnnxRuntime => {
+            onnxruntime::OnnxRuntimeBackend::compile(
+                model_data.to_vec(),
+                input_shapes,
+                output_shapes,
+            )
+        }
+        #[cfg(feature = "hailo")]
+        NpuBackend::Hailo8 => {
+            hailo::Hailo8Backend::compile(model_data.to_vec(), input_shapes, output_shapes)
+        }
         #[allow(unreachable_patterns)]
         _ => Err(TensorError::other("Backend not compiled")),
     }
@@ -290,20 +344,12 @@ mod tests {
         let ctx = NpuContext::new().unwrap();
         // On Apple Silicon, ANE will be detected
         // On other platforms, this may be None
-        #[cfg(all(
-            target_os = "macos",
-            target_arch = "aarch64",
-            feature = "apple-neural-engine"
-        ))]
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
             assert_eq!(ctx.device().backend, NpuBackend::AppleNeuralEngine);
             assert!(ctx.has_npu());
         }
-        #[cfg(not(all(
-            target_os = "macos",
-            target_arch = "aarch64",
-            feature = "apple-neural-engine"
-        )))]
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
         {
             // May be None or another backend depending on system
             let _ = ctx.device().backend;
@@ -379,7 +425,238 @@ mod tests {
         }
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
         {
+            // When onnxruntime feature is on, the context uses ONNX Runtime, which only
+            // advertises its own op names (e.g. "conv"), not "conv2d".
+            // When no feature is on, CPU fallback has no supported_ops.
             assert!(!Tensor::is_npu_supported("conv2d", &ctx));
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ONNX Runtime backend tests
+    // ─────────────────────────────────────────────────────────────────────────
+
+    #[cfg(feature = "onnxruntime")]
+    #[test]
+    fn test_onnxruntime_detect_always_succeeds() {
+        let result = onnxruntime::OnnxRuntimeBackend::detect();
+        assert!(result.is_ok());
+        let device = result.unwrap();
+        assert_eq!(device.backend, NpuBackend::OnnxRuntime);
+    }
+
+    #[cfg(feature = "onnxruntime")]
+    #[test]
+    fn test_onnxruntime_is_available() {
+        assert!(onnxruntime::OnnxRuntimeBackend::is_available());
+    }
+
+    #[cfg(feature = "onnxruntime")]
+    #[test]
+    fn test_onnxruntime_device_info() {
+        let device = onnxruntime::OnnxRuntimeBackend::detect().unwrap();
+        assert_eq!(device.name, "ONNX Runtime");
+        assert_eq!(device.max_model_size, 4 * 1024 * 1024 * 1024);
+        assert_eq!(device.performance_class, 4);
+        assert!(!device.supported_ops.is_empty());
+        // Must advertise "matmul" and "softmax" at minimum.
+        assert!(device.supported_ops.contains(&"matmul"));
+        assert!(device.supported_ops.contains(&"softmax"));
+    }
+
+    #[cfg(feature = "onnxruntime")]
+    #[test]
+    fn test_onnxruntime_compile_model() {
+        let model_data = alloc::vec![0x08u8, 0x01, 0x00, 0x00];
+        let result = onnxruntime::OnnxRuntimeBackend::compile(
+            model_data,
+            alloc::vec![alloc::vec![1usize, 3, 224, 224]],
+            alloc::vec![alloc::vec![1usize, 1000]],
+        );
+        assert!(result.is_ok());
+        let model = result.unwrap();
+        assert_eq!(model.backend(), NpuBackend::OnnxRuntime);
+        assert_eq!(model.input_shapes().len(), 1);
+        assert_eq!(model.output_shapes().len(), 1);
+    }
+
+    #[cfg(feature = "onnxruntime")]
+    #[test]
+    fn test_onnxruntime_infer_stub() {
+        let model = onnxruntime::OnnxRuntimeBackend::compile(
+            alloc::vec![0x08u8],
+            alloc::vec![alloc::vec![1usize, 3, 224, 224]],
+            alloc::vec![alloc::vec![1usize, 1000]],
+        )
+        .unwrap();
+
+        let input = Tensor::zeros(alloc::vec![1usize, 3, 224, 224]);
+        let outputs = onnxruntime::OnnxRuntimeBackend::infer(&model, &[input]).unwrap();
+
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].shape(), &[1usize, 1000]);
+        // Stub always returns zeros.
+        assert!(outputs[0].data().iter().all(|&v| v == 0.0f32));
+    }
+
+    #[cfg(feature = "onnxruntime")]
+    #[test]
+    fn test_onnxruntime_metrics() {
+        let metrics = onnxruntime::OnnxRuntimeBackend::get_performance_metrics();
+        assert_eq!(metrics.inference_time_us, 0);
+        assert_eq!(metrics.memory_used_bytes, 0);
+        assert_eq!(
+            metrics.execution_provider,
+            onnxruntime::OnnxExecutionProvider::Cpu
+        );
+    }
+
+    #[cfg(feature = "onnxruntime")]
+    #[test]
+    fn test_onnx_execution_provider_enum() {
+        use onnxruntime::OnnxExecutionProvider;
+        let all_variants = [
+            OnnxExecutionProvider::Cpu,
+            OnnxExecutionProvider::Cuda,
+            OnnxExecutionProvider::TensorRT,
+            OnnxExecutionProvider::CoreML,
+            OnnxExecutionProvider::DirectML,
+            OnnxExecutionProvider::OpenVino,
+        ];
+        assert_eq!(all_variants.len(), 6);
+        assert_eq!(OnnxExecutionProvider::default(), OnnxExecutionProvider::Cpu);
+        // Spot-check distinctness.
+        assert_ne!(OnnxExecutionProvider::Cuda, OnnxExecutionProvider::TensorRT);
+        assert_ne!(OnnxExecutionProvider::CoreML, OnnxExecutionProvider::DirectML);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Hailo backend tests
+    // ─────────────────────────────────────────────────────────────────────────
+
+    #[cfg(feature = "hailo")]
+    #[test]
+    fn test_hailo_detect_no_device() {
+        // On non-Linux (or Linux without /dev/hailo0), detect must return Err.
+        #[cfg(not(all(feature = "std", target_os = "linux")))]
+        {
+            let result = hailo::Hailo8Backend::detect();
+            assert!(result.is_err());
+        }
+        // On Linux: must not panic regardless of device presence.
+        #[cfg(all(feature = "std", target_os = "linux"))]
+        {
+            let _result = hailo::Hailo8Backend::detect();
+        }
+    }
+
+    #[cfg(feature = "hailo")]
+    #[test]
+    fn test_hailo_is_available_no_device() {
+        #[cfg(not(all(feature = "std", target_os = "linux")))]
+        {
+            assert!(!hailo::Hailo8Backend::is_available());
+        }
+        #[cfg(all(feature = "std", target_os = "linux"))]
+        {
+            // Just verify no panic on Linux.
+            let _ = hailo::Hailo8Backend::is_available();
+        }
+    }
+
+    #[cfg(feature = "hailo")]
+    #[test]
+    fn test_hailo_compile_stub() {
+        let result = hailo::Hailo8Backend::compile(
+            alloc::vec![0xABu8, 0xCD, 0xEF],
+            alloc::vec![alloc::vec![1usize, 3, 640, 640]],
+            alloc::vec![alloc::vec![1usize, 25200, 85]],
+        );
+        assert!(result.is_ok());
+        let model = result.unwrap();
+        assert_eq!(model.backend(), NpuBackend::Hailo8);
+    }
+
+    #[cfg(feature = "hailo")]
+    #[test]
+    fn test_hailo_infer_stub() {
+        let model = hailo::Hailo8Backend::compile(
+            alloc::vec![0u8; 32],
+            alloc::vec![alloc::vec![1usize, 3, 640, 640]],
+            alloc::vec![alloc::vec![1usize, 25200, 85]],
+        )
+        .unwrap();
+
+        let input = Tensor::zeros(alloc::vec![1usize, 3, 640, 640]);
+        let outputs = hailo::Hailo8Backend::infer(&model, &[input]).unwrap();
+
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].shape(), &[1usize, 25200, 85]);
+        assert!(outputs[0].data().iter().all(|&v| v == 0.0f32));
+    }
+
+    #[cfg(feature = "hailo")]
+    #[test]
+    fn test_hailo_metrics() {
+        let metrics = hailo::Hailo8Backend::get_performance_metrics();
+        assert_eq!(metrics.inference_time_us, 0);
+        assert_eq!(metrics.power_mw, 0);
+        assert_eq!(metrics.tops_achieved, 0.0f32);
+        assert_eq!(metrics.device_type, hailo::HailoDeviceType::Hailo8);
+    }
+
+    #[cfg(feature = "hailo")]
+    #[test]
+    fn test_hailo_device_type_enum() {
+        use hailo::HailoDeviceType;
+        let all_variants = [
+            HailoDeviceType::Hailo8,
+            HailoDeviceType::Hailo8L,
+            HailoDeviceType::Hailo8R,
+            HailoDeviceType::Hailo10,
+            HailoDeviceType::HailoM2,
+        ];
+        assert_eq!(all_variants.len(), 5);
+        assert_eq!(HailoDeviceType::default(), HailoDeviceType::Hailo8);
+        assert_ne!(HailoDeviceType::Hailo8, HailoDeviceType::Hailo8L);
+        assert_ne!(HailoDeviceType::Hailo10, HailoDeviceType::HailoM2);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Detection order / priority tests
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Verify that when only `onnxruntime` is compiled in (and no hardware
+    /// accelerator features), NpuContext picks ONNX Runtime over CPU fallback.
+    #[cfg(all(
+        feature = "onnxruntime",
+        not(feature = "apple-neural-engine"),
+        not(feature = "edge-tpu"),
+        not(feature = "qualcomm-npu"),
+        not(feature = "hailo")
+    ))]
+    #[test]
+    fn test_npu_backend_priority_order() {
+        let ctx = NpuContext::new().unwrap();
+        // With no hardware NPU feature enabled, ONNX Runtime should be selected.
+        assert_eq!(ctx.device().backend, NpuBackend::OnnxRuntime);
+        // ONNX Runtime reports itself as an NPU (performance_class > 0).
+        assert!(ctx.device().performance_class > 0);
+    }
+
+    /// Verify that without any NPU feature, NpuContext falls back to the CPU device.
+    #[cfg(not(any(
+        feature = "apple-neural-engine",
+        feature = "edge-tpu",
+        feature = "qualcomm-npu",
+        feature = "hailo",
+        feature = "onnxruntime"
+    )))]
+    #[test]
+    fn test_npu_context_cpu_fallback_still_works() {
+        let ctx = NpuContext::new().unwrap();
+        assert_eq!(ctx.device().backend, NpuBackend::None);
+        assert_eq!(ctx.device().performance_class, 0);
+        assert!(!ctx.has_npu());
     }
 }

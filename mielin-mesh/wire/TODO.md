@@ -4,7 +4,7 @@
 
 ### High Priority
 - [ ] Load test with 10K concurrent connections
-- [ ] Network condition simulation (latency, packet loss)
+- [x] Network condition simulation (latency, packet loss) — NetworkSimulator with xorshift64 PRNG, 6 presets, SimulationAction enum; 25 tests in netsim.rs
 - [ ] TLS handshake performance tests
 - [ ] Certificate rotation tests
 
