@@ -159,7 +159,8 @@ impl QuantizedTensor {
             .map(|&val| self.params.dequantize(val))
             .collect();
 
-        Tensor::from_vec(dequantized_data, self.shape.clone()).expect("dequantized data length matches self.shape")
+        Tensor::from_vec(dequantized_data, self.shape.clone())
+            .expect("dequantized data length matches self.shape")
     }
 
     /// Get quantized data
@@ -204,7 +205,8 @@ impl QuantizedTensor {
             }
         }
 
-        Tensor::from_vec(result_data, alloc::vec![m, n]).expect("result_data length = m * n matches shape [m, n]")
+        Tensor::from_vec(result_data, alloc::vec![m, n])
+            .expect("result_data length = m * n matches shape [m, n]")
     }
 }
 
@@ -299,7 +301,8 @@ impl Quant4Tensor {
             *dequant_val = (value_i8 as f32 - self.params.zero_point as f32) * self.params.scale;
         }
 
-        Tensor::from_vec(dequantized_data, self.shape.clone()).expect("dequantized int4 data length matches self.shape")
+        Tensor::from_vec(dequantized_data, self.shape.clone())
+            .expect("dequantized int4 data length matches self.shape")
     }
 
     /// Get packed data

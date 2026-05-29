@@ -874,7 +874,8 @@ impl ComputeGraph {
             for i in 0..m {
                 let mut sum = 0.0;
                 for j in 0..n {
-                    sum += a_data.get(&[i, j]).expect("i < m and j < n within bounds") * b_data.data()[j];
+                    sum += a_data.get(&[i, j]).expect("i < m and j < n within bounds")
+                        * b_data.data()[j];
                 }
                 c_data[i] = sum;
             }
@@ -884,7 +885,12 @@ impl ComputeGraph {
                 for j in 0..k {
                     let mut sum = 0.0;
                     for idx in 0..n {
-                        sum += a_data.get(&[i, idx]).expect("i < m and idx < n within bounds") * b_data.get(&[idx, j]).expect("idx < n and j < k within bounds");
+                        sum += a_data
+                            .get(&[i, idx])
+                            .expect("i < m and idx < n within bounds")
+                            * b_data
+                                .get(&[idx, j])
+                                .expect("idx < n and j < k within bounds");
                     }
                     c_data[i * k + j] = sum;
                 }
@@ -894,7 +900,8 @@ impl ComputeGraph {
         let c_tensor = if is_matvec {
             Tensor::vector(c_data)
         } else {
-            Tensor::from_vec(c_data, alloc::vec![m, k]).expect("c_data length = m * k matches shape")
+            Tensor::from_vec(c_data, alloc::vec![m, k])
+                .expect("c_data length = m * k matches shape")
         };
 
         // Clone data for backward pass
@@ -918,7 +925,10 @@ impl ComputeGraph {
                         grad_a[i * n_clone + j] = grad.data()[i] * b_clone.data()[j];
                     }
                 }
-                grads.push(Tensor::from_vec(grad_a, alloc::vec![m_clone, n_clone]).expect("grad_a length = m*n matches shape"));
+                grads.push(
+                    Tensor::from_vec(grad_a, alloc::vec![m_clone, n_clone])
+                        .expect("grad_a length = m*n matches shape"),
+                );
 
                 // grad_b = a^T @ grad = [n, m] @ [m] = [n]
                 let mut grad_b = alloc::vec![0.0f32; n_clone];
@@ -926,7 +936,8 @@ impl ComputeGraph {
                 for j in 0..n_clone {
                     let mut sum = 0.0;
                     for i in 0..m_clone {
-                        sum += a_clone.get(&[i, j]).expect("i < m and j < n within bounds") * grad.data()[i];
+                        sum += a_clone.get(&[i, j]).expect("i < m and j < n within bounds")
+                            * grad.data()[i];
                     }
                     grad_b[j] = sum;
                 }
@@ -939,12 +950,20 @@ impl ComputeGraph {
                     for j in 0..n_clone {
                         let mut sum = 0.0;
                         for idx in 0..k_clone {
-                            sum += grad.get(&[i, idx]).expect("i < m and idx < k within bounds") * b_clone.get(&[j, idx]).expect("j < n and idx < k within bounds");
+                            sum += grad
+                                .get(&[i, idx])
+                                .expect("i < m and idx < k within bounds")
+                                * b_clone
+                                    .get(&[j, idx])
+                                    .expect("j < n and idx < k within bounds");
                         }
                         grad_a[i * n_clone + j] = sum;
                     }
                 }
-                grads.push(Tensor::from_vec(grad_a, alloc::vec![m_clone, n_clone]).expect("grad_a length = m*n matches shape"));
+                grads.push(
+                    Tensor::from_vec(grad_a, alloc::vec![m_clone, n_clone])
+                        .expect("grad_a length = m*n matches shape"),
+                );
 
                 // grad_b = a^T @ grad = [n, m] @ [m, k] = [n, k]
                 let mut grad_b = alloc::vec![0.0f32; n_clone * k_clone];
@@ -952,12 +971,20 @@ impl ComputeGraph {
                     for j in 0..k_clone {
                         let mut sum = 0.0;
                         for idx in 0..m_clone {
-                            sum += a_clone.get(&[idx, i]).expect("idx < m and i < n within bounds") * grad.get(&[idx, j]).expect("idx < m and j < k within bounds");
+                            sum += a_clone
+                                .get(&[idx, i])
+                                .expect("idx < m and i < n within bounds")
+                                * grad
+                                    .get(&[idx, j])
+                                    .expect("idx < m and j < k within bounds");
                         }
                         grad_b[i * k_clone + j] = sum;
                     }
                 }
-                grads.push(Tensor::from_vec(grad_b, alloc::vec![n_clone, k_clone]).expect("grad_b length = n*k matches shape"));
+                grads.push(
+                    Tensor::from_vec(grad_b, alloc::vec![n_clone, k_clone])
+                        .expect("grad_b length = n*k matches shape"),
+                );
             }
 
             grads

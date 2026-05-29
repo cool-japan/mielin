@@ -203,12 +203,16 @@ async fn top_command(
 
         // Sort agents
         match sort_by {
-            "cpu" => snapshot
-                .agents
-                .sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap_or(std::cmp::Ordering::Equal)),
-            "memory" => snapshot
-                .agents
-                .sort_by(|a, b| b.memory_mb.partial_cmp(&a.memory_mb).unwrap_or(std::cmp::Ordering::Equal)),
+            "cpu" => snapshot.agents.sort_by(|a, b| {
+                b.cpu_percent
+                    .partial_cmp(&a.cpu_percent)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }),
+            "memory" => snapshot.agents.sort_by(|a, b| {
+                b.memory_mb
+                    .partial_cmp(&a.memory_mb)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }),
             "name" => snapshot.agents.sort_by(|a, b| a.name.cmp(&b.name)),
             _ => {}
         }

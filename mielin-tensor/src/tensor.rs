@@ -189,7 +189,8 @@ impl Tensor<f32> {
 
     /// Create a scalar tensor (0D tensor with single value)
     pub fn scalar(value: f32) -> Self {
-        Self::from_vec(alloc::vec![value], alloc::vec![1]).expect("single element matches shape [1]")
+        Self::from_vec(alloc::vec![value], alloc::vec![1])
+            .expect("single element matches shape [1]")
     }
 
     /// Create a tensor filled with zeros

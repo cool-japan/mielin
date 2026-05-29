@@ -575,7 +575,10 @@ impl SharedPriorityQueue {
 
     /// Enqueue a message
     pub fn enqueue(&self, message: Message) -> Result<u64, WireError> {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).enqueue(message)
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .enqueue(message)
     }
 
     /// Enqueue with specific priority
@@ -592,7 +595,10 @@ impl SharedPriorityQueue {
 
     /// Dequeue the highest priority message
     pub fn dequeue(&self) -> Option<QueuedMessage> {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).dequeue()
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .dequeue()
     }
 
     /// Get queue length
@@ -602,17 +608,27 @@ impl SharedPriorityQueue {
 
     /// Check if empty
     pub fn is_empty(&self) -> bool {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).is_empty()
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_empty()
     }
 
     /// Get statistics
     pub fn stats(&self) -> QueueStats {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).stats().clone()
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .stats()
+            .clone()
     }
 
     /// Cleanup expired messages
     pub fn cleanup_expired(&self) -> usize {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).cleanup_expired()
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cleanup_expired()
     }
 
     /// Clear the queue

@@ -942,8 +942,20 @@ mod tests {
         let ctx = WasiContext::new();
 
         // Verify stream creation
-        assert!(ctx.streams.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&STDIN_FD));
-        assert!(ctx.streams.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&STDOUT_FD));
-        assert!(ctx.streams.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&STDERR_FD));
+        assert!(ctx
+            .streams
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(&STDIN_FD));
+        assert!(ctx
+            .streams
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(&STDOUT_FD));
+        assert!(ctx
+            .streams
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(&STDERR_FD));
     }
 }

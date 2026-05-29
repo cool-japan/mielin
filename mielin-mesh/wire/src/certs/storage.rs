@@ -79,9 +79,9 @@ impl CertFile {
     }
 
     fn into_certificate(self) -> Result<Certificate, CertError> {
-        let key_bytes = hex::decode(&self.key_hex).map_err(|e| CertError::StorageError(
-            format!("Hex decode for private key failed: {}", e),
-        ))?;
+        let key_bytes = hex::decode(&self.key_hex).map_err(|e| {
+            CertError::StorageError(format!("Hex decode for private key failed: {}", e))
+        })?;
 
         let private_key = match self.key_type {
             KeyType::Pkcs1 => PrivateKeyDer::Pkcs1(key_bytes.into()),
@@ -93,11 +93,12 @@ impl CertFile {
             .certs_hex
             .iter()
             .map(|h| {
-                hex::decode(h)
-                    .map(CertificateDer::from)
-                    .map_err(|e| CertError::StorageError(
-                        format!("Hex decode for cert chain entry failed: {}", e),
+                hex::decode(h).map(CertificateDer::from).map_err(|e| {
+                    CertError::StorageError(format!(
+                        "Hex decode for cert chain entry failed: {}",
+                        e
                     ))
+                })
             })
             .collect();
 
@@ -174,9 +175,11 @@ impl CertStorage {
                 let json = serde_json::to_string_pretty(&record).map_err(|e| {
                     CertError::StorageError(format!("JSON serialisation failed: {}", e))
                 })?;
-                tokio::fs::write(&path, json.as_bytes()).await.map_err(|e| {
-                    CertError::StorageError(format!("Write to {:?} failed: {}", path, e))
-                })?;
+                tokio::fs::write(&path, json.as_bytes())
+                    .await
+                    .map_err(|e| {
+                        CertError::StorageError(format!("Write to {:?} failed: {}", path, e))
+                    })?;
             }
         }
 
@@ -206,13 +209,12 @@ impl CertStorage {
                 let path = dir.join(format!("{}.cert.json", node_id));
                 match tokio::fs::read(&path).await {
                     Ok(bytes) => {
-                        let record: CertFile =
-                            serde_json::from_slice(&bytes).map_err(|e| {
-                                CertError::StorageError(format!(
-                                    "JSON deserialisation of {:?} failed: {}",
-                                    path, e
-                                ))
-                            })?;
+                        let record: CertFile = serde_json::from_slice(&bytes).map_err(|e| {
+                            CertError::StorageError(format!(
+                                "JSON deserialisation of {:?} failed: {}",
+                                path, e
+                            ))
+                        })?;
                         let cert = record.into_certificate()?;
                         // Populate cache for future reads
                         let mut cache = self.memory_cache.write().await;

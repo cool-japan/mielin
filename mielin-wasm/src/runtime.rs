@@ -498,10 +498,7 @@ impl Runtime for WasmerRuntime {
         wasmtime::Engine::new(&wasmtime::Config::new())
             .and_then(|e| wasmtime::Module::validate(&e, wasm_bytes).map(|_| e))
             .map_err(|e| anyhow!("Wasmer (stub) validation failed: {}", e))?;
-        let mut guard = self
-            .last_wasm
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let mut guard = self.last_wasm.lock().unwrap_or_else(|p| p.into_inner());
         *guard = Some(wasm_bytes.to_vec());
         Ok(Arc::new(WasmerModule {
             data: wasm_bytes.to_vec(),

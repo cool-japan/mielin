@@ -188,7 +188,8 @@ impl Matrix {
 
             // Elimination
             for i in (k + 1)..n {
-                let factor = *u.get(&[i, k]).expect("index within bounds") / *u.get(&[k, k]).expect("index within bounds");
+                let factor = *u.get(&[i, k]).expect("index within bounds")
+                    / *u.get(&[k, k]).expect("index within bounds");
                 l.set(&[i, k], factor);
 
                 for j in k..n {
@@ -524,7 +525,8 @@ impl Matrix {
             for i in 0..n {
                 let mut sum = 0.0;
                 for j in 0..n {
-                    sum += matrix.get(&[i, j]).expect("index within bounds") * v.get(&[j]).expect("index within bounds");
+                    sum += matrix.get(&[i, j]).expect("index within bounds")
+                        * v.get(&[j]).expect("index within bounds");
                 }
                 w.set(&[i], sum);
             }
@@ -553,14 +555,16 @@ impl Matrix {
             for i in 0..n {
                 let mut sum = 0.0;
                 for j in 0..n {
-                    sum += matrix.get(&[i, j]).expect("index within bounds") * v_new.get(&[j]).expect("index within bounds");
+                    sum += matrix.get(&[i, j]).expect("index within bounds")
+                        * v_new.get(&[j]).expect("index within bounds");
                 }
                 av.set(&[i], sum);
             }
 
             let mut new_eigenvalue = 0.0;
             for i in 0..n {
-                new_eigenvalue += v_new.get(&[i]).expect("index within bounds") * av.get(&[i]).expect("index within bounds");
+                new_eigenvalue += v_new.get(&[i]).expect("index within bounds")
+                    * av.get(&[i]).expect("index within bounds");
             }
 
             // Check convergence
@@ -681,7 +685,8 @@ impl Matrix {
                 // r_kj = q_k^T * v
                 let mut r_kj = 0.0;
                 for i in 0..m {
-                    r_kj += q.get(&[i, k]).expect("index within bounds") * v.get(&[i]).expect("index within bounds");
+                    r_kj += q.get(&[i, k]).expect("index within bounds")
+                        * v.get(&[i]).expect("index within bounds");
                 }
                 r.set(&[k, j], r_kj);
 
@@ -743,7 +748,8 @@ impl Matrix {
             for j in 0..n {
                 let mut sum = 0.0;
                 for p in 0..k {
-                    sum += a.get(&[i, p]).expect("index within bounds") * b.get(&[p, j]).expect("index within bounds");
+                    sum += a.get(&[i, p]).expect("index within bounds")
+                        * b.get(&[p, j]).expect("index within bounds");
                 }
                 result.set(&[i, j], sum);
             }
@@ -783,7 +789,10 @@ impl Matrix {
         // Singular values are square roots of eigenvalues
         let mut singular_values = Tensor::zeros(alloc::vec![n]);
         for i in 0..n {
-            let ev = *eigen_result.eigenvalues.get(&[i]).expect("index within bounds");
+            let ev = *eigen_result
+                .eigenvalues
+                .get(&[i])
+                .expect("index within bounds");
             singular_values.set(&[i], if ev > 0.0 { sqrtf(ev) } else { 0.0 });
         }
 
@@ -806,7 +815,10 @@ impl Matrix {
         // Create diagonal matrix S
         let mut s_matrix = Tensor::zeros(alloc::vec![m.min(n), n.min(m)]);
         for i in 0..m.min(n) {
-            s_matrix.set(&[i, i], *singular_values.get(&[i]).expect("index within bounds"));
+            s_matrix.set(
+                &[i, i],
+                *singular_values.get(&[i]).expect("index within bounds"),
+            );
         }
 
         Ok((u, s_matrix, v))
@@ -875,7 +887,8 @@ impl Matrix {
         for i in 0..n {
             let mut sum = 0.0;
             for j in 0..n {
-                sum += q.get(&[j, i]).expect("index within bounds") * b.get(&[j]).expect("index within bounds");
+                sum += q.get(&[j, i]).expect("index within bounds")
+                    * b.get(&[j]).expect("index within bounds");
             }
             y.set(&[i], sum);
         }
@@ -890,7 +903,8 @@ impl Matrix {
 
             let mut sum = *y.get(&[i]).expect("index within bounds");
             for j in (i + 1)..n {
-                sum -= r.get(&[i, j]).expect("index within bounds") * x.get(&[j]).expect("index within bounds");
+                sum -= r.get(&[i, j]).expect("index within bounds")
+                    * x.get(&[j]).expect("index within bounds");
             }
             x.set(&[i], sum / r_ii);
         }
@@ -1192,7 +1206,8 @@ mod tests {
             for j in 0..n {
                 let mut sum = 0.0;
                 for p in 0..k {
-                    sum += a.get(&[i, p]).expect("index within bounds") * b.get(&[p, j]).expect("index within bounds");
+                    sum += a.get(&[i, p]).expect("index within bounds")
+                        * b.get(&[p, j]).expect("index within bounds");
                 }
                 result.set(&[i, j], sum);
             }
@@ -1253,7 +1268,11 @@ mod tests {
         for i in 0..3 {
             for j in 0..3 {
                 let expected = if i == j { 1.0 } else { 0.0 };
-                assert_near(*qtq.get(&[i, j]).expect("index within bounds"), expected, 0.001);
+                assert_near(
+                    *qtq.get(&[i, j]).expect("index within bounds"),
+                    expected,
+                    0.001,
+                );
             }
         }
 
@@ -1261,7 +1280,11 @@ mod tests {
         let qr = multiply_matrices(&q, &r);
         for i in 0..3 {
             for j in 0..3 {
-                assert_near(*qr.get(&[i, j]).expect("index within bounds"), *m.get(&[i, j]).expect("index within bounds"), 0.001);
+                assert_near(
+                    *qr.get(&[i, j]).expect("index within bounds"),
+                    *m.get(&[i, j]).expect("index within bounds"),
+                    0.001,
+                );
             }
         }
 
@@ -1406,10 +1429,26 @@ mod tests {
 
         // m * pinv should be approximately identity
         let product = multiply_matrices(&m, &pinv);
-        assert_near(*product.get(&[0, 0]).expect("index within bounds"), 1.0, 0.1);
-        assert_near(*product.get(&[0, 1]).expect("index within bounds"), 0.0, 0.1);
-        assert_near(*product.get(&[1, 0]).expect("index within bounds"), 0.0, 0.1);
-        assert_near(*product.get(&[1, 1]).expect("index within bounds"), 1.0, 0.1);
+        assert_near(
+            *product.get(&[0, 0]).expect("index within bounds"),
+            1.0,
+            0.1,
+        );
+        assert_near(
+            *product.get(&[0, 1]).expect("index within bounds"),
+            0.0,
+            0.1,
+        );
+        assert_near(
+            *product.get(&[1, 0]).expect("index within bounds"),
+            0.0,
+            0.1,
+        );
+        assert_near(
+            *product.get(&[1, 1]).expect("index within bounds"),
+            1.0,
+            0.1,
+        );
     }
 
     #[test]
@@ -1539,7 +1578,11 @@ mod tests {
         for i in 0..3 {
             for j in 0..3 {
                 let expected = if i == j { 1.0 } else { 0.0 };
-                assert_near(*qtq.get(&[i, j]).expect("index within bounds"), expected, 0.01);
+                assert_near(
+                    *qtq.get(&[i, j]).expect("index within bounds"),
+                    expected,
+                    0.01,
+                );
             }
         }
     }

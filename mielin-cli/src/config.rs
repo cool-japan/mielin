@@ -145,9 +145,18 @@ impl Config {
             .context("Failed to compile regex")?;
 
         for cap in re_with_default.captures_iter(content) {
-            let full_match = cap.get(0).expect("group 0 always present in a match").as_str();
-            let var_name = cap.get(1).expect("group 1 defined by regex pattern").as_str();
-            let default_value = cap.get(2).expect("group 2 defined by regex pattern").as_str();
+            let full_match = cap
+                .get(0)
+                .expect("group 0 always present in a match")
+                .as_str();
+            let var_name = cap
+                .get(1)
+                .expect("group 1 defined by regex pattern")
+                .as_str();
+            let default_value = cap
+                .get(2)
+                .expect("group 2 defined by regex pattern")
+                .as_str();
 
             let replacement = vars
                 .get(var_name)
@@ -161,8 +170,14 @@ impl Config {
             .context("Failed to compile regex")?;
 
         for cap in re_simple.captures_iter(&result.clone()) {
-            let full_match = cap.get(0).expect("group 0 always present in a match").as_str();
-            let var_name = cap.get(1).expect("group 1 defined by regex pattern").as_str();
+            let full_match = cap
+                .get(0)
+                .expect("group 0 always present in a match")
+                .as_str();
+            let var_name = cap
+                .get(1)
+                .expect("group 1 defined by regex pattern")
+                .as_str();
 
             if let Some(value) = vars.get(var_name) {
                 result = result.replace(full_match, value);

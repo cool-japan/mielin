@@ -434,11 +434,7 @@ fn tflite_export(model: &ExportModel) -> TensorResult<Vec<u8>> {
         push_shape_json(&mut out, tensor.shape());
         out.push_str(",\"dtype\":\"f32\",\"data_b64\":\"");
         // Encode raw f32 bytes as Base64.
-        let raw: Vec<u8> = tensor
-            .data()
-            .iter()
-            .flat_map(|f| f.to_le_bytes())
-            .collect();
+        let raw: Vec<u8> = tensor.data().iter().flat_map(|f| f.to_le_bytes()).collect();
         out.push_str(&base64_encode(&raw));
         out.push_str("\"}");
     }
@@ -480,8 +476,7 @@ fn push_shape_json(buf: &mut alloc::string::String, shape: &[usize]) {
 
 /// Minimal Base64 encoder (no external deps, no `std`).
 fn base64_encode(data: &[u8]) -> alloc::string::String {
-    const CHARS: &[u8] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = alloc::string::String::with_capacity((data.len() * 4).div_ceil(3));
     let mut chunks = data.chunks_exact(3);
     for chunk in chunks.by_ref() {

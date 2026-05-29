@@ -92,7 +92,8 @@ impl ConvOps {
             *out_val = sum;
         }
 
-        Ok(Tensor::from_vec(output_data, alloc::vec![output_len]).expect("output_data length matches output_len"))
+        Ok(Tensor::from_vec(output_data, alloc::vec![output_len])
+            .expect("output_data length matches output_len"))
     }
 
     /// 2D convolution (for single channel)
@@ -142,8 +143,12 @@ impl ConvOps {
                         let iw = start_w as isize + kw as isize - pad_w as isize;
 
                         if ih >= 0 && ih < input_h as isize && iw >= 0 && iw < input_w as isize {
-                            let input_val = input.get(&[ih as usize, iw as usize]).expect("ih,iw bounds-checked above");
-                            let kernel_val = kernel.get(&[kh, kw]).expect("kh < kernel_h and kw < kernel_w");
+                            let input_val = input
+                                .get(&[ih as usize, iw as usize])
+                                .expect("ih,iw bounds-checked above");
+                            let kernel_val = kernel
+                                .get(&[kh, kw])
+                                .expect("kh < kernel_h and kw < kernel_w");
                             sum += input_val * kernel_val;
                         }
                     }
@@ -419,7 +424,8 @@ impl ConvOps {
                                 let ih = start_h + ph;
                                 let iw = start_w + pw;
                                 if ih < input_h && iw < input_w {
-                                    let v = *input.get(&[ih, iw]).expect("ih,iw bounds-checked above");
+                                    let v =
+                                        *input.get(&[ih, iw]).expect("ih,iw bounds-checked above");
                                     if v > max_val {
                                         max_val = v;
                                     }
@@ -436,7 +442,8 @@ impl ConvOps {
                                 let ih = start_h + ph;
                                 let iw = start_w + pw;
                                 if ih < input_h && iw < input_w {
-                                    sum += input.get(&[ih, iw]).expect("ih,iw bounds-checked above");
+                                    sum +=
+                                        input.get(&[ih, iw]).expect("ih,iw bounds-checked above");
                                     count += 1;
                                 }
                             }

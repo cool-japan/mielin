@@ -494,7 +494,11 @@ impl GlobalPool {
                 }
             }
         }
-        unsafe { (*self.pool.get()).as_ref().expect("pool was initialized above before this access") }
+        unsafe {
+            (*self.pool.get())
+                .as_ref()
+                .expect("pool was initialized above before this access")
+        }
     }
 
     fn init_with_max(&self, max_cached_bytes: usize) {

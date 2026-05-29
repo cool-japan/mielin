@@ -203,11 +203,13 @@ fn test_concurrent_module_execution() {
                             match add.call(&mut store, (5, 7)) {
                                 Ok(result) => {
                                     assert_eq!(result, 12);
-                                    let mut count = success.lock().unwrap_or_else(|e| e.into_inner());
+                                    let mut count =
+                                        success.lock().unwrap_or_else(|e| e.into_inner());
                                     *count += 1;
                                 }
                                 Err(_) => {
-                                    let mut count = errors.lock().unwrap_or_else(|e| e.into_inner());
+                                    let mut count =
+                                        errors.lock().unwrap_or_else(|e| e.into_inner());
                                     *count += 1;
                                 }
                             }

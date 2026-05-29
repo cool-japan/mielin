@@ -287,11 +287,10 @@ impl CertificateAuthority {
         // OCSP access method OID
         const OID_OCSP: &str = "1.3.6.1.5.5.7.48.1";
 
-        let (_, parsed_cert) = X509Certificate::from_der(cert.as_ref()).map_err(|e| {
-            CertError::ValidationFailed {
+        let (_, parsed_cert) =
+            X509Certificate::from_der(cert.as_ref()).map_err(|e| CertError::ValidationFailed {
                 reason: format!("Failed to parse certificate for OCSP check: {}", e),
-            }
-        })?;
+            })?;
 
         // Walk extensions looking for Authority Information Access
         let ocsp_url: Option<String> = parsed_cert
