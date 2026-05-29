@@ -3,13 +3,13 @@
 ## Pending Tasks
 
 ### High Priority
-- [ ] Load test with 10K concurrent connections
+- [x] Load test with 10K concurrent connections — LoadTestRunner with Semaphore(100) cap, 10K tasks, AtomicUsize counters; 19 tests in load_test.rs
 - [x] Network condition simulation (latency, packet loss) — NetworkSimulator with xorshift64 PRNG, 6 presets, SimulationAction enum; 25 tests in netsim.rs
-- [ ] TLS handshake performance tests
-- [ ] Certificate rotation tests
+- [x] TLS handshake performance tests — TlsHandshakeMetrics, measure_handshakes(); 16 tests in tls_bench.rs
+- [x] Certificate rotation tests — CertRotator with watch::Sender hot-swap, rate limiting, renewal subscription; 27 tests in cert_rotation.rs
 
 ### Medium Priority
-- [ ] Custom protocol extensions
+- [x] Custom protocol extensions — ProtocolHandler with extension registry, capability negotiation, EchoExtension, PingExtension, MetadataExtension; 58 tests in protocol.rs
 - [ ] Advanced security features
 - [ ] Production features hardening
 - [ ] Cross-platform connectivity tests

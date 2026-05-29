@@ -4,11 +4,11 @@
 
 ### High Priority
 - [ ] Test with 100+ node cluster
-- [ ] Network partition simulation
-- [ ] Chaos engineering (node failures, network delays)
+- [x] Network partition simulation — partition_50_50_split, majority/minority quorum, partition healing, cascading splits; 36 tests in chaos_tests.rs
+- [x] Chaos engineering (node failures, network delays) — ChaosEngine with kill/recover/partition/heal, mass failure, random flap; 36 tests in chaos_tests.rs
 
 ### Medium Priority
-- [ ] Benchmark gossip convergence
+- [x] Benchmark gossip convergence — convergence timing, fanout effect, consistent-hash lookup, quorum throughput; benchmarks in chaos_tests.rs
 - [ ] Performance regression tests
 - [ ] Cross-platform networking tests
 - [ ] Production features hardening

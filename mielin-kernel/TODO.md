@@ -6,7 +6,7 @@
 - [ ] Integration tests on real hardware (Raspberry Pi, BeagleBone)
 
 ### Medium Priority
-- [ ] Explore Rust async runtime integration (tokio/async-std)
+- [x] Explore Rust async runtime integration — SleepFuture, PeriodicTimer, AsyncTimerRegistry, tick integration; 26 tests in async_timer.rs
 - [x] Research lock-free algorithms for scheduler — WorkStealingScheduler (Chase-Lev, work_stealing.rs) activated; 32 tests (17 original + 15 new integration)
 
 ### Low Priority

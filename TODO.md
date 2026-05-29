@@ -42,7 +42,7 @@
 
 ### Future - Research & Exploration
 - [x] Arm SVE2/SME kernel integration — SVE2 dispatcher fully wired in mielin-tensor
-- [ ] Quantum-ready cryptography
+- [x] Quantum-ready cryptography — ML-KEM 0.3 + X25519 hybrid KEX, HybridKexState, PqKeyShareExtension; 41 tests in quantum.rs
 - [ ] Self-evolving agents
 - [x] Federated learning — FedAvg + UniformAvg aggregation, FederatedCoordinator, LocalTrainer; 20 tests in mielin-tensor/src/federated.rs
 - [x] Machine learning for migration prediction — Holt double-exponential smoothing + ridge regression + R² confidence in mielin-cells/src/resource/predictor_ml.rs; 16 tests

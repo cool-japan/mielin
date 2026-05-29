@@ -26,6 +26,7 @@
 //! executor.run();
 //! ```
 
+use crate::async_timer::tick_async_timers;
 use alloc::boxed::Box;
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
@@ -262,7 +263,11 @@ impl AsyncExecutor {
     /// Poll all ready tasks once
     /// Returns true if any task made progress
     pub fn poll_once(&mut self) -> bool {
-        // First, wake any tasks that were signaled
+        // Advance the async timer registry so futures whose jiffy deadlines
+        // have passed have their wakers invoked before processing the wake queue.
+        tick_async_timers();
+
+        // Then, wake any tasks that were signaled
         self.process_wakes();
 
         let mut made_progress = false;

@@ -8,6 +8,7 @@
 
 extern crate alloc;
 
+pub mod async_timer;
 pub mod boot;
 pub mod bpf;
 pub mod buddy;

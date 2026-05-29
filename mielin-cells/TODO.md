@@ -3,8 +3,8 @@
 ## Pending Tasks
 
 ### Medium Priority
-- [ ] Fault injection testing
-- [ ] Cross-version migration tests
+- [x] Fault injection testing — FaultInjector with probability, max-occurrences, delay; 15+ tests in fault_injection_tests.rs
+- [x] Cross-version migration tests — multi-hop chains, deprecation rejection, rolling update fault injection; 35 tests in cross_version_migration_tests.rs
 
 ### Low Priority
 - [ ] Video tutorials for agent development

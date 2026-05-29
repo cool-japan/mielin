@@ -56,6 +56,7 @@
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use spin::Mutex;
 
+use crate::async_timer::tick_async_timers;
 use crate::interrupt::{self, InterruptContext, IrqPriority};
 use crate::scheduler;
 
@@ -308,8 +309,17 @@ fn timer_interrupt_handler(_ctx: &InterruptContext) {
 
         drop(state); // Release lock before scheduling
 
+        // Tick the async timer registry. Must be called with TIMER_STATE
+        // unlocked to avoid lock-order inversion with ASYNC_TIMER_REGISTRY.
+        tick_async_timers();
+
         // Trigger preemptive reschedule
         scheduler::yield_task();
+    } else {
+        drop(state); // Release lock before ticking async timers
+
+        // Tick the async timer registry (no reschedule needed this tick).
+        tick_async_timers();
     }
 }
 

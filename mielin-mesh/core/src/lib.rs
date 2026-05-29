@@ -64,7 +64,10 @@ pub use multitenancy::{
     TenantManager, TenantManagerStats, TenantStatus,
 };
 pub use node::{Node, NodeId, NodeRole};
-pub use partition::{PartitionDetector, PartitionEvent, PartitionState};
+pub use partition::{
+    ConsistentHashRing, PartitionCause, PartitionDetector, PartitionError, PartitionEvent,
+    PartitionInfo, PartitionState, QuorumDecision,
+};
 pub use recovery::{ConnectionRecovery, DegradationManager, RecoveryError, StateReconciler};
 pub use registry::{AgentId, AgentRegistry, QueryOptions, RegistryShard, ShardedRegistry};
 pub use security::{
