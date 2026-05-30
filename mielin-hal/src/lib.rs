@@ -239,6 +239,7 @@ extern crate alloc;
 pub mod accelerator;
 pub mod acpi;
 pub mod arch;
+pub mod hal_probe;
 pub mod cache;
 pub mod capabilities;
 pub mod devicetree;
@@ -262,6 +263,12 @@ pub use error::{Error, Result};
 // Re-export Cortex-M types when on Cortex-M architecture
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 pub use arch::cortex_m::{CortexMCapabilities, DspInfo, FpuInfo, FpuVariant, MpuInfo, NvicInfo};
+
+// Re-export HAL probe / hardening types
+pub use hal_probe::{
+    DetectedPlatform, DiagnosticSeverity, HalDiagnostics, HardwareProbe,
+    PlatformDetector, ProbeConfig, ProbeError, ProbeResult,
+};
 
 // Re-export platform types
 pub use platform::{

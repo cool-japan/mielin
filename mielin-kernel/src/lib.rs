@@ -12,6 +12,7 @@ pub mod async_timer;
 pub mod boot;
 pub mod bpf;
 pub mod buddy;
+pub mod compiler_rt;
 pub mod config;
 pub mod embedded;
 pub mod executor;

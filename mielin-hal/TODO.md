@@ -11,10 +11,10 @@
 
 ### Medium Priority
 - [ ] Automated testing in CI for all architectures
-- [ ] Production hardening
+- [x] Production hardening — HardwareProbe (retry/fallback chain), HalDiagnostics, PlatformDetector with simulation fallback; 9 tests in hal_probe.rs
 
 ### Low Priority
-- [ ] Support for exotic architectures (MIPS, PowerPC)
+- [x] Support for exotic architectures (MIPS, PowerPC) — MipsPlatform (MSA, DSP, CP0 detect, endianness), PowerPcPlatform (AltiVec/VSX, POWER8-10, PVR-based detect); 16 tests in arch/mips.rs + arch/powerpc.rs
 - [ ] Historical compatibility (ARMv7, x86)
 - [ ] Video tutorials for HAL usage
 

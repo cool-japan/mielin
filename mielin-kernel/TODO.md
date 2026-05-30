@@ -12,7 +12,7 @@
 ### Low Priority
 - [ ] Video tutorial for kernel development
 - [ ] Set up discussions forum
-- [ ] Investigate compiler-rt optimizations
+- [x] Investigate compiler-rt optimizations — mielin_memcpy/memmove/memset/memcmp (8-byte aligned fast paths), soft udivmod64/sdivmod64, clz/ctz/popcount/bswap/rotl/rotr (32+64-bit), bit extraction, const_time_eq, hex_encode; 39 tests in compiler_rt.rs
 - [x] Explore kernel bypass techniques (DPDK-style) — PollModeDriver, PacketRing (SPSC lockfree), DmaPool, ForwardingPipeline; 27 tests in bypass_net.rs
 - [x] Investigate eBPF-style extensibility — MielinBPF VM implemented (bpf/ subdir: ISA, verifier, interpreter, tracepoint registry; 67 tests)
 

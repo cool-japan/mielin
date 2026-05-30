@@ -11,13 +11,13 @@
 ### Medium Priority
 - [x] Custom protocol extensions — ProtocolHandler with extension registry, capability negotiation, EchoExtension, PingExtension, MetadataExtension; 58 tests in protocol.rs
 - [x] Advanced security features — CertPin (SHA-256/384/512), CertPinStore, CertChainVerifier, ConnectionHealthMonitor with heartbeat loop; 26 tests in advanced_tls.rs
-- [ ] Production features hardening
+- [x] Production features hardening — AdaptiveBackoff (Fixed/Linear/Exponential/Fibonacci/Jitter), BackoffStats, record_success/failure; 12 tests in adaptive_backoff.rs
 - [ ] Cross-platform connectivity tests
 
 ### Low Priority
 - [ ] Support for alternative TLS libraries
-- [ ] Custom serialization formats
-- [ ] Protocol buffer support
+- [x] Custom serialization formats — WireSerializer (Bincode/JSON/Postcard), 1-byte format prefix, FormatNegotiation, FormatBenchmark; 16 tests in wire_formats.rs
+- [x] Protocol buffer support — Postcard encoding (compact binary, embedded-optimized) added as Postcard format in wire_formats.rs
 - [ ] Protocol specification document
 - [ ] Certificate management guide
 - [ ] Performance tuning documentation

@@ -11,3 +11,16 @@ pub mod x86_64;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 pub mod cortex_m;
+
+// Exotic architecture stubs — included unconditionally for compile-time testing
+// and cross-platform development.
+pub mod mips;
+pub mod powerpc;
+
+pub use mips::{
+    MipsCapabilities, MipsCacheInfo, MipsEndianness, MipsPlatform, MipsVariant,
+};
+pub use powerpc::{
+    AltiVecSupport, PowerPcCapabilities, PowerPcCacheInfo, PowerPcEndianness,
+    PowerPcPlatform, PowerPcVariant,
+};

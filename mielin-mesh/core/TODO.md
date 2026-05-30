@@ -11,10 +11,10 @@
 - [x] Benchmark gossip convergence — convergence timing, fanout effect, consistent-hash lookup, quorum throughput; benchmarks in chaos_tests.rs
 - [x] Performance regression tests — 5 bench tests (100-node throughput, 1K-node ring, 200-node partition sweep, 500-node gossip) in large_cluster_tests.rs
 - [ ] Cross-platform networking tests
-- [ ] Production features hardening
+- [x] Production features hardening — StaticPeerList (weighted selection, health tracking, prune), DnsSrvDiscovery (inject+cache, priority tiers), DiscoveryAggregator (multi-source dedup); 28 tests
 
 ### Low Priority
-- [ ] Support for alternative discovery mechanisms
+- [x] Support for alternative discovery mechanisms — StaticPeerList, DnsSrvDiscovery (RFC 2782 SRV), DiscoveryAggregator (multi-source fan-out with dedup); 28 tests in discovery_static/dns/aggregator.rs
 - [x] Configurable gossip protocols — GossipConfig struct with gossip_interval/heartbeat_timeout/failure_timeout/fanout/max_history; GossipState::with_config()
 - [x] Historical membership queries — MembershipEvent log with membership_history/history_for/history_since; bounded VecDeque ring
 - [ ] Networking architecture guide

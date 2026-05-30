@@ -39,6 +39,7 @@ x509-parser = "0.18.1"
 ring.workspace = true
 ml-kem.workspace = true
 rustls-pemfile = "2.2"
+postcard.workspace = true
 
 mielin-mesh-core.workspace = true
 

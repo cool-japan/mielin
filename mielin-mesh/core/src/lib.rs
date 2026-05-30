@@ -4,6 +4,9 @@
 
 pub mod dht;
 pub mod discovery;
+pub mod discovery_aggregator;
+pub mod discovery_dns;
+pub mod discovery_static;
 pub mod error;
 pub mod export;
 pub mod gossip;
@@ -30,6 +33,16 @@ pub use dht::{
     RoutingReplica,
 };
 pub use discovery::{BootstrapNode, DiscoveryService};
+pub use discovery_aggregator::{
+    AggregatedPeer, AggregatorStats, DiscoveryAggregator, DiscoverySource,
+};
+pub use discovery_dns::{
+    DnsDiscoveryError, DnsDiscoveryStats, DnsSrvConfig, DnsSrvDiscovery, DnsSrvRecord,
+    SrvCacheEntry,
+};
+pub use discovery_static::{
+    PeerHealth, StaticDiscoveryError, StaticPeer, StaticPeerList, StaticPeerStats,
+};
 pub use error::{
     BackoffStrategy, CircuitBreaker, CircuitBreakerConfig, CircuitState, MeshNetworkError,
     RetryExecutor, RetryPolicy,

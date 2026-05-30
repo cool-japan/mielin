@@ -11,7 +11,7 @@
 - [ ] Battery life validation
 
 ### Medium Priority
-- [ ] Support for more MCU families
+- [x] Support for more MCU families — RISC-V IMAC (rv32imac/rv64imac, CLINT/PLIC, ESP32-C3, GD32VF103, VisionFive2) + ARMv8-M (Cortex-M23/M33/M55, TrustZone SAU, enhanced MPU); 66 tests in riscv/ + armv8m/
 
 ### Low Priority
 - [ ] Video tutorials for embedded development

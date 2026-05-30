@@ -119,6 +119,14 @@ pub mod watchdog;
 #[cfg(target_arch = "arm")]
 pub mod cortex_m;
 
+/// ARMv8-M (Cortex-M23/M33/M55) runtime with TrustZone and SAU support.
+pub mod armv8m;
+/// RISC-V IMAC and GC runtime support (CLINT, PLIC, rv32imac, rv64imac).
+pub mod riscv;
+
+pub use armv8m::{ArmV8mError, ArmV8mMpu, ArmV8mRuntime, ArmV8mVariant, MpuAttributes, TrustZoneState};
+pub use riscv::{ClintConfig, InterruptCause, PlicConfig, PrivilegeLevel, RiscvError, RiscvRuntime, RiscvVariant};
+
 use mielin_hal::Architecture;
 
 /// Main embedded runtime structure

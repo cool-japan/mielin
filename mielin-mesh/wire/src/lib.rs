@@ -3,6 +3,7 @@
 //! QUIC-based protocol for agent migration and mesh communication.
 
 pub mod ack;
+pub mod adaptive_backoff;
 pub mod advanced_tls;
 pub mod batch;
 pub mod cert_rotation;
@@ -29,6 +30,7 @@ pub mod transport;
 pub mod transport_fallback;
 pub mod version;
 pub mod websocket;
+pub mod wire_formats;
 
 pub use advanced_tls::{
     heartbeat_loop, AllowedKeyAlgorithm, CertChainVerifier, CertPin, CertPinStore, ChainError,
@@ -40,6 +42,10 @@ pub use ack::{
     shared_ack_tracker, AckConfig, AckError, AckManager, AckResult, AckStats, AckStatus,
     AckTracker, Acknowledgment, DeliveryCallback, MessageId, PendingMessage, ReliableMessage,
     RetryAction, SharedAckTracker,
+};
+pub use adaptive_backoff::{AdaptiveBackoff, BackoffStats, BackoffStrategy};
+pub use wire_formats::{
+    FormatBenchmark, FormatError, FormatNegotiation, SerializerStats, WireFormat, WireSerializer,
 };
 pub use batch::{BatchConfig, BatchError, BatchStats, MessageBatch, MessageBatcher};
 pub use compression::{
