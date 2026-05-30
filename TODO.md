@@ -14,7 +14,7 @@
 - [ ] Heterogeneous cluster testing
 - [x] Resilience testing — fault injection framework (FaultInjector) + 15 fault tests + 10 chaos/partition tests
 - [ ] Integration tests on real hardware
-- [x] Improve test coverage for edge cases (>90% coverage) — 3704 tests, fault injection, chaos, cross-version migration
+- [x] Improve test coverage for edge cases (>90% coverage) — 4000+ tests, fault injection, chaos, cross-version migration, large cluster simulation
 
 ### Medium Priority - Documentation
 - [ ] Network protocol specification (RFC-style)
@@ -43,7 +43,7 @@
 ### Future - Research & Exploration
 - [x] Arm SVE2/SME kernel integration — SVE2 dispatcher fully wired in mielin-tensor
 - [x] Quantum-ready cryptography — ML-KEM 0.3 + X25519 hybrid KEX, HybridKexState, PqKeyShareExtension; 41 tests in quantum.rs
-- [ ] Self-evolving agents
+- [x] Self-evolving agents — EvolutionEngine (genetic algorithm), AgentGenome, FitnessEvaluator, MutationOperator, CrossoverOperator, CapabilityDiscovery; 27 tests in mielin-cells/src/evolution.rs
 - [x] Federated learning — FedAvg + UniformAvg aggregation, FederatedCoordinator, LocalTrainer; 20 tests in mielin-tensor/src/federated.rs
 - [x] Machine learning for migration prediction — Holt double-exponential smoothing + ridge regression + R² confidence in mielin-cells/src/resource/predictor_ml.rs; 16 tests
 - [x] Novel consensus algorithms — complete super-peer term election (record_vote tallying + promote_super_peer) in mielin-mesh/core/src/gossip.rs

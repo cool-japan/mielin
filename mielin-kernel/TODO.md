@@ -13,7 +13,7 @@
 - [ ] Video tutorial for kernel development
 - [ ] Set up discussions forum
 - [ ] Investigate compiler-rt optimizations
-- [ ] Explore kernel bypass techniques (DPDK-style)
+- [x] Explore kernel bypass techniques (DPDK-style) — PollModeDriver, PacketRing (SPSC lockfree), DmaPool, ForwardingPipeline; 27 tests in bypass_net.rs
 - [x] Investigate eBPF-style extensibility — MielinBPF VM implemented (bpf/ subdir: ISA, verifier, interpreter, tracepoint registry; 67 tests)
 
 ### Future Enhancements

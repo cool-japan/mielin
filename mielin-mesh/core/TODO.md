@@ -3,13 +3,13 @@
 ## Pending Tasks
 
 ### High Priority
-- [ ] Test with 100+ node cluster
+- [x] Test with 100+ node cluster — 29 tests at 100/200/500/1000-node scale in large_cluster_tests.rs
 - [x] Network partition simulation — partition_50_50_split, majority/minority quorum, partition healing, cascading splits; 36 tests in chaos_tests.rs
 - [x] Chaos engineering (node failures, network delays) — ChaosEngine with kill/recover/partition/heal, mass failure, random flap; 36 tests in chaos_tests.rs
 
 ### Medium Priority
 - [x] Benchmark gossip convergence — convergence timing, fanout effect, consistent-hash lookup, quorum throughput; benchmarks in chaos_tests.rs
-- [ ] Performance regression tests
+- [x] Performance regression tests — 5 bench tests (100-node throughput, 1K-node ring, 200-node partition sweep, 500-node gossip) in large_cluster_tests.rs
 - [ ] Cross-platform networking tests
 - [ ] Production features hardening
 

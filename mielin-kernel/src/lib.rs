@@ -30,6 +30,7 @@ pub mod rt;
 pub mod scheduler;
 pub mod tensor;
 pub mod timer;
+pub mod bypass_net;
 pub mod vmm;
 pub mod work_stealing;
 pub use work_stealing::WorkStealingScheduler;

@@ -10,7 +10,7 @@
 
 ### Medium Priority
 - [x] Custom protocol extensions — ProtocolHandler with extension registry, capability negotiation, EchoExtension, PingExtension, MetadataExtension; 58 tests in protocol.rs
-- [ ] Advanced security features
+- [x] Advanced security features — CertPin (SHA-256/384/512), CertPinStore, CertChainVerifier, ConnectionHealthMonitor with heartbeat loop; 26 tests in advanced_tls.rs
 - [ ] Production features hardening
 - [ ] Cross-platform connectivity tests
 
