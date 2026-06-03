@@ -108,8 +108,7 @@ fn test_mtls_peer_verification() {
     let peer = CertificateData::new(vec![10, 11, 12], "node-2", "mielin-ca", now, expires);
     assert!(config.verify_peer_certificate(&peer).is_ok());
 
-    let untrusted =
-        CertificateData::new(vec![13, 14, 15], "node-3", "unknown-ca", now, expires);
+    let untrusted = CertificateData::new(vec![13, 14, 15], "node-3", "unknown-ca", now, expires);
     assert!(config.verify_peer_certificate(&untrusted).is_err());
 }
 

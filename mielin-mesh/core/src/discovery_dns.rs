@@ -28,7 +28,11 @@ struct Xorshift64(u64);
 
 impl Xorshift64 {
     fn new(seed: u64) -> Self {
-        Self(if seed == 0 { 0xCAFE_BABE_DEAD_BEEF } else { seed })
+        Self(if seed == 0 {
+            0xCAFE_BABE_DEAD_BEEF
+        } else {
+            seed
+        })
     }
 
     fn next(&mut self) -> u64 {
@@ -352,10 +356,7 @@ impl DnsSrvDiscovery {
     /// Returns `true` if a non-expired cache entry exists.
     pub async fn is_cache_valid(&self) -> bool {
         let cache = self.cache.read().await;
-        cache
-            .as_ref()
-            .map(|e| !e.is_expired())
-            .unwrap_or(false)
+        cache.as_ref().map(|e| !e.is_expired()).unwrap_or(false)
     }
 
     /// Access the configuration.
@@ -508,8 +509,8 @@ mod tests {
     async fn test_dns_weighted_selection() {
         let svc = DnsSrvDiscovery::new(basic_config());
         svc.inject_records(vec![
-            make_record(1, 1, 8080, "light.example.com"),  // weight 1
-            make_record(1, 9, 8081, "heavy.example.com"),  // weight 9
+            make_record(1, 1, 8080, "light.example.com"), // weight 1
+            make_record(1, 9, 8081, "heavy.example.com"), // weight 9
         ])
         .await;
 
@@ -532,8 +533,7 @@ mod tests {
     #[test]
     fn test_dns_config_with_resolver() {
         let resolver: std::net::SocketAddr = "8.8.8.8:53".parse().unwrap();
-        let cfg = DnsSrvConfig::new("_svc._tcp", "internal.corp")
-            .with_resolver(resolver);
+        let cfg = DnsSrvConfig::new("_svc._tcp", "internal.corp").with_resolver(resolver);
         assert_eq!(cfg.resolver_addr, Some(resolver));
     }
 }

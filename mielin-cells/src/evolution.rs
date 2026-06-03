@@ -347,7 +347,11 @@ impl CrossoverOperator {
     fn new_child_id(parent_a: &AgentGenome, parent_b: &AgentGenome, rng: &mut Xorshift64) -> u64 {
         // Combine parent bits deterministically then add PRNG noise.
         let raw = parent_a.id ^ parent_b.id.rotate_left(17) ^ rng.next();
-        if raw == 0 { rng.next() | 1 } else { raw }
+        if raw == 0 {
+            rng.next() | 1
+        } else {
+            raw
+        }
     }
 
     /// Single-point crossover — capabilities split at a random boundary.
@@ -416,7 +420,11 @@ impl CrossoverOperator {
             let from_a = rng.next_f64() < 0.5;
             let gene = match (parent_a.capabilities.get(i), parent_b.capabilities.get(i)) {
                 (Some(ga), Some(gb)) => {
-                    if from_a { ga } else { gb }
+                    if from_a {
+                        ga
+                    } else {
+                        gb
+                    }
                 }
                 (Some(g), None) => g,
                 (None, Some(g)) => g,
@@ -500,13 +508,9 @@ impl Default for EvolutionConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionStrategy {
     /// Preserve the top-*k* individuals unchanged.
-    Elitist {
-        k: usize,
-    },
+    Elitist { k: usize },
     /// Draw a random subset of size `tournament_size`; the winner advances.
-    Tournament {
-        tournament_size: usize,
-    },
+    Tournament { tournament_size: usize },
     /// Select with probability proportional to fitness (roulette wheel).
     RouletteWheel,
 }
@@ -595,7 +599,12 @@ impl EvolutionEngine {
     fn random_genome(&mut self, generation: u64) -> AgentGenome {
         let id = self.rng.next() | 1; // ensure non-zero
         let n_caps = self.rng.next_usize_mod(self.config.max_capabilities.max(1)) + 1;
-        let pool: Vec<&str> = self.config.capability_pool.iter().map(|s| s.as_str()).collect();
+        let pool: Vec<&str> = self
+            .config
+            .capability_pool
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
 
         let mut genome = AgentGenome::seed(id);
         genome.generation = generation;
@@ -610,12 +619,9 @@ impl EvolutionEngine {
 
         // Random policy weights (uniform in [0, 1])
         let n_weights = 4; // 4 resource dimensions
-        genome.policy_weights = (0..n_weights)
-            .map(|_| self.rng.next_f64() as f32)
-            .collect();
+        genome.policy_weights = (0..n_weights).map(|_| self.rng.next_f64() as f32).collect();
 
-        genome.coordination_strategy =
-            CoordinationStrategy::from_index(self.rng.next_usize_mod(4));
+        genome.coordination_strategy = CoordinationStrategy::from_index(self.rng.next_usize_mod(4));
 
         genome
     }
@@ -641,9 +647,7 @@ impl EvolutionEngine {
         let mut best_idx = self.rng.next_usize_mod(n);
         for _ in 1..tournament_size.min(n) {
             let candidate = self.rng.next_usize_mod(n);
-            if self.population[candidate].fitness_score
-                > self.population[best_idx].fitness_score
-            {
+            if self.population[candidate].fitness_score > self.population[best_idx].fitness_score {
                 best_idx = candidate;
             }
         }
@@ -652,7 +656,11 @@ impl EvolutionEngine {
 
     /// Roulette-wheel selection — returns index proportional to fitness.
     pub(crate) fn roulette_select(&mut self) -> usize {
-        let total: f64 = self.population.iter().map(|g| g.fitness_score.max(0.0)).sum();
+        let total: f64 = self
+            .population
+            .iter()
+            .map(|g| g.fitness_score.max(0.0))
+            .sum();
         if total == 0.0 {
             return self.rng.next_usize_mod(self.population.len().max(1));
         }
@@ -846,13 +854,13 @@ impl EvolutionEngine {
                     self.stats.total_mutations += 1;
 
                     // Occasionally add a new capability
-                    if child.capabilities.len() < max_capabilities
-                        && self.rng.next_f64() < 0.1
-                    {
-                        let pool_refs: Vec<&str> =
-                            pool_owned.iter().map(|s| s.as_str()).collect();
-                        self.mutation_op
-                            .add_random_capability(&mut child, &pool_refs, &mut self.rng);
+                    if child.capabilities.len() < max_capabilities && self.rng.next_f64() < 0.1 {
+                        let pool_refs: Vec<&str> = pool_owned.iter().map(|s| s.as_str()).collect();
+                        self.mutation_op.add_random_capability(
+                            &mut child,
+                            &pool_refs,
+                            &mut self.rng,
+                        );
                     }
                 }
 
@@ -887,10 +895,7 @@ impl EvolutionEngine {
     /// Drive the population until convergence or `max_generations` is reached.
     ///
     /// Returns an [`EvolutionResult`] summarising the entire run.
-    pub fn run(
-        &mut self,
-        metrics_fn: impl Fn(&AgentGenome) -> FitnessMetrics,
-    ) -> EvolutionResult {
+    pub fn run(&mut self, metrics_fn: impl Fn(&AgentGenome) -> FitnessMetrics) -> EvolutionResult {
         if self.population.is_empty() {
             self.initialize();
         }
@@ -1006,7 +1011,10 @@ impl CapabilityDiscovery {
 
     /// Record one observation of a behavioural pattern.
     pub fn observe(&mut self, pattern: &str) {
-        *self.observed_patterns.entry(pattern.to_owned()).or_insert(0) += 1;
+        *self
+            .observed_patterns
+            .entry(pattern.to_owned())
+            .or_insert(0) += 1;
     }
 
     /// Return the names of all patterns whose observation count meets or
@@ -1147,7 +1155,11 @@ mod tests {
             make_genome_with_fitness(3, 0.5, vec![]),
         ];
         let ranked = eval.rank_population(&genomes);
-        assert_eq!(ranked, vec![1, 2, 0], "should be sorted descending by fitness");
+        assert_eq!(
+            ranked,
+            vec![1, 2, 0],
+            "should be sorted descending by fitness"
+        );
     }
 
     // ── Test 5: mutation — capability flip ───────────────────────────────
@@ -1196,7 +1208,10 @@ mod tests {
         let new_vals: Vec<u8> = genome.capabilities.iter().map(|g| g.proficiency).collect();
         // At drift_rate=1.0 each gene moves ±1 — with seed 99 the values must differ from 128
         let any_changed = orig.iter().zip(new_vals.iter()).any(|(o, n)| o != n);
-        assert!(any_changed, "drift_rate=1.0 should change proficiency values");
+        assert!(
+            any_changed,
+            "drift_rate=1.0 should change proficiency values"
+        );
     }
 
     // ── Test 7: mutation preserves capability count ───────────────────────
@@ -1230,7 +1245,10 @@ mod tests {
         op.add_random_capability(&mut genome, pool, &mut rng);
         assert_eq!(genome.capabilities.len(), 1);
         let name = &genome.capabilities[0].name;
-        assert!(pool.contains(&name.as_str()), "capability must come from pool");
+        assert!(
+            pool.contains(&name.as_str()),
+            "capability must come from pool"
+        );
     }
 
     // ── Test 9: single-point crossover ───────────────────────────────────
@@ -1352,9 +1370,8 @@ mod tests {
     fn test_engine_best_fitness_monotone() {
         let mut cfg = default_config(20);
         cfg.elite_fraction = 0.3; // strong elitist pressure
-        let mut engine =
-            EvolutionEngine::new(cfg, FitnessEvaluator::default_weights())
-                .with_selection(SelectionStrategy::Elitist { k: 6 });
+        let mut engine = EvolutionEngine::new(cfg, FitnessEvaluator::default_weights())
+            .with_selection(SelectionStrategy::Elitist { k: 6 });
         engine.initialize();
 
         let mut prev_best = 0.0_f64;
@@ -1460,18 +1477,17 @@ mod tests {
         // Use elite_fraction = 0.4 so the top 4 are preserved from a pop of 10.
         let mut cfg = default_config(10);
         cfg.elite_fraction = 0.4;
-        let mut engine =
-            EvolutionEngine::new(cfg, FitnessEvaluator::default_weights())
-                .with_selection(SelectionStrategy::Elitist { k: 4 });
+        let mut engine = EvolutionEngine::new(cfg, FitnessEvaluator::default_weights())
+            .with_selection(SelectionStrategy::Elitist { k: 4 });
         engine.initialize();
 
         // Assign distinct known fitnesses and remember the top IDs.
         for (i, g) in engine.population.iter_mut().enumerate() {
             g.fitness_score = i as f64 * 0.1;
         }
-        engine.population.sort_by(|a, b| {
-            b.fitness_score.partial_cmp(&a.fitness_score).unwrap()
-        });
+        engine
+            .population
+            .sort_by(|a, b| b.fitness_score.partial_cmp(&a.fitness_score).unwrap());
         // The very best genome is index 0 after sorting.
         let top_id = engine.population[0].id;
 
@@ -1509,9 +1525,8 @@ mod tests {
     #[test]
     fn test_selection_tournament() {
         let cfg = default_config(20);
-        let mut engine =
-            EvolutionEngine::new(cfg, FitnessEvaluator::default_weights())
-                .with_selection(SelectionStrategy::Tournament { tournament_size: 5 });
+        let mut engine = EvolutionEngine::new(cfg, FitnessEvaluator::default_weights())
+            .with_selection(SelectionStrategy::Tournament { tournament_size: 5 });
         engine.initialize();
 
         // Assign unique fitnesses
@@ -1528,9 +1543,8 @@ mod tests {
     #[test]
     fn test_roulette_wheel_proportional() {
         let cfg = default_config(3);
-        let mut engine =
-            EvolutionEngine::new(cfg, FitnessEvaluator::default_weights())
-                .with_selection(SelectionStrategy::RouletteWheel);
+        let mut engine = EvolutionEngine::new(cfg, FitnessEvaluator::default_weights())
+            .with_selection(SelectionStrategy::RouletteWheel);
         engine.initialize();
 
         // Skewed fitness: genome 0=0.01, 1=0.01, 2=10.0

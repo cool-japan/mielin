@@ -5,12 +5,12 @@
 
 pub mod agent;
 pub mod compliance;
-pub mod evolution;
 pub mod composition;
 pub mod debug;
 pub mod discovery;
 pub mod dna;
 pub mod dr;
+pub mod evolution;
 pub mod fault;
 pub mod group;
 pub mod ha;
@@ -49,15 +49,15 @@ pub use discovery::{
     Location as DiscoveryLocation, ServiceRegistration, ServiceRegistry,
 };
 pub use dna::Dna;
-pub use evolution::{
-    AgentGenome, CapabilityDiscovery, CapabilityGene, CoordinationStrategy, CrossoverOperator,
-    EvolutionConfig, EvolutionEngine, EvolutionError, EvolutionResult, EvolutionStats,
-    FitnessEvaluator, FitnessMetrics, MutationOperator, MutationRates, SelectionStrategy,
-};
 pub use dr::{
     Backup, BackupConfig, BackupManager, BackupSchedule, BackupScheduler, BackupStrategy,
     BackupType, RecoveryConfig, RecoveryManager, RecoveryPlan, RecoveryPoint, RecoveryStrategy,
     RecoveryTarget, VerificationConfig, Verifier,
+};
+pub use evolution::{
+    AgentGenome, CapabilityDiscovery, CapabilityGene, CoordinationStrategy, CrossoverOperator,
+    EvolutionConfig, EvolutionEngine, EvolutionError, EvolutionResult, EvolutionStats,
+    FitnessEvaluator, FitnessMetrics, MutationOperator, MutationRates, SelectionStrategy,
 };
 pub use group::{
     AgentGroup, GroupConfig, GroupCoordinator, GroupError, GroupId, GroupMember, GroupRegistry,

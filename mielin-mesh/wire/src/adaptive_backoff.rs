@@ -82,8 +82,7 @@ impl BackoffStrategy {
                 jitter_factor,
             } => {
                 let scale = multiplier.powi(attempt as i32);
-                let base_nanos =
-                    (initial.as_nanos() as f64 * scale).min(max.as_nanos() as f64);
+                let base_nanos = (initial.as_nanos() as f64 * scale).min(max.as_nanos() as f64);
 
                 // Derive a deterministic fraction in [0, 1) from the rng seed
                 // using splitmix64 (strong avalanche — avoids seed proximity issues).
@@ -247,7 +246,9 @@ impl AdaptiveBackoff {
             .last_attempt_at
             .map(|t| {
                 let micros = t.elapsed().as_micros() as u64;
-                micros.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
+                micros
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407)
             })
             .unwrap_or(0xDEAD_BEEF_CAFE_BABE);
 
@@ -386,7 +387,7 @@ mod tests {
         assert_eq!(d2, Duration::from_millis(100)); // F(2)=1
         assert_eq!(d3, Duration::from_millis(200)); // F(3)=2
         assert_eq!(d4, Duration::from_millis(300)); // F(4)=3
-        // Verify monotonic growth.
+                                                    // Verify monotonic growth.
         assert!(d3 > d2, "Fibonacci should grow: d3({d3:?}) > d2({d2:?})");
         assert!(d4 > d3, "Fibonacci should grow: d4({d4:?}) > d3({d3:?})");
     }
@@ -411,7 +412,9 @@ mod tests {
         let mut backoff = AdaptiveBackoff::exponential(100, 1000, 5);
         backoff.record_failure();
         backoff.record_failure();
-        let d = backoff.next_delay().expect("should have delay before reset");
+        let d = backoff
+            .next_delay()
+            .expect("should have delay before reset");
         assert!(d > Duration::ZERO);
 
         backoff.reset();
@@ -430,10 +433,20 @@ mod tests {
         assert_eq!(backoff.current_attempt(), 3);
 
         backoff.record_success();
-        assert_eq!(backoff.current_attempt(), 0, "success should reset attempt counter");
+        assert_eq!(
+            backoff.current_attempt(),
+            0,
+            "success should reset attempt counter"
+        );
         // Verify we get a fresh initial delay again.
-        let d = backoff.next_delay().expect("should not be exhausted after success");
-        assert_eq!(d, Duration::from_millis(100), "delay should reset to initial after success");
+        let d = backoff
+            .next_delay()
+            .expect("should not be exhausted after success");
+        assert_eq!(
+            d,
+            Duration::from_millis(100),
+            "delay should reset to initial after success"
+        );
     }
 
     // ── Jitter variation ─────────────────────────────────────────────────────
@@ -449,7 +462,10 @@ mod tests {
         // Different rng seeds should produce different delays.
         let d_a = strategy.next_delay(3, 0x0123_4567_89AB_CDEF);
         let d_b = strategy.next_delay(3, 0xFEDC_BA98_7654_3210);
-        assert_ne!(d_a, d_b, "Different rng seeds should yield different jittered delays");
+        assert_ne!(
+            d_a, d_b,
+            "Different rng seeds should yield different jittered delays"
+        );
     }
 
     // ── Statistics accumulation ──────────────────────────────────────────────
@@ -474,9 +490,7 @@ mod tests {
     fn test_backoff_factory_exponential() {
         let backoff = AdaptiveBackoff::exponential(100, 5000, 7);
         // Verify by inspecting the first delay (attempt 0 → initial delay).
-        let delay = backoff
-            .strategy
-            .next_delay(0, 0);
+        let delay = backoff.strategy.next_delay(0, 0);
         assert_eq!(delay, Duration::from_millis(100));
         assert_eq!(backoff.max_attempts, 7);
         let cap = backoff.strategy.max_delay();

@@ -503,9 +503,18 @@ mod tests {
 
     #[test]
     fn test_mips_variant_is_32bit() {
-        assert!(!MipsVariant::Mips32R2.is_64bit(), "Mips32R2 must not be 64-bit");
-        assert!(!MipsVariant::Mips32R6.is_64bit(), "Mips32R6 must not be 64-bit");
-        assert!(!MipsVariant::MicroMips.is_64bit(), "MicroMips must not be 64-bit");
+        assert!(
+            !MipsVariant::Mips32R2.is_64bit(),
+            "Mips32R2 must not be 64-bit"
+        );
+        assert!(
+            !MipsVariant::Mips32R6.is_64bit(),
+            "Mips32R6 must not be 64-bit"
+        );
+        assert!(
+            !MipsVariant::MicroMips.is_64bit(),
+            "MicroMips must not be 64-bit"
+        );
     }
 
     #[test]
@@ -548,7 +557,10 @@ mod tests {
             has_msa: true,
             ..Default::default()
         };
-        assert!(caps.has_simd(), "has_simd() must be true when has_msa is set");
+        assert!(
+            caps.has_simd(),
+            "has_simd() must be true when has_msa is set"
+        );
     }
 
     // ── cache line counting ───────────────────────────────────────────────────

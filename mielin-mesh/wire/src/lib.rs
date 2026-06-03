@@ -32,20 +32,17 @@ pub mod version;
 pub mod websocket;
 pub mod wire_formats;
 
-pub use advanced_tls::{
-    heartbeat_loop, AllowedKeyAlgorithm, CertChainVerifier, CertPin, CertPinStore, ChainError,
-    ChainVerification, ConnectionHealth, ConnectionHealthMonitor, ConnectionHealthStatus,
-    ConnectionMonitorStats, HealthMonitorError, HealthSweepResult, HeartbeatConfig, PinAlgorithm,
-    PinError, PinVerification,
-};
 pub use ack::{
     shared_ack_tracker, AckConfig, AckError, AckManager, AckResult, AckStats, AckStatus,
     AckTracker, Acknowledgment, DeliveryCallback, MessageId, PendingMessage, ReliableMessage,
     RetryAction, SharedAckTracker,
 };
 pub use adaptive_backoff::{AdaptiveBackoff, BackoffStats, BackoffStrategy};
-pub use wire_formats::{
-    FormatBenchmark, FormatError, FormatNegotiation, SerializerStats, WireFormat, WireSerializer,
+pub use advanced_tls::{
+    heartbeat_loop, AllowedKeyAlgorithm, CertChainVerifier, CertPin, CertPinStore, ChainError,
+    ChainVerification, ConnectionHealth, ConnectionHealthMonitor, ConnectionHealthStatus,
+    ConnectionMonitorStats, HealthMonitorError, HealthSweepResult, HeartbeatConfig, PinAlgorithm,
+    PinError, PinVerification,
 };
 pub use batch::{BatchConfig, BatchError, BatchStats, MessageBatch, MessageBatcher};
 pub use compression::{
@@ -105,6 +102,9 @@ pub use version::{
 pub use websocket::{
     UpgradeReason, UpgradeToWebSocket, WebSocketConfig, WebSocketConnection, WebSocketPoolStats,
     WebSocketTransport, WebSocketUrlBuilder,
+};
+pub use wire_formats::{
+    FormatBenchmark, FormatError, FormatNegotiation, SerializerStats, WireFormat, WireSerializer,
 };
 
 use serde::{Deserialize, Serialize};

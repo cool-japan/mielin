@@ -239,12 +239,12 @@ extern crate alloc;
 pub mod accelerator;
 pub mod acpi;
 pub mod arch;
-pub mod hal_probe;
 pub mod cache;
 pub mod capabilities;
 pub mod devicetree;
 pub mod error;
 pub mod gpu;
+pub mod hal_probe;
 pub mod hardware_db;
 pub mod platform;
 pub mod pmu;
@@ -266,8 +266,8 @@ pub use arch::cortex_m::{CortexMCapabilities, DspInfo, FpuInfo, FpuVariant, MpuI
 
 // Re-export HAL probe / hardening types
 pub use hal_probe::{
-    DetectedPlatform, DiagnosticSeverity, HalDiagnostics, HardwareProbe,
-    PlatformDetector, ProbeConfig, ProbeError, ProbeResult,
+    DetectedPlatform, DiagnosticSeverity, HalDiagnostics, HardwareProbe, PlatformDetector,
+    ProbeConfig, ProbeError, ProbeResult,
 };
 
 // Re-export platform types

@@ -124,8 +124,12 @@ pub mod armv8m;
 /// RISC-V IMAC and GC runtime support (CLINT, PLIC, rv32imac, rv64imac).
 pub mod riscv;
 
-pub use armv8m::{ArmV8mError, ArmV8mMpu, ArmV8mRuntime, ArmV8mVariant, MpuAttributes, TrustZoneState};
-pub use riscv::{ClintConfig, InterruptCause, PlicConfig, PrivilegeLevel, RiscvError, RiscvRuntime, RiscvVariant};
+pub use armv8m::{
+    ArmV8mError, ArmV8mMpu, ArmV8mRuntime, ArmV8mVariant, MpuAttributes, TrustZoneState,
+};
+pub use riscv::{
+    ClintConfig, InterruptCause, PlicConfig, PrivilegeLevel, RiscvError, RiscvRuntime, RiscvVariant,
+};
 
 use mielin_hal::Architecture;
 

@@ -415,9 +415,7 @@ impl PacketRing {
                 reason: "must be a non-zero power of two",
             });
         }
-        let ring = (0..capacity)
-            .map(|_| UnsafeCell::new(None))
-            .collect();
+        let ring = (0..capacity).map(|_| UnsafeCell::new(None)).collect();
         Ok(Self {
             ring,
             head: AtomicUsize::new(0),
@@ -1063,10 +1061,7 @@ mod tests {
         let _c = pool.alloc().unwrap();
         let _d = pool.alloc().unwrap();
         assert!(pool.alloc().is_none());
-        assert_eq!(
-            pool.stats().alloc_failures.load(Ordering::Relaxed),
-            1
-        );
+        assert_eq!(pool.stats().alloc_failures.load(Ordering::Relaxed), 1);
     }
 
     // ──────────────────────────────────────
@@ -1108,7 +1103,7 @@ mod tests {
         let mut out = vec![PacketDesc::new(0, 0, 0, PacketFlags::default()); 16];
         let n = pmd.rx_burst(&mut out);
         assert_eq!(n, 8); // capped by burst_size=8
-        // Drain remaining
+                          // Drain remaining
         let m = pmd.rx_burst(&mut out);
         assert_eq!(m, 2);
     }
@@ -1375,7 +1370,10 @@ mod tests {
         let err = pmd.fill_buf(&mut desc, &big_data).unwrap_err();
         assert!(matches!(
             err,
-            BypassNetError::BufferTooLarge { size: 101, max: 100 }
+            BypassNetError::BufferTooLarge {
+                size: 101,
+                max: 100
+            }
         ));
         pmd.free_buf(desc);
     }

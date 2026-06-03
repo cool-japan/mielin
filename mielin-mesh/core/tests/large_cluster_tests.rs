@@ -73,8 +73,10 @@ impl LargeCluster {
         let nodes: Vec<Arc<Node>> = (0..n)
             .map(|_| Arc::new(Node::new(NodeRole::Relay)))
             .collect();
-        let gossips: Vec<GossipState> =
-            nodes.iter().map(|nd| GossipState::new(nd.clone())).collect();
+        let gossips: Vec<GossipState> = nodes
+            .iter()
+            .map(|nd| GossipState::new(nd.clone()))
+            .collect();
 
         Self {
             nodes,
@@ -376,7 +378,11 @@ async fn test_500_node_ring_construction() {
         ring.add_node(*n.id());
     }
 
-    assert_eq!(ring.node_count(), 500, "ring must contain 500 distinct nodes");
+    assert_eq!(
+        ring.node_count(),
+        500,
+        "ring must contain 500 distinct nodes"
+    );
 
     // 1000 random key lookups must all return Some.
     let mut rng = Xorshift64::new(0x9999_AAAA_BBBB_CCCC);
@@ -470,7 +476,11 @@ async fn test_consistent_hash_node_removal_consistency() {
     for n in &nodes[190..200] {
         ring.remove_node(*n.id());
     }
-    assert_eq!(ring.node_count(), 190, "ring must have 190 nodes after removal");
+    assert_eq!(
+        ring.node_count(),
+        190,
+        "ring must have 190 nodes after removal"
+    );
 
     // Keys that were NOT on a removed node must still map to the same node.
     let mut stable_checked = 0usize;
@@ -600,11 +610,25 @@ async fn test_200_node_50_50_partition() {
 
     let quorum_a = det_a.has_quorum().await;
     let quorum_b = det_b.has_quorum().await;
-    assert!(!quorum_a, "group A (100/200) must NOT have quorum (need 101)");
-    assert!(!quorum_b, "group B (100/200) must NOT have quorum (need 101)");
+    assert!(
+        !quorum_a,
+        "group A (100/200) must NOT have quorum (need 101)"
+    );
+    assert!(
+        !quorum_b,
+        "group B (100/200) must NOT have quorum (need 101)"
+    );
 
-    assert_eq!(det_a.visible_count().await, 100, "group A: 100 visible nodes");
-    assert_eq!(det_b.visible_count().await, 100, "group B: 100 visible nodes");
+    assert_eq!(
+        det_a.visible_count().await,
+        100,
+        "group A: 100 visible nodes"
+    );
+    assert_eq!(
+        det_b.visible_count().await,
+        100,
+        "group B: 100 visible nodes"
+    );
     assert_eq!(det_a.known_count().await, 200, "group A: 200 known nodes");
     assert_eq!(det_b.known_count().await, 200, "group B: 200 known nodes");
 }

@@ -190,8 +190,7 @@ impl DiscoveryAggregator {
                     discovered_at: Instant::now(),
                     // Blend SRV priority into our ordering (scale by 100 to
                     // leave room above the static range of 1-99).
-                    priority: DiscoverySource::Dns.priority_value() * 100
-                        + record.priority as u32,
+                    priority: DiscoverySource::Dns.priority_value() * 100 + record.priority as u32,
                 };
                 seen.entry(node_id)
                     .and_modify(|existing| {
@@ -311,8 +310,7 @@ mod tests {
     async fn test_aggregator_dedup() {
         // Build a static peer with a deterministic UUID (same as what DNS
         // will synthesise for the target "shared.test.local").
-        let shared_id =
-            uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, b"shared.test.local");
+        let shared_id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, b"shared.test.local");
         let static_list = Arc::new(StaticPeerList::new(make_node()));
         let shared_peer = StaticPeer::new(shared_id, make_addr(9000));
         static_list.add_peer(shared_peer).await;

@@ -75,7 +75,10 @@ impl PowerPcVariant {
     /// Returns `true` for 64-bit variants.
     #[inline]
     pub fn is_64bit(self) -> bool {
-        matches!(self, PowerPcVariant::PowerPc64 | PowerPcVariant::PowerPc64Le)
+        matches!(
+            self,
+            PowerPcVariant::PowerPc64 | PowerPcVariant::PowerPc64Le
+        )
     }
 
     /// Returns `true` for server-class variants (POWER8/9/10 era).
@@ -549,7 +552,11 @@ impl PowerPcPlatform {
                 "32-bit"
             },
             self.capabilities.altivec,
-            if self.capabilities.has_crypto { "yes" } else { "no" },
+            if self.capabilities.has_crypto {
+                "yes"
+            } else {
+                "no"
+            },
             self.cache.l1_icache_kb,
             self.cache.l1_dcache_kb,
             self.cache.cache_line_bytes,
@@ -569,14 +576,26 @@ mod tests {
 
     #[test]
     fn test_ppc_variant_64bit() {
-        assert!(PowerPcVariant::PowerPc64.is_64bit(), "PowerPc64 must be 64-bit");
-        assert!(PowerPcVariant::PowerPc64Le.is_64bit(), "PowerPc64Le must be 64-bit");
+        assert!(
+            PowerPcVariant::PowerPc64.is_64bit(),
+            "PowerPc64 must be 64-bit"
+        );
+        assert!(
+            PowerPcVariant::PowerPc64Le.is_64bit(),
+            "PowerPc64Le must be 64-bit"
+        );
     }
 
     #[test]
     fn test_ppc_variant_32bit() {
-        assert!(!PowerPcVariant::PowerPc32.is_64bit(), "PowerPc32 must not be 64-bit");
-        assert!(!PowerPcVariant::Ppc440.is_64bit(), "Ppc440 must not be 64-bit");
+        assert!(
+            !PowerPcVariant::PowerPc32.is_64bit(),
+            "PowerPc32 must not be 64-bit"
+        );
+        assert!(
+            !PowerPcVariant::Ppc440.is_64bit(),
+            "Ppc440 must not be 64-bit"
+        );
         assert!(!PowerPcVariant::E500.is_64bit(), "E500 must not be 64-bit");
     }
 
@@ -584,14 +603,20 @@ mod tests {
 
     #[test]
     fn test_ppc_altivec_has_simd() {
-        assert!(AltiVecSupport::AltiVec.has_simd(), "AltiVec must report SIMD");
+        assert!(
+            AltiVecSupport::AltiVec.has_simd(),
+            "AltiVec must report SIMD"
+        );
         assert!(AltiVecSupport::Vsx.has_simd(), "VSX must report SIMD");
         assert!(AltiVecSupport::Vsx3.has_simd(), "VSX3 must report SIMD");
     }
 
     #[test]
     fn test_ppc_no_altivec() {
-        assert!(!AltiVecSupport::None.has_simd(), "No AltiVec must not report SIMD");
+        assert!(
+            !AltiVecSupport::None.has_simd(),
+            "No AltiVec must not report SIMD"
+        );
 
         let caps = PowerPcCapabilities {
             altivec: AltiVecSupport::None,
@@ -619,7 +644,10 @@ mod tests {
             cache: PowerPcCacheInfo::default(),
             endianness: PowerPcEndianness::LittleEndian,
         };
-        assert!(plat.is_server_class(), "PowerPc64Le platform must be server-class");
+        assert!(
+            plat.is_server_class(),
+            "PowerPc64Le platform must be server-class"
+        );
     }
 
     #[test]

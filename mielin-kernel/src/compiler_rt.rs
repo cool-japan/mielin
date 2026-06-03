@@ -28,7 +28,9 @@ use core::sync::atomic::{AtomicU64, Ordering};
 #[inline]
 pub unsafe fn mielin_memcpy(dst: *mut u8, src: *const u8, n: usize) {
     RT_STATS.memcpy_calls.fetch_add(1, Ordering::Relaxed);
-    RT_STATS.total_bytes_copied.fetch_add(n as u64, Ordering::Relaxed);
+    RT_STATS
+        .total_bytes_copied
+        .fetch_add(n as u64, Ordering::Relaxed);
 
     let mut i = 0usize;
 
@@ -122,20 +124,16 @@ pub unsafe fn mielin_memmove(dst: *mut u8, src: *const u8, n: usize) {
 #[inline]
 pub unsafe fn mielin_memset(dst: *mut u8, val: u8, n: usize) {
     RT_STATS.memset_calls.fetch_add(1, Ordering::Relaxed);
-    RT_STATS.total_bytes_set.fetch_add(n as u64, Ordering::Relaxed);
+    RT_STATS
+        .total_bytes_set
+        .fetch_add(n as u64, Ordering::Relaxed);
 
     let mut i = 0usize;
 
     // Broadcast `val` across all 8 bytes of a u64.
     let v = val as u64;
-    let broadcast = v
-        | (v << 8)
-        | (v << 16)
-        | (v << 24)
-        | (v << 32)
-        | (v << 40)
-        | (v << 48)
-        | (v << 56);
+    let broadcast =
+        v | (v << 8) | (v << 16) | (v << 24) | (v << 32) | (v << 40) | (v << 48) | (v << 56);
 
     // 8-byte aligned fast path.
     if n >= 8 && (dst as usize).is_multiple_of(8) {
@@ -414,7 +412,11 @@ pub fn mielin_extract_bits(val: u64, offset: u32, width: u32) -> u64 {
     debug_assert!((1..=64).contains(&width), "width out of range [1, 64]");
     debug_assert!(offset + width <= 64, "offset + width exceeds 64 bits");
 
-    let mask = if width == 64 { u64::MAX } else { (1u64 << width) - 1 };
+    let mask = if width == 64 {
+        u64::MAX
+    } else {
+        (1u64 << width) - 1
+    };
     (val >> offset) & mask
 }
 
@@ -430,7 +432,11 @@ pub fn mielin_insert_bits(val: u64, field: u64, offset: u32, width: u32) -> u64 
     debug_assert!((1..=64).contains(&width), "width out of range [1, 64]");
     debug_assert!(offset + width <= 64, "offset + width exceeds 64 bits");
 
-    let mask = if width == 64 { u64::MAX } else { (1u64 << width) - 1 };
+    let mask = if width == 64 {
+        u64::MAX
+    } else {
+        (1u64 << width) - 1
+    };
     let cleared = val & !(mask << offset);
     cleared | ((field & mask) << offset)
 }
@@ -652,7 +658,10 @@ mod tests {
         // SAFETY: n == 0, no bytes are accessed.
         unsafe { mielin_memcpy(dst.as_mut_ptr(), src.as_ptr(), 0) };
 
-        assert!(dst.iter().all(|&b| b == 0), "zero-length copy must not modify dst");
+        assert!(
+            dst.iter().all(|&b| b == 0),
+            "zero-length copy must not modify dst"
+        );
     }
 
     #[test]
@@ -727,7 +736,10 @@ mod tests {
             mielin_memmove(ptr, ptr as *const u8, 8);
         }
 
-        assert_eq!(buf, expected, "same-pointer memmove must leave data unchanged");
+        assert_eq!(
+            buf, expected,
+            "same-pointer memmove must leave data unchanged"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -820,13 +832,25 @@ mod tests {
             1,
             "rotating MSB left wraps to bit 0"
         );
-        assert_eq!(mielin_rotl32(0xDEAD_BEEF, 0), 0xDEAD_BEEF, "rotate by 0 is identity");
-        assert_eq!(mielin_rotl32(0xDEAD_BEEF, 32), 0xDEAD_BEEF, "rotate by 32 is identity");
+        assert_eq!(
+            mielin_rotl32(0xDEAD_BEEF, 0),
+            0xDEAD_BEEF,
+            "rotate by 0 is identity"
+        );
+        assert_eq!(
+            mielin_rotl32(0xDEAD_BEEF, 32),
+            0xDEAD_BEEF,
+            "rotate by 32 is identity"
+        );
     }
 
     #[test]
     fn test_popcount64() {
-        assert_eq!(mielin_popcount64(u64::MAX), 64, "popcount64(u64::MAX) == 64");
+        assert_eq!(
+            mielin_popcount64(u64::MAX),
+            64,
+            "popcount64(u64::MAX) == 64"
+        );
         assert_eq!(mielin_popcount64(0), 0);
         assert_eq!(mielin_popcount64(0xFF), 8);
         assert_eq!(mielin_popcount64(0xFF00_FF00_FF00_FF00u64), 32);
@@ -865,7 +889,10 @@ mod tests {
             dividend,
             "q * d + r must equal the original dividend"
         );
-        assert!(r < divisor, "remainder must be strictly less than the divisor");
+        assert!(
+            r < divisor,
+            "remainder must be strictly less than the divisor"
+        );
     }
 
     #[test]
@@ -900,7 +927,11 @@ mod tests {
     #[test]
     fn test_align_up() {
         assert_eq!(mielin_align_up(13, 8), 16);
-        assert_eq!(mielin_align_up(16, 8), 16, "already-aligned value is unchanged");
+        assert_eq!(
+            mielin_align_up(16, 8),
+            16,
+            "already-aligned value is unchanged"
+        );
         assert_eq!(mielin_align_up(0, 8), 0);
         assert_eq!(mielin_align_up(1, 4096), 4096);
     }
@@ -908,7 +939,11 @@ mod tests {
     #[test]
     fn test_align_down() {
         assert_eq!(mielin_align_down(15, 8), 8);
-        assert_eq!(mielin_align_down(16, 8), 16, "already-aligned value is unchanged");
+        assert_eq!(
+            mielin_align_down(16, 8),
+            16,
+            "already-aligned value is unchanged"
+        );
         assert_eq!(mielin_align_down(0, 8), 0);
         assert_eq!(mielin_align_down(4095, 4096), 0);
     }
@@ -934,11 +969,22 @@ mod tests {
         let modified = mielin_insert_bits(base, 0xA, 4, 4);
 
         let extracted = mielin_extract_bits(modified, 4, 4);
-        assert_eq!(extracted, 0xA, "round-trip: extracted value must equal the inserted value");
+        assert_eq!(
+            extracted, 0xA,
+            "round-trip: extracted value must equal the inserted value"
+        );
 
         // Bits outside the field must be preserved.
-        assert_eq!(mielin_extract_bits(modified, 0, 4), 0xF, "lower nibble must be preserved");
-        assert_eq!(mielin_extract_bits(modified, 8, 56), 0, "upper bits must be zero");
+        assert_eq!(
+            mielin_extract_bits(modified, 0, 4),
+            0xF,
+            "lower nibble must be preserved"
+        );
+        assert_eq!(
+            mielin_extract_bits(modified, 8, 56),
+            0,
+            "upper bits must be zero"
+        );
     }
 
     #[test]
@@ -949,8 +995,14 @@ mod tests {
         let d = b"short";
 
         assert!(mielin_const_time_eq(a, b), "identical slices must be equal");
-        assert!(!mielin_const_time_eq(a, c), "one differing byte must return false");
-        assert!(!mielin_const_time_eq(a, d), "different lengths must return false");
+        assert!(
+            !mielin_const_time_eq(a, c),
+            "one differing byte must return false"
+        );
+        assert!(
+            !mielin_const_time_eq(a, d),
+            "different lengths must return false"
+        );
         assert!(mielin_const_time_eq(&[], &[]), "empty slices are equal");
     }
 
@@ -1040,8 +1092,14 @@ mod tests {
         unsafe { mielin_memcpy(dst.as_mut_ptr(), src.as_ptr(), 4) };
 
         let stats = compiler_rt_stats();
-        assert!(stats.memcpy_calls >= 1, "at least one memcpy call must be recorded");
-        assert!(stats.total_bytes_copied >= 4, "at least 4 bytes copied must be recorded");
+        assert!(
+            stats.memcpy_calls >= 1,
+            "at least one memcpy call must be recorded"
+        );
+        assert!(
+            stats.total_bytes_copied >= 4,
+            "at least 4 bytes copied must be recorded"
+        );
         assert!(stats.total_calls() >= 1);
     }
 
@@ -1049,6 +1107,9 @@ mod tests {
     fn test_zeroize() {
         let mut secret = vec![0xFFu8; 32];
         mielin_zeroize(&mut secret);
-        assert!(secret.iter().all(|&b| b == 0), "zeroize must clear every byte to 0");
+        assert!(
+            secret.iter().all(|&b| b == 0),
+            "zeroize must clear every byte to 0"
+        );
     }
 }

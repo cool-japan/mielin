@@ -99,7 +99,10 @@ impl PartialEq for PeerHealth {
             (self, other),
             (PeerHealth::Unknown, PeerHealth::Unknown)
                 | (PeerHealth::Reachable { .. }, PeerHealth::Reachable { .. })
-                | (PeerHealth::Unreachable { .. }, PeerHealth::Unreachable { .. })
+                | (
+                    PeerHealth::Unreachable { .. },
+                    PeerHealth::Unreachable { .. }
+                )
                 | (PeerHealth::Disabled, PeerHealth::Disabled)
         )
     }
@@ -146,7 +149,11 @@ struct Xorshift64(u64);
 impl Xorshift64 {
     fn new(seed: u64) -> Self {
         // Guard against a zero seed which would produce an all-zero sequence.
-        Self(if seed == 0 { 0xDEAD_BEEF_CAFE_BABE } else { seed })
+        Self(if seed == 0 {
+            0xDEAD_BEEF_CAFE_BABE
+        } else {
+            seed
+        })
     }
 
     fn next(&mut self) -> u64 {

@@ -131,8 +131,8 @@ fn encode_bincode<T: Serialize>(value: &T) -> Result<Vec<u8>, FormatError> {
 
 /// Decode `data` using Bincode (via oxicode).
 fn decode_bincode<T: for<'de> Deserialize<'de>>(data: &[u8]) -> Result<T, FormatError> {
-    let (compat, _): (oxicode::serde::Compat<T>, _) = oxicode::decode_from_slice(data)
-        .map_err(|e| FormatError::BindecodeError(e.to_string()))?;
+    let (compat, _): (oxicode::serde::Compat<T>, _) =
+        oxicode::decode_from_slice(data).map_err(|e| FormatError::BindecodeError(e.to_string()))?;
     Ok(compat.0)
 }
 
@@ -307,7 +307,9 @@ impl WireSerializer {
     pub fn benchmark_formats<T: Serialize>(value: &T) -> FormatBenchmark {
         let bincode_bytes = encode_bincode(value).map(|v| v.len()).unwrap_or(usize::MAX);
         let json_bytes = encode_json(value).map(|v| v.len()).unwrap_or(usize::MAX);
-        let postcard_bytes = encode_postcard(value).map(|v| v.len()).unwrap_or(usize::MAX);
+        let postcard_bytes = encode_postcard(value)
+            .map(|v| v.len())
+            .unwrap_or(usize::MAX);
 
         // Identify the smallest and largest formats.
         // Tie-breaking rule: Postcard is preferred over Bincode when equal
@@ -581,7 +583,16 @@ mod tests {
     impl SmallInts {
         fn sample() -> Self {
             // All values fit in 1 byte as varints (< 128).
-            Self { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8 }
+            Self {
+                a: 1,
+                b: 2,
+                c: 3,
+                d: 4,
+                e: 5,
+                f: 6,
+                g: 7,
+                h: 8,
+            }
         }
     }
 

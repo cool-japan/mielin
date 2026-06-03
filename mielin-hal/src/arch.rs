@@ -17,10 +17,8 @@ pub mod cortex_m;
 pub mod mips;
 pub mod powerpc;
 
-pub use mips::{
-    MipsCapabilities, MipsCacheInfo, MipsEndianness, MipsPlatform, MipsVariant,
-};
+pub use mips::{MipsCacheInfo, MipsCapabilities, MipsEndianness, MipsPlatform, MipsVariant};
 pub use powerpc::{
-    AltiVecSupport, PowerPcCapabilities, PowerPcCacheInfo, PowerPcEndianness,
-    PowerPcPlatform, PowerPcVariant,
+    AltiVecSupport, PowerPcCacheInfo, PowerPcCapabilities, PowerPcEndianness, PowerPcPlatform,
+    PowerPcVariant,
 };

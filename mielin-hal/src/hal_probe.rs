@@ -509,8 +509,7 @@ impl PlatformDetector {
             #[allow(unreachable_code)]
             Err(ProbeError::NotPresent)
         };
-        let (vendor, vendor_result) =
-            self.probe.probe(vendor_probe, || None::<String>);
+        let (vendor, vendor_result) = self.probe.probe(vendor_probe, || None::<String>);
         self.diagnostics.record_probe(&vendor_result);
 
         // Model detection — always falls back in no_std since /proc/cpuinfo
@@ -536,9 +535,7 @@ impl PlatformDetector {
         }
 
         // Memory estimate — always fallback in no_std.
-        let mem_probe = || -> Result<u64, ProbeError> {
-            Err(ProbeError::NotPresent)
-        };
+        let mem_probe = || -> Result<u64, ProbeError> { Err(ProbeError::NotPresent) };
         let (memory_kb, mem_result) = self.probe.probe(mem_probe, || 65536_u64);
         self.diagnostics.record_probe(&mem_result);
         if mem_result.fallback_used {
@@ -597,10 +594,7 @@ mod tests {
     #[test]
     fn test_probe_success_first_attempt() {
         let probe = HardwareProbe::default();
-        let (value, result) = probe.probe(
-            || Ok::<u32, ProbeError>(42),
-            || 0_u32,
-        );
+        let (value, result) = probe.probe(|| Ok::<u32, ProbeError>(42), || 0_u32);
         assert_eq!(value, 42);
         assert_eq!(result.attempts, 1);
         assert!(result.succeeded);

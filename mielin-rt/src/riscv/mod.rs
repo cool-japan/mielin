@@ -368,7 +368,10 @@ impl fmt::Display for RiscvError {
                 )
             }
             RiscvError::UnsupportedPrivilegeLevel => {
-                write!(f, "Required privilege level is not available on this platform")
+                write!(
+                    f,
+                    "Required privilege level is not available on this platform"
+                )
             }
         }
     }
@@ -555,10 +558,7 @@ impl RiscvRuntime {
     /// Writing a value >= `mtime` clears a pending timer interrupt; writing a
     /// future `mtime` value schedules the next interrupt.
     pub fn set_mtimecmp(&self, hart: usize, cmp: u64) -> Result<(), RiscvError> {
-        let clint = self
-            .clint
-            .as_ref()
-            .ok_or(RiscvError::ClintNotConfigured)?;
+        let clint = self.clint.as_ref().ok_or(RiscvError::ClintNotConfigured)?;
 
         if hart >= clint.num_harts {
             return Err(RiscvError::InvalidHart {
@@ -636,7 +636,11 @@ impl RiscvRuntime {
         #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
         {
             let irq = unsafe { core::ptr::read_volatile(claim_addr as *const u32) };
-            if irq == 0 { None } else { Some(irq) }
+            if irq == 0 {
+                None
+            } else {
+                Some(irq)
+            }
         }
         #[cfg(not(any(target_arch = "riscv32", target_arch = "riscv64")))]
         {
@@ -759,19 +763,31 @@ mod tests {
 
         // Code 3 = MachineSoftware
         let mcause_sw: u64 = (1u64 << 63) | 3;
-        assert_eq!(InterruptCause::from(mcause_sw), InterruptCause::MachineSoftware);
+        assert_eq!(
+            InterruptCause::from(mcause_sw),
+            InterruptCause::MachineSoftware
+        );
 
         // Code 11 = MachineExternal
         let mcause_ext: u64 = (1u64 << 63) | 11;
-        assert_eq!(InterruptCause::from(mcause_ext), InterruptCause::MachineExternal);
+        assert_eq!(
+            InterruptCause::from(mcause_ext),
+            InterruptCause::MachineExternal
+        );
 
         // Exception (bit 63 clear) -> Unknown
         let mcause_exc: u64 = 2; // Store/AMO access fault
-        assert!(matches!(InterruptCause::from(mcause_exc), InterruptCause::Unknown(_)));
+        assert!(matches!(
+            InterruptCause::from(mcause_exc),
+            InterruptCause::Unknown(_)
+        ));
 
         // Supervisor variants
         let mcause_stimer: u64 = (1u64 << 63) | 5;
-        assert_eq!(InterruptCause::from(mcause_stimer), InterruptCause::SupervisorTimer);
+        assert_eq!(
+            InterruptCause::from(mcause_stimer),
+            InterruptCause::SupervisorTimer
+        );
     }
 
     // --- PLIC configuration ---
@@ -836,7 +852,10 @@ mod tests {
 
     #[test]
     fn test_riscv_error_display_invalid_hart() {
-        let e = RiscvError::InvalidHart { hart: 5, max_harts: 4 };
+        let e = RiscvError::InvalidHart {
+            hart: 5,
+            max_harts: 4,
+        };
         let s = alloc::format!("{e}");
         assert!(s.contains("hart") || s.contains('5'));
     }
@@ -861,8 +880,8 @@ mod tests {
 
     #[test]
     fn test_read_mtime_with_clint_returns_some() {
-        let rt = RiscvRuntime::new(RiscvVariant::Rv32Imac)
-            .with_clint(ClintConfig::sifive(0x0200_0000));
+        let rt =
+            RiscvRuntime::new(RiscvVariant::Rv32Imac).with_clint(ClintConfig::sifive(0x0200_0000));
         // On host simulation path returns Some(0)
         #[cfg(not(any(target_arch = "riscv32", target_arch = "riscv64")))]
         assert_eq!(rt.read_mtime(), Some(0));
@@ -879,9 +898,9 @@ mod tests {
 
     #[test]
     fn test_set_mtimecmp_invalid_hart() {
-        let rt = RiscvRuntime::new(RiscvVariant::Rv32Imac)
-            .with_clint(ClintConfig::sifive(0x0200_0000)); // 1 hart
-        // Hart 5 exceeds the configured 1-hart CLINT
+        let rt =
+            RiscvRuntime::new(RiscvVariant::Rv32Imac).with_clint(ClintConfig::sifive(0x0200_0000)); // 1 hart
+                                                                                                    // Hart 5 exceeds the configured 1-hart CLINT
         let result = rt.set_mtimecmp(5, 9999);
         assert!(matches!(result, Err(RiscvError::InvalidHart { .. })));
     }
@@ -896,8 +915,7 @@ mod tests {
 
     #[test]
     fn test_plic_enable_irq_zero_reserved() {
-        let rt = RiscvRuntime::new(RiscvVariant::Rv32Imac)
-            .with_plic(PlicConfig::new(0x0C00_0000));
+        let rt = RiscvRuntime::new(RiscvVariant::Rv32Imac).with_plic(PlicConfig::new(0x0C00_0000));
         // IRQ 0 is reserved in PLIC spec
         assert!(matches!(
             rt.plic_enable_irq(0, 7),

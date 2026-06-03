@@ -134,7 +134,10 @@ impl fmt::Display for ArmV8mError {
             ArmV8mError::FpuNotPresent => {
                 write!(f, "No FPU present (Cortex-M23 or M33 without FPU option)")
             }
-            ArmV8mError::InvalidSauRegion { region, max_regions } => {
+            ArmV8mError::InvalidSauRegion {
+                region,
+                max_regions,
+            } => {
                 write!(
                     f,
                     "SAU region {region} out of range (max {max_regions} regions)"
@@ -143,7 +146,10 @@ impl fmt::Display for ArmV8mError {
             ArmV8mError::UnsupportedVariant => {
                 write!(f, "Operation not supported on this ARMv8-M core variant")
             }
-            ArmV8mError::InvalidMpuRegion { region, max_regions } => {
+            ArmV8mError::InvalidMpuRegion {
+                region,
+                max_regions,
+            } => {
                 write!(
                     f,
                     "MPU region {region} out of range (max {max_regions} regions)"
@@ -282,10 +288,16 @@ impl ArmV8mRuntime {
 
         // SAU requires 32-byte (0x20) alignment for base and limit
         if base & 0x1F != 0 {
-            return Err(ArmV8mError::AlignmentError { addr: base, required: 32 });
+            return Err(ArmV8mError::AlignmentError {
+                addr: base,
+                required: 32,
+            });
         }
         if limit & 0x1F != 0 {
-            return Err(ArmV8mError::AlignmentError { addr: limit, required: 32 });
+            return Err(ArmV8mError::AlignmentError {
+                addr: limit,
+                required: 32,
+            });
         }
 
         #[cfg(target_arch = "arm")]
@@ -422,9 +434,15 @@ impl MpuAttributes {
     /// would set the full MAIR0/MAIR1 index.
     pub fn to_attr_index(self) -> u8 {
         let mut idx: u8 = 0;
-        if self.read_write { idx |= 0x01; }
-        if self.cacheable { idx |= 0x02; }
-        if !self.execute_never { idx |= 0x04; }
+        if self.read_write {
+            idx |= 0x01;
+        }
+        if self.cacheable {
+            idx |= 0x02;
+        }
+        if !self.execute_never {
+            idx |= 0x04;
+        }
         idx
     }
 }
@@ -478,10 +496,16 @@ impl ArmV8mMpu {
             });
         }
         if base & 0x1F != 0 {
-            return Err(ArmV8mError::AlignmentError { addr: base, required: 32 });
+            return Err(ArmV8mError::AlignmentError {
+                addr: base,
+                required: 32,
+            });
         }
         if limit & 0x1F != 0 {
-            return Err(ArmV8mError::AlignmentError { addr: limit, required: 32 });
+            return Err(ArmV8mError::AlignmentError {
+                addr: limit,
+                required: 32,
+            });
         }
 
         #[cfg(target_arch = "arm")]
@@ -498,7 +522,11 @@ impl ArmV8mMpu {
 
             // RBAR: base[31:5] | SH[4:3] | AP[2:1] | XN[0]
             let sh: u32 = if attrs.shareable { 0b10 << 3 } else { 0 };
-            let ap: u32 = if attrs.read_write { 0b01 << 1 } else { 0b11 << 1 };
+            let ap: u32 = if attrs.read_write {
+                0b01 << 1
+            } else {
+                0b11 << 1
+            };
             let xn: u32 = attrs.execute_never as u32;
             core::ptr::write_volatile(MPU_RBAR, (base & !0x1F) | sh | ap | xn);
 
@@ -596,11 +624,14 @@ mod tests {
     #[test]
     fn test_sau_region_invalid() {
         let rt = ArmV8mRuntime::new(ArmV8mVariant::CortexM23); // 4 SAU regions
-        // Region index 4 is out of range for M23 (regions 0..3)
+                                                               // Region index 4 is out of range for M23 (regions 0..3)
         let result = rt.configure_sau_region(4, 0x1000_0000, 0x1001_FFE0, false);
         assert!(matches!(
             result,
-            Err(ArmV8mError::InvalidSauRegion { region: 4, max_regions: 4 })
+            Err(ArmV8mError::InvalidSauRegion {
+                region: 4,
+                max_regions: 4
+            })
         ));
     }
 
@@ -609,7 +640,13 @@ mod tests {
         let rt = ArmV8mRuntime::new(ArmV8mVariant::CortexM33);
         // base address not 32-byte aligned
         let result = rt.configure_sau_region(0, 0x1000_0010, 0x1001_FFE0, false);
-        assert!(matches!(result, Err(ArmV8mError::AlignmentError { addr: 0x1000_0010, .. })));
+        assert!(matches!(
+            result,
+            Err(ArmV8mError::AlignmentError {
+                addr: 0x1000_0010,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -617,7 +654,13 @@ mod tests {
         let rt = ArmV8mRuntime::new(ArmV8mVariant::CortexM33);
         // limit address not 32-byte aligned
         let result = rt.configure_sau_region(0, 0x1000_0000, 0x1001_FFFF, false);
-        assert!(matches!(result, Err(ArmV8mError::AlignmentError { addr: 0x1001_FFFF, .. })));
+        assert!(matches!(
+            result,
+            Err(ArmV8mError::AlignmentError {
+                addr: 0x1001_FFFF,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -625,13 +668,15 @@ mod tests {
         let rt = ArmV8mRuntime::new(ArmV8mVariant::CortexM33);
         // Both addresses 32-byte aligned, region index in range
         let result = rt.configure_sau_region(0, 0x1000_0000, 0x1001_FFE0, true);
-        assert!(result.is_ok(), "Valid SAU region should succeed, got: {result:?}");
+        assert!(
+            result.is_ok(),
+            "Valid SAU region should succeed, got: {result:?}"
+        );
     }
 
     #[test]
     fn test_sau_trustzone_disabled_returns_error() {
-        let rt = ArmV8mRuntime::new(ArmV8mVariant::CortexM33)
-            .with_trustzone(false);
+        let rt = ArmV8mRuntime::new(ArmV8mVariant::CortexM33).with_trustzone(false);
         let result = rt.configure_sau_region(0, 0x1000_0000, 0x1001_FFE0, false);
         assert_eq!(result, Err(ArmV8mError::TrustZoneNotSupported));
     }
@@ -645,8 +690,14 @@ mod tests {
         let mpu_m55 = ArmV8mMpu::new(ArmV8mVariant::CortexM55);
 
         assert_eq!(mpu_m23.num_regions, 8);
-        assert!(mpu_m33.num_regions >= 8, "Cortex-M33 must have at least 8 MPU regions");
-        assert_eq!(mpu_m55.num_regions, 16, "Cortex-M55 should have 16 MPU regions");
+        assert!(
+            mpu_m33.num_regions >= 8,
+            "Cortex-M33 must have at least 8 MPU regions"
+        );
+        assert_eq!(
+            mpu_m55.num_regions, 16,
+            "Cortex-M55 should have 16 MPU regions"
+        );
     }
 
     #[test]
@@ -656,7 +707,10 @@ mod tests {
         let result = mpu.configure_region(8, 0x2000_0000, 0x2000_FFE0, attrs);
         assert!(matches!(
             result,
-            Err(ArmV8mError::InvalidMpuRegion { region: 8, max_regions: 8 })
+            Err(ArmV8mError::InvalidMpuRegion {
+                region: 8,
+                max_regions: 8
+            })
         ));
     }
 
@@ -705,8 +759,7 @@ mod tests {
 
     #[test]
     fn test_trustzone_disabled_state_transition_fails() {
-        let mut rt = ArmV8mRuntime::new(ArmV8mVariant::CortexM33)
-            .with_trustzone(false);
+        let mut rt = ArmV8mRuntime::new(ArmV8mVariant::CortexM33).with_trustzone(false);
         assert_eq!(
             rt.enter_nonsecure_state(),
             Err(ArmV8mError::TrustZoneNotSupported)

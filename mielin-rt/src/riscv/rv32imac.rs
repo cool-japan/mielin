@@ -84,7 +84,7 @@ pub struct Rv32ImacGpio {
     /// Whether this GPIO peripheral has a separate output-enable register
     pub has_output_enable: bool,
     // Internal shadow state used for simulation (host tests)
-    direction_mask: u32,  // 1 = output, 0 = input
+    direction_mask: u32, // 1 = output, 0 = input
     output_state: u32,
 }
 
@@ -106,7 +106,10 @@ impl Rv32ImacGpio {
     /// Validate that `pin` is within range for this port
     fn check_pin(&self, pin: u8) -> Result<(), GpioError> {
         if pin >= self.num_pins {
-            Err(GpioError::InvalidPin { pin, max: self.num_pins - 1 })
+            Err(GpioError::InvalidPin {
+                pin,
+                max: self.num_pins - 1,
+            })
         } else {
             Ok(())
         }
@@ -274,15 +277,24 @@ pub struct Rv32ImacTimer {
 impl Rv32ImacTimer {
     /// Create a new timer abstraction at `base` address with `clock_hz` input clock.
     pub fn new(base: u32, clock_hz: u32) -> Self {
-        Self { base_addr: base, clock_hz }
+        Self {
+            base_addr: base,
+            clock_hz,
+        }
     }
 
     #[allow(dead_code)] // used inside target_arch = "riscv*" cfg blocks
-    fn cnt_addr(&self) -> u32 { self.base_addr }
+    fn cnt_addr(&self) -> u32 {
+        self.base_addr
+    }
     #[allow(dead_code)]
-    fn cmp_addr(&self) -> u32 { self.base_addr + 0x04 }
+    fn cmp_addr(&self) -> u32 {
+        self.base_addr + 0x04
+    }
     #[allow(dead_code)]
-    fn ctrl_addr(&self) -> u32 { self.base_addr + 0x08 }
+    fn ctrl_addr(&self) -> u32 {
+        self.base_addr + 0x08
+    }
 
     /// Write the compare register (interrupt fires when counter reaches this value).
     pub fn set_compare(&self, ticks: u32) {
@@ -440,7 +452,10 @@ mod tests {
         // The direction_mask write needs &mut so we use direct err check on check_pin path
         // by calling a read (which is &self)
         let result = gpio.read_input(8); // pin 8 >= num_pins 8 -> error
-        assert!(matches!(result, Err(GpioError::InvalidPin { pin: 8, max: 7 })));
+        assert!(matches!(
+            result,
+            Err(GpioError::InvalidPin { pin: 8, max: 7 })
+        ));
     }
 
     #[test]
@@ -541,7 +556,10 @@ mod tests {
         // CH32V003 has very small flash and SRAM
         assert_eq!(m.flash_size, 16 * 1024);
         assert_eq!(m.sram_size, 2 * 1024);
-        assert!(m.sram_size < m.flash_size, "SRAM must be smaller than Flash on CH32V003");
+        assert!(
+            m.sram_size < m.flash_size,
+            "SRAM must be smaller than Flash on CH32V003"
+        );
         assert_eq!(m.flash_base, 0x0800_0000);
     }
 }

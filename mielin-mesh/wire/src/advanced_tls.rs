@@ -600,8 +600,7 @@ impl ConnectionHealth {
 
     /// Returns `true` when the connection should be considered healthy given `config`.
     pub fn is_healthy(&self, config: &HeartbeatConfig) -> bool {
-        self.missed_pings < config.max_missed
-            && self.status != ConnectionHealthStatus::Unhealthy
+        self.missed_pings < config.max_missed && self.status != ConnectionHealthStatus::Unhealthy
     }
 
     /// Recompute and store the `status` field based on the current state.
@@ -703,11 +702,12 @@ impl ConnectionHealthMonitor {
             Ok(g) => g,
             Err(_) => return Err(HealthMonitorError::LockPoisoned),
         };
-        let health = guard.get_mut(node_id).ok_or_else(|| {
-            HealthMonitorError::ConnectionNotFound {
-                node_id: node_id.to_string(),
-            }
-        })?;
+        let health =
+            guard
+                .get_mut(node_id)
+                .ok_or_else(|| HealthMonitorError::ConnectionNotFound {
+                    node_id: node_id.to_string(),
+                })?;
         health.record_pong(rtt);
         health.update_status(&self.config);
         self.total_pongs_received
@@ -721,11 +721,12 @@ impl ConnectionHealthMonitor {
             Ok(g) => g,
             Err(_) => return Err(HealthMonitorError::LockPoisoned),
         };
-        let health = guard.get_mut(node_id).ok_or_else(|| {
-            HealthMonitorError::ConnectionNotFound {
-                node_id: node_id.to_string(),
-            }
-        })?;
+        let health =
+            guard
+                .get_mut(node_id)
+                .ok_or_else(|| HealthMonitorError::ConnectionNotFound {
+                    node_id: node_id.to_string(),
+                })?;
         health.record_missed_ping(&self.config);
         health.update_status(&self.config);
         self.total_missed_pings
@@ -1026,8 +1027,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[test]
     fn test_cert_pin_not_expired() {
-        let pin =
-            CertPin::new_sha256([0u8; 32], "valid").with_expiry(Duration::from_secs(3600));
+        let pin = CertPin::new_sha256([0u8; 32], "valid").with_expiry(Duration::from_secs(3600));
         assert!(!pin.is_expired());
     }
 
