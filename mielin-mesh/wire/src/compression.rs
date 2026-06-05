@@ -206,8 +206,9 @@ impl Compressor {
 
     /// Compress with LZ4
     fn compress_lz4(&self, data: &[u8]) -> Result<CompressedMessage, WireError> {
-        // lz4_flex 0.11 uses compress_prepend_size
-        let compressed = lz4_flex::block::compress_prepend_size(data);
+        // Self-describing LZ4 frame format (content size embedded in the header).
+        let compressed = oxiarc_lz4::compress(data)
+            .map_err(|e| WireError::SerializationError(format!("LZ4 compression failed: {}", e)))?;
 
         // Only use compression if it actually reduces size
         if compressed.len() < data.len() {
@@ -223,7 +224,9 @@ impl Compressor {
 
     /// Decompress LZ4
     fn decompress_lz4(&self, message: &CompressedMessage) -> Result<Vec<u8>, WireError> {
-        lz4_flex::block::decompress_size_prepended(&message.data)
+        // The frame embeds its content size; bound the output by the recorded
+        // original size to guard against malformed input.
+        oxiarc_lz4::decompress(&message.data, message.original_size as usize)
             .map_err(|e| WireError::SerializationError(format!("LZ4 decompression failed: {}", e)))
     }
 
@@ -235,7 +238,7 @@ impl Compressor {
             CompressionLevel::Best => 9,
         };
 
-        let compressed = zstd::encode_all(data, level).map_err(|e| {
+        let compressed = oxiarc_zstd::encode_all(data, level).map_err(|e| {
             WireError::SerializationError(format!("Zstd compression failed: {}", e))
         })?;
 
@@ -253,7 +256,7 @@ impl Compressor {
 
     /// Decompress Zstd
     fn decompress_zstd(&self, message: &CompressedMessage) -> Result<Vec<u8>, WireError> {
-        zstd::decode_all(&message.data[..])
+        oxiarc_zstd::decode_all(&message.data[..])
             .map_err(|e| WireError::SerializationError(format!("Zstd decompression failed: {}", e)))
     }
 }

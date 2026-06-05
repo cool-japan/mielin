@@ -3,7 +3,6 @@
 //! 🤖 Generated with [SplitRS](https://github.com/cool-japan/splitrs)
 
 use super::types::*;
-use lz4_flex::{compress_prepend_size, decompress_size_prepended};
 
 /// Page size for dirty tracking (4KB)
 pub const PAGE_SIZE: usize = 4096;
@@ -74,24 +73,34 @@ pub fn simple_checksum(data: &[u8]) -> u32 {
     sum
 }
 
-/// LZ4 compression for memory pages (improved compression ratio)
+/// LZ4 compression for memory pages (improved compression ratio).
+///
+/// Uses the self-describing LZ4 frame format (content size embedded in the
+/// frame header), so [`lz4_decompress`] does not need the original length.
 pub fn lz4_compress(data: &[u8]) -> Vec<u8> {
-    compress_prepend_size(data)
+    // The LZ4 frame format embeds the content size; compression of in-memory
+    // pages never fails, so fall back to the raw bytes on the unreachable error
+    // path rather than panicking.
+    oxiarc_lz4::compress(data).unwrap_or_else(|_| data.to_vec())
 }
 
 /// Decompress LZ4-encoded data
 pub fn lz4_decompress(data: &[u8]) -> Result<Vec<u8>, String> {
-    decompress_size_prepended(data).map_err(|e| format!("LZ4 decompression failed: {:?}", e))
+    // `usize::MAX` imposes no artificial output cap; the frame's embedded
+    // content size drives the actual allocation, matching the self-describing
+    // semantics of the previous `decompress_size_prepended` call.
+    oxiarc_lz4::decompress(data, usize::MAX)
+        .map_err(|e| format!("LZ4 decompression failed: {:?}", e))
 }
 
 /// Zstd compression with configurable level
 pub fn zstd_compress(data: &[u8], level: i32) -> Result<Vec<u8>, String> {
-    zstd::encode_all(data, level).map_err(|e| format!("Zstd compression failed: {}", e))
+    oxiarc_zstd::encode_all(data, level).map_err(|e| format!("Zstd compression failed: {}", e))
 }
 
 /// Decompress Zstd-encoded data
 pub fn zstd_decompress(data: &[u8]) -> Result<Vec<u8>, String> {
-    zstd::decode_all(data).map_err(|e| format!("Zstd decompression failed: {}", e))
+    oxiarc_zstd::decode_all(data).map_err(|e| format!("Zstd decompression failed: {}", e))
 }
 
 /// Compression method identifier

@@ -18,8 +18,8 @@ uuid.workspace = true
 thiserror.workspace = true
 oxicode.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "rt"] }
-lz4_flex.workspace = true
-zstd.workspace = true
+oxiarc-lz4.workspace = true
+oxiarc-zstd.workspace = true
 rand.workspace = true
 ring.workspace = true
 

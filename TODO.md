@@ -54,6 +54,59 @@
 - [ ] Academic partnerships
 - [ ] Industry adoption program
 
+## Pure Rust Migration (COOLJAPAN Policy)
+
+Goal: make the default build free of C/C++/Fortran and assembly dependencies. All
+compression and cryptography must use Pure Rust crates (COOLJAPAN `oxiarc-*` /
+`oxicrypto`, or RustCrypto). Track progress here.
+
+- [x] (2026-06-05) Compression: `zstd` (C, via `zstd-sys`) → `oxiarc-zstd` and
+  `lz4_flex` (Pure Rust) → `oxiarc-lz4`, for consistency under a single Pure Rust
+  archive stack. Removed the C `zstd-sys` dependency from the default build.
+  - Touched: `mielin-cells/src/migration/functions.rs`,
+    `mielin-mesh/wire/src/compression.rs`, the `[workspace.dependencies]` table in
+    `Cargo.toml`, and the `mielin-cells` / `mielin-mesh-wire` crate manifests.
+  - API mapping: `zstd::encode_all`/`decode_all` → `oxiarc_zstd::encode_all`/
+    `decode_all` (drop-in). `lz4_flex::compress_prepend_size`/
+    `decompress_size_prepended` → `oxiarc_lz4::compress` / `oxiarc_lz4::decompress`
+    (self-describing LZ4 frame format; the frame embeds the content size, so
+    decompression needs only an output-size bound).
+  - Verified: `cargo build`, `cargo nextest run`, and
+    `cargo clippy --all-features --all-targets -- -D warnings` are green for both
+    packages; `cargo tree -p mielin-mesh-wire` shows no `zstd-sys` / `lz4-sys` /
+    `lz4_flex` (only `oxiarc-zstd` / `oxiarc-lz4`).
+
+- [ ] **`ring` → Pure Rust crypto (DEEP, security-sensitive).**
+  - Scope: `ring = "0.17.14"` (`Cargo.toml`, `[workspace.dependencies]`) is pulled
+    in unconditionally by `mielin-cells`, `mielin-mesh/core`, and `mielin-mesh/wire`
+    (~39 call sites). `ring` bundles C and per-architecture assembly, so it violates
+    the Pure Rust policy by default. It is currently used for:
+    - Ed25519 + ECDSA P-256/P-384 **signatures** (`identity.rs` in `mielin-cells`
+      and `mielin-mesh/core`).
+    - X25519 ECDH + HKDF **key exchange** (`mielin-mesh/core/security/kex.rs`).
+    - SHA-256/384/512 **digests** (`mielin-mesh/wire/advanced_tls.rs`,
+      `mielin-mesh/wire/certs/{pinning,ca,acme}.rs`).
+    - AES-256-GCM **AEAD** (`mielin-mesh/core/security/crypto.rs`,
+      `mielin-cells/security/encryption.rs`).
+    - `SystemRandom` **RNG**.
+  - Extra blocker (transitive `ring` via TLS): `rustls` (`Cargo.toml`,
+    `[workspace.dependencies]`) is configured with `default-features = false,
+    features = ["ring", "std"]`, and `reqwest` (`[workspace.dependencies]`) is
+    likewise pinned to the **ring** `CryptoProvider`. The migration must ALSO swap
+    `rustls` to a Pure Rust `CryptoProvider` (not `aws-lc-rs` and not `ring`),
+    otherwise `ring` re-enters the dependency graph through TLS.
+  - Replacement options: RustCrypto Pure Rust crates (`ed25519-dalek`, `p256`,
+    `p384`, `x25519-dalek`, `hkdf`, `sha2`, `aes-gcm`, `getrandom`) OR the COOLJAPAN
+    `oxicrypto` stack. None are currently wired into the workspace.
+  - Acceptance criteria:
+    - `cargo tree -i ring` is empty under default features.
+    - All crypto and TLS tests are green.
+    - No C / C++ / Fortran / assembly in the default build.
+  - Notes: this is a multi-day port. Do it primitive-by-primitive with tests at each
+    step, in this order: digests → RNG → AEAD → signatures → ECDH → `rustls`
+    `CryptoProvider`. Keep wire-format compatibility for any persisted or
+    network-exchanged crypto material (signatures, key shares, ciphertext framing).
+
 ## Completed Features (v0.1.0)
 
 MielinOS v0.1.0 "Oligodendrocyte" is a complete distributed agent mesh operating system with the following components:
