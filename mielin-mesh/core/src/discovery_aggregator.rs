@@ -175,7 +175,7 @@ impl DiscoveryAggregator {
                 // the A/AAAA record for `record.target`.
                 let addr: SocketAddr = format!("0.0.0.0:{}", record.port)
                     .parse()
-                    .unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
+                    .unwrap_or_else(|_| "0.0.0.0:0".parse().expect("invariant: fallback addr literal is valid"));
 
                 // Synthesise a deterministic NodeId from the SRV target string
                 // (sha-flavoured UUID v5 semantics via uuid's Uuid::new_v5).
