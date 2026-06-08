@@ -248,10 +248,9 @@ impl CacheTopology {
 
         // Round down to cache line multiple
         let elements_per_line = self.default_line_size / element_size;
-        if elements_per_line > 0 {
-            (block / elements_per_line) * elements_per_line
-        } else {
-            block
+        match block.checked_div(elements_per_line) {
+            Some(lines) => lines * elements_per_line,
+            None => block,
         }
     }
 

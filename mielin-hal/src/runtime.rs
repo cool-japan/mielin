@@ -309,7 +309,7 @@ impl FallbackChain {
         self.requirements.push(req);
         // Keep sorted by priority (highest first)
         self.requirements
-            .sort_by(|a, b| b.priority.cmp(&a.priority));
+            .sort_by_key(|r| core::cmp::Reverse(r.priority));
     }
 
     /// Add multiple requirements
