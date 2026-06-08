@@ -10,10 +10,10 @@ use super::hardwaredatabase_type::HardwareDatabase;
 pub fn database_summary() -> String {
     let db = HardwareDatabase::new();
     let mut summary = String::new();
-    summary
-        .push_str(
-            &alloc::format!("Hardware Database: {} processors\n\n", db.processors.len()),
-        );
+    summary.push_str(&alloc::format!(
+        "Hardware Database: {} processors\n\n",
+        db.processors.len()
+    ));
     let vendors = [
         "Intel",
         "AMD",
@@ -40,17 +40,20 @@ pub fn database_summary() -> String {
     for vendor in &vendors {
         let procs = db.find_by_vendor(vendor);
         if !procs.is_empty() {
-            summary
-                .push_str(&alloc::format!("{} ({} processors):\n", vendor, procs.len()));
+            summary.push_str(&alloc::format!(
+                "{} ({} processors):\n",
+                vendor,
+                procs.len()
+            ));
             for proc in procs {
-                summary
-                    .push_str(
-                        &alloc::format!(
-                            "  - {} ({} cores, {}-{} MHz, L3: {} KB)\n", proc.name, proc
-                            .physical_cores, proc.base_freq_mhz, proc.max_freq_mhz, proc
-                            .l3_total_kb
-                        ),
-                    );
+                summary.push_str(&alloc::format!(
+                    "  - {} ({} cores, {}-{} MHz, L3: {} KB)\n",
+                    proc.name,
+                    proc.physical_cores,
+                    proc.base_freq_mhz,
+                    proc.max_freq_mhz,
+                    proc.l3_total_kb
+                ));
             }
             summary.push('\n');
         }
@@ -65,10 +68,11 @@ mod tests {
     #[test]
     fn test_database_creation() {
         let db = HardwareDatabase::new();
-        assert!(! db.processors.is_empty());
+        assert!(!db.processors.is_empty());
         assert!(
             db.processors.len() >= 50,
-            "Database should have at least 50 processors, found {}", db.processors.len()
+            "Database should have at least 50 processors, found {}",
+            db.processors.len()
         );
     }
     #[test]
@@ -85,8 +89,16 @@ mod tests {
         assert!(intel_count >= 10, "Intel processors: {}", intel_count);
         assert!(amd_count >= 10, "AMD processors: {}", amd_count);
         assert!(arm_count >= 10, "ARM processors: {}", arm_count);
-        assert!(qualcomm_count >= 4, "Qualcomm processors: {}", qualcomm_count);
-        assert!(mediatek_count >= 3, "MediaTek processors: {}", mediatek_count);
+        assert!(
+            qualcomm_count >= 4,
+            "Qualcomm processors: {}",
+            qualcomm_count
+        );
+        assert!(
+            mediatek_count >= 3,
+            "MediaTek processors: {}",
+            mediatek_count
+        );
         assert_eq!(apple_count, 3, "Apple processors: {}", apple_count);
     }
     #[test]
@@ -100,21 +112,23 @@ mod tests {
     fn test_find_by_vendor() {
         let db = HardwareDatabase::new();
         let intel_procs = db.find_by_vendor("Intel");
-        assert!(! intel_procs.is_empty());
-        assert!(intel_procs.iter().all(| p | p.vendor == "Intel"));
+        assert!(!intel_procs.is_empty());
+        assert!(intel_procs.iter().all(|p| p.vendor == "Intel"));
     }
     #[test]
     fn test_find_by_architecture() {
         let db = HardwareDatabase::new();
         let x86_procs = db.find_by_architecture(Architecture::X86_64);
-        assert!(! x86_procs.is_empty());
-        assert!(x86_procs.iter().all(| p | p.architecture == Architecture::X86_64));
+        assert!(!x86_procs.is_empty());
+        assert!(x86_procs
+            .iter()
+            .all(|p| p.architecture == Architecture::X86_64));
     }
     #[test]
     fn test_find_with_capabilities() {
         let db = HardwareDatabase::new();
         let avx512_procs = db.find_with_capabilities(HardwareCapabilities::AVX512);
-        assert!(! avx512_procs.is_empty());
+        assert!(!avx512_procs.is_empty());
         for proc in avx512_procs {
             assert!(proc.capabilities.contains(HardwareCapabilities::AVX512));
         }
@@ -140,15 +154,15 @@ mod tests {
     #[test]
     fn test_database_summary() {
         let summary = database_summary();
-        assert!(! summary.is_empty());
+        assert!(!summary.is_empty());
         assert!(summary.contains("Hardware Database"));
     }
     #[test]
     fn test_all_processors_have_valid_specs() {
         let db = HardwareDatabase::new();
         for proc in db.all_processors() {
-            assert!(! proc.name.is_empty());
-            assert!(! proc.vendor.is_empty());
+            assert!(!proc.name.is_empty());
+            assert!(!proc.vendor.is_empty());
             assert!(proc.physical_cores > 0);
             assert!(proc.logical_cores >= proc.physical_cores);
             assert!(proc.max_freq_mhz >= proc.base_freq_mhz);

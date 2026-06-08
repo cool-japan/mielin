@@ -6,7 +6,6 @@ use crate::capabilities::HardwareCapabilities;
 use crate::Architecture;
 use alloc::string::String;
 
-
 /// Known processor configuration
 #[derive(Debug, Clone)]
 pub struct ProcessorSpec {
