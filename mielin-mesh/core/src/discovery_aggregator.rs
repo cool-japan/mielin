@@ -173,9 +173,14 @@ impl DiscoveryAggregator {
                 // abstraction layer we store port only and use 0.0.0.0 as a
                 // placeholder IPv4 address. A real implementation would resolve
                 // the A/AAAA record for `record.target`.
-                let addr: SocketAddr = format!("0.0.0.0:{}", record.port)
-                    .parse()
-                    .unwrap_or_else(|_| "0.0.0.0:0".parse().expect("invariant: fallback addr literal is valid"));
+                let addr: SocketAddr =
+                    format!("0.0.0.0:{}", record.port)
+                        .parse()
+                        .unwrap_or_else(|_| {
+                            "0.0.0.0:0"
+                                .parse()
+                                .expect("invariant: fallback addr literal is valid")
+                        });
 
                 // Synthesise a deterministic NodeId from the SRV target string
                 // (sha-flavoured UUID v5 semantics via uuid's Uuid::new_v5).
