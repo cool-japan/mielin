@@ -19,18 +19,16 @@ use oxihttp_client::{Client, HttpsClient};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tracing::{debug, info};
 #[cfg(test)]
 use tracing::warn;
+use tracing::{debug, info};
 
 use super::{CertError, CertInfo, Certificate};
 
 // ── URL constants ─────────────────────────────────────────────────────────────
 
-const LETS_ENCRYPT_STAGING: &str =
-    "https://acme-staging-v02.api.letsencrypt.org/directory";
-const LETS_ENCRYPT_PRODUCTION: &str =
-    "https://acme-v02.api.letsencrypt.org/directory";
+const LETS_ENCRYPT_STAGING: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
+const LETS_ENCRYPT_PRODUCTION: &str = "https://acme-v02.api.letsencrypt.org/directory";
 
 /// ACME challenge type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -240,10 +238,8 @@ impl AccountState {
         use p256::elliptic_curve::Generate;
 
         let mut rng = rand::rng();
-        let secret_key =
-            p256::SecretKey::try_generate_from_rng(&mut rng).map_err(|_| {
-                CertError::GenerationFailed("P-256 key generation failed".to_string())
-            })?;
+        let secret_key = p256::SecretKey::try_generate_from_rng(&mut rng)
+            .map_err(|_| CertError::GenerationFailed("P-256 key generation failed".to_string()))?;
 
         Self::from_secret_key(&secret_key)
     }
@@ -404,10 +400,8 @@ impl AcmeClient {
         let http = Client::builder()
             .with_webpki_roots()
             .build_https()
-            .map_err(|e| {
-                CertError::TlsConfigError {
-                    details: format!("oxihttp-client build failed: {e}"),
-                }
+            .map_err(|e| CertError::TlsConfigError {
+                details: format!("oxihttp-client build failed: {e}"),
             })?;
         Ok(Self {
             config,
@@ -469,9 +463,7 @@ impl AcmeClient {
 
         resp.header("Replay-Nonce")
             .map(|s| s.to_string())
-            .ok_or_else(|| {
-                CertError::GenerationFailed("Missing Replay-Nonce header".to_string())
-            })
+            .ok_or_else(|| CertError::GenerationFailed("Missing Replay-Nonce header".to_string()))
     }
 
     /// Execute a JWS POST, handling badNonce single-retry.
@@ -485,8 +477,7 @@ impl AcmeClient {
         url: &str,
         payload: Option<&[u8]>,
     ) -> Result<(Vec<u8>, Option<String>), CertError> {
-        let (status, body, fresh) =
-            self.jws_post_send(account, nonce, url, payload).await?;
+        let (status, body, fresh) = self.jws_post_send(account, nonce, url, payload).await?;
 
         // badNonce → refresh nonce and retry once (no further recursion)
         if status == 400 {
@@ -498,8 +489,9 @@ impl AcmeClient {
                     } else {
                         self.fetch_nonce(new_nonce_url).await?
                     };
-                    let (status2, body2, fresh2) =
-                        self.jws_post_send(account, &retry_nonce, url, payload).await?;
+                    let (status2, body2, fresh2) = self
+                        .jws_post_send(account, &retry_nonce, url, payload)
+                        .await?;
                     return Self::check_jws_response(status2, body2, fresh2);
                 }
             }
@@ -603,7 +595,8 @@ impl AcmeClient {
                 details: format!("newAccount body: {e}"),
             })?;
 
-        let jws_body = account_state.build_jws(&nonce, &directory.new_account, Some(&body_bytes))?;
+        let jws_body =
+            account_state.build_jws(&nonce, &directory.new_account, Some(&body_bytes))?;
 
         let resp = self
             .http
@@ -696,9 +689,8 @@ impl AcmeClient {
             .map_err(|e| CertError::GenerationFailed(format!("order body: {e}")))?
             .to_vec();
 
-        let order: AcmeOrder = serde_json::from_slice(&order_bytes).map_err(|e| {
-            CertError::GenerationFailed(format!("order parse: {e}"))
-        })?;
+        let order: AcmeOrder = serde_json::from_slice(&order_bytes)
+            .map_err(|e| CertError::GenerationFailed(format!("order parse: {e}")))?;
         info!("ACME order created: status={}", order.status);
 
         let finalize_url = order.finalize.clone();
@@ -715,10 +707,8 @@ impl AcmeClient {
                 nonce = n;
             }
 
-            let authz: AcmeAuthorization =
-                serde_json::from_slice(&authz_bytes).map_err(|e| {
-                    CertError::GenerationFailed(format!("authz parse: {e}"))
-                })?;
+            let authz: AcmeAuthorization = serde_json::from_slice(&authz_bytes)
+                .map_err(|e| CertError::GenerationFailed(format!("authz parse: {e}")))?;
 
             if authz.status == "valid" {
                 debug!("Authorization already valid for {}", authz.identifier.value);
@@ -786,9 +776,8 @@ impl AcmeClient {
         }
 
         // ── Finalize order: generate key + CSR ───────────────────────────────
-        let key = oxitls_rcgen::OxiEcdsaP256Key::generate().map_err(|e| {
-            CertError::GenerationFailed(format!("Key pair generation failed: {e}"))
-        })?;
+        let key = oxitls_rcgen::OxiEcdsaP256Key::generate()
+            .map_err(|e| CertError::GenerationFailed(format!("Key pair generation failed: {e}")))?;
         let key_pkcs8_der = key.pkcs8_der().to_vec();
 
         let mut params = rcgen::CertificateParams::new(domains.clone()).map_err(|e| {
@@ -828,12 +817,7 @@ impl AcmeClient {
         // ── Poll order until valid ────────────────────────────────────────────
         info!("Order ready for finalization, polling...");
         let cert_url = self
-            .poll_order_valid(
-                account,
-                &mut nonce,
-                &directory.new_nonce,
-                &order_url,
-            )
+            .poll_order_valid(account, &mut nonce, &directory.new_nonce, &order_url)
             .await?;
 
         // ── Fetch certificate chain (POST-as-GET) ─────────────────────────────
@@ -844,11 +828,10 @@ impl AcmeClient {
             .post_as_get(account, &nonce, &directory.new_nonce, &cert_url)
             .await?;
 
-        let cert_chain_pem = String::from_utf8(cert_pem_bytes).map_err(|e| {
-            CertError::EncodingError {
+        let cert_chain_pem =
+            String::from_utf8(cert_pem_bytes).map_err(|e| CertError::EncodingError {
                 details: format!("cert PEM UTF-8: {e}"),
-            }
-        })?;
+            })?;
 
         // Parse certificate chain
         let mut cert_reader = std::io::BufReader::new(cert_chain_pem.as_bytes());
@@ -951,9 +934,8 @@ impl AcmeClient {
                 nonce.clear();
             }
 
-            let authz: AcmeAuthorization = serde_json::from_slice(&bytes).map_err(|e| {
-                CertError::GenerationFailed(format!("authz poll parse: {e}"))
-            })?;
+            let authz: AcmeAuthorization = serde_json::from_slice(&bytes)
+                .map_err(|e| CertError::GenerationFailed(format!("authz poll parse: {e}")))?;
 
             match authz.status.as_str() {
                 "valid" => {
@@ -1009,14 +991,15 @@ impl AcmeClient {
                 nonce.clear();
             }
 
-            let order: AcmeOrder = serde_json::from_slice(&bytes).map_err(|e| {
-                CertError::GenerationFailed(format!("order poll parse: {e}"))
-            })?;
+            let order: AcmeOrder = serde_json::from_slice(&bytes)
+                .map_err(|e| CertError::GenerationFailed(format!("order poll parse: {e}")))?;
 
             match order.status.as_str() {
                 "valid" => {
                     let cert_url = order.certificate.ok_or_else(|| {
-                        CertError::GenerationFailed("Order valid but no certificate URL".to_string())
+                        CertError::GenerationFailed(
+                            "Order valid but no certificate URL".to_string(),
+                        )
                     })?;
                     info!("Order valid, certificate URL: {}", cert_url);
                     return Ok(cert_url);
@@ -1113,10 +1096,9 @@ mod tests {
 
     /// Fixed 32-byte P-256 scalar for KATs (non-zero, valid curve point)
     const KAT_SCALAR: [u8; 32] = [
-        0x51, 0x8b, 0x4e, 0xec, 0x49, 0xb1, 0xa4, 0xdc,
-        0x01, 0x89, 0x64, 0x98, 0x53, 0x08, 0x3e, 0xf3,
-        0x21, 0x42, 0x7e, 0x95, 0x82, 0x03, 0xe9, 0x0f,
-        0xb1, 0x73, 0xa9, 0x8d, 0x0c, 0x1d, 0x5b, 0x41,
+        0x51, 0x8b, 0x4e, 0xec, 0x49, 0xb1, 0xa4, 0xdc, 0x01, 0x89, 0x64, 0x98, 0x53, 0x08, 0x3e,
+        0xf3, 0x21, 0x42, 0x7e, 0x95, 0x82, 0x03, 0xe9, 0x0f, 0xb1, 0x73, 0xa9, 0x8d, 0x0c, 0x1d,
+        0x5b, 0x41,
     ];
 
     fn kat_state() -> AccountState {
@@ -1266,11 +1248,7 @@ mod tests {
 
         // Signature must verify with the corresponding verifying key
         let sk = p256::SecretKey::from_slice(&KAT_SCALAR).expect("scalar");
-        let vk_bytes = sk
-            .public_key()
-            .to_encoded_point(true)
-            .as_bytes()
-            .to_vec();
+        let vk_bytes = sk.public_key().to_encoded_point(true).as_bytes().to_vec();
         let verifier = EcdsaP256Verifier::from_sec1_bytes(&vk_bytes).expect("verifier");
 
         let signing_input = format!("{}.{}", protected_b64, payload_b64);
@@ -1298,9 +1276,7 @@ mod tests {
         let url = "https://acme.example.com/resource";
 
         // POST-as-GET: payload field is empty string ""
-        let jws_post_as_get = state
-            .build_jws(nonce, url, None)
-            .expect("POST-as-GET JWS");
+        let jws_post_as_get = state.build_jws(nonce, url, None).expect("POST-as-GET JWS");
         let parsed: Value = serde_json::from_slice(&jws_post_as_get).expect("parse");
         assert_eq!(
             parsed["payload"].as_str().expect("payload"),
@@ -1318,9 +1294,7 @@ mod tests {
             !payload_b64.is_empty(),
             "challenge-ready must have non-empty payload (b64url of '{{}}')"
         );
-        let decoded = URL_SAFE_NO_PAD
-            .decode(payload_b64)
-            .expect("decode payload");
+        let decoded = URL_SAFE_NO_PAD.decode(payload_b64).expect("decode payload");
         assert_eq!(decoded, b"{}", "challenge-ready payload must be '{{}}'");
     }
 
@@ -1340,8 +1314,7 @@ mod tests {
         let protected: Value = serde_json::from_slice(&protected_bytes).expect("parse protected");
 
         assert_eq!(
-            protected["kid"],
-            "https://acme.example.com/acct/12345",
+            protected["kid"], "https://acme.example.com/acct/12345",
             "registered account must have kid"
         );
         assert!(
@@ -1398,16 +1371,19 @@ mod tests {
         // Pre-mint a test certificate PEM using oxitls-rcgen
         let ck = oxitls_rcgen::generate_self_signed_p256(&["mock.example.com"])
             .expect("self-signed cert");
-        let cert_pem =
-            format!("-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----\n",
-                base64::engine::general_purpose::STANDARD.encode(&ck.cert_der));
+        let cert_pem = format!(
+            "-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----\n",
+            base64::engine::general_purpose::STANDARD.encode(&ck.cert_der)
+        );
 
         let cert_pem = Arc::new(cert_pem);
 
         let handle = tokio::spawn(async move {
             // Accept and serve a handful of connections for the test
             for _ in 0..20u32 {
-                let Ok((mut stream, _)) = listener.accept().await else { break };
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    break;
+                };
                 let cert_pem2 = Arc::clone(&cert_pem);
                 tokio::spawn(async move {
                     let mut buf = vec![0u8; 8192];
@@ -1487,9 +1463,7 @@ mod tests {
                             });
                             (200, serde_json::to_string(&body).unwrap())
                         }
-                        Some("/cert/1") => {
-                            (200, cert_pem2.as_ref().clone())
-                        }
+                        Some("/cert/1") => (200, cert_pem2.as_ref().clone()),
                         _ => (404, "Not Found".to_string()),
                     };
 
@@ -1537,12 +1511,10 @@ mod tests {
             .with_challenge_type(AcmeChallengeType::Http01);
 
         // Build a plain HTTP client for the mock server
-        let http = Client::builder()
-            .build_https()
-            .unwrap_or_else(|_| {
-                // If TLS build fails (shouldn't in test env), panic with info
-                panic!("HttpsClient build failed — check oxitls/rustls TLS stack");
-            });
+        let http = Client::builder().build_https().unwrap_or_else(|_| {
+            // If TLS build fails (shouldn't in test env), panic with info
+            panic!("HttpsClient build failed — check oxitls/rustls TLS stack");
+        });
 
         let validator = Arc::new(MockValidator::default());
         let client = AcmeClient::new_with_http(config, http)

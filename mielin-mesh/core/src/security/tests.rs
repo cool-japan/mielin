@@ -817,7 +817,12 @@ fn x25519_dh_and_hkdf_roundtrip() {
         )
         .expect("alice hkdf");
     HkdfSha256
-        .derive(&bob_shared, b"mielin-mesh-test", b"session-key", &mut bob_key)
+        .derive(
+            &bob_shared,
+            b"mielin-mesh-test",
+            b"session-key",
+            &mut bob_key,
+        )
         .expect("bob hkdf");
     assert_eq!(alice_key, bob_key, "HKDF-derived keys must match");
 }

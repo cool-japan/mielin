@@ -59,7 +59,9 @@ impl QuicTransport {
         let server_cfg = Self::build_server_config()?;
         let server = ServerEndpoint::bind(bind_addr, server_cfg, mesh_transport_config())
             .await
-            .map_err(|e| WireError::TransportError(format!("Failed to create server endpoint: {e}")))?;
+            .map_err(|e| {
+                WireError::TransportError(format!("Failed to create server endpoint: {e}"))
+            })?;
 
         Ok(Self {
             server: Some(server),
@@ -83,7 +85,9 @@ impl QuicTransport {
         let server_cfg = Self::build_server_config_from_cert(&cert)?;
         let server = ServerEndpoint::bind(bind_addr, server_cfg, mesh_transport_config())
             .await
-            .map_err(|e| WireError::TransportError(format!("Failed to create server endpoint: {e}")))?;
+            .map_err(|e| {
+                WireError::TransportError(format!("Failed to create server endpoint: {e}"))
+            })?;
 
         Ok(Self {
             server: Some(server),
@@ -104,7 +108,9 @@ impl QuicTransport {
             .expect("static IPv4 wildcard addr must parse");
         let client = ClientEndpoint::bind(wildcard, client_cfg, mesh_transport_config())
             .await
-            .map_err(|e| WireError::TransportError(format!("Failed to create client endpoint: {e}")))?;
+            .map_err(|e| {
+                WireError::TransportError(format!("Failed to create client endpoint: {e}"))
+            })?;
 
         Ok(Self {
             server: None,
@@ -131,13 +137,11 @@ impl QuicTransport {
 
         let endpoint = self.client_endpoint_or_err()?;
 
-        let oxi_conn = tokio::time::timeout(
-            CONNECTION_TIMEOUT,
-            endpoint.connect(addr, "localhost"),
-        )
-        .await
-        .map_err(|_| WireError::ConnectionFailed("Connection timeout".to_string()))?
-        .map_err(|e| WireError::ConnectionFailed(format!("Connection failed: {e}")))?;
+        let oxi_conn =
+            tokio::time::timeout(CONNECTION_TIMEOUT, endpoint.connect(addr, "localhost"))
+                .await
+                .map_err(|_| WireError::ConnectionFailed("Connection timeout".to_string()))?
+                .map_err(|e| WireError::ConnectionFailed(format!("Connection failed: {e}")))?;
 
         let remote_addr = oxi_conn.peer_addr().unwrap_or(addr);
         let driven = Arc::new(oxi_conn.into_driven());
@@ -248,7 +252,9 @@ impl QuicTransport {
                 .local_addr()
                 .map_err(|e| WireError::TransportError(format!("Failed to get local addr: {e}")));
         }
-        Err(WireError::TransportError("No endpoint available".to_string()))
+        Err(WireError::TransportError(
+            "No endpoint available".to_string(),
+        ))
     }
 
     // -----------------------------------------------------------------------
@@ -259,9 +265,9 @@ impl QuicTransport {
         // Prefer an explicit client endpoint; for server transports create one
         // on demand is not possible without mutability — callers that need to
         // initiate outgoing connections should use `new_client()`.
-        self.client
-            .as_ref()
-            .ok_or_else(|| WireError::TransportError("No client endpoint (use new_client())".to_string()))
+        self.client.as_ref().ok_or_else(|| {
+            WireError::TransportError("No client endpoint (use new_client())".to_string())
+        })
     }
 
     /// Build a server rustls config with a fresh self-signed certificate.
@@ -279,14 +285,18 @@ impl QuicTransport {
             .map_err(|e| WireError::TransportError(format!("Protocol version error: {e}")))?
             .with_no_client_auth()
             .with_single_cert(cert_chain, priv_key)
-            .map_err(|e| WireError::TransportError(format!("Failed to create server config: {e}")))?;
+            .map_err(|e| {
+                WireError::TransportError(format!("Failed to create server config: {e}"))
+            })?;
 
         server_cfg.alpn_protocols = vec![b"h3".to_vec()];
         Ok(Arc::new(server_cfg))
     }
 
     /// Build a server rustls config from a managed certificate.
-    fn build_server_config_from_cert(cert: &Certificate) -> Result<Arc<rustls::ServerConfig>, WireError> {
+    fn build_server_config_from_cert(
+        cert: &Certificate,
+    ) -> Result<Arc<rustls::ServerConfig>, WireError> {
         let cert_chain = cert.cert_chain.clone();
         let priv_key = cert.private_key.clone_key();
         let provider = quic_provider();
@@ -296,7 +306,9 @@ impl QuicTransport {
             .map_err(|e| WireError::TransportError(format!("Protocol version error: {e}")))?
             .with_no_client_auth()
             .with_single_cert(cert_chain, priv_key)
-            .map_err(|e| WireError::TransportError(format!("Failed to create server config: {e}")))?;
+            .map_err(|e| {
+                WireError::TransportError(format!("Failed to create server config: {e}"))
+            })?;
 
         server_cfg.alpn_protocols = vec![b"h3".to_vec()];
         Ok(Arc::new(server_cfg))

@@ -304,7 +304,6 @@ impl CertStorage {
 mod tests {
     use super::*;
 
-
     #[tokio::test]
     async fn test_memory_storage() {
         let storage = CertStorage::memory();

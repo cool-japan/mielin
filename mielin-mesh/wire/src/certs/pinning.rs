@@ -563,7 +563,6 @@ mod tests {
     use super::*;
     use crate::certs::Certificate;
 
-
     #[test]
     fn test_pin_creation() {
         let pin = Pin::new(

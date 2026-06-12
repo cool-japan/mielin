@@ -459,7 +459,9 @@ mod tests {
         let mut bad_sig = expected_sig.clone();
         bad_sig[0] ^= 0xff;
         assert!(
-            !identity.verify(&message, &bad_sig).expect("verify tampered"),
+            !identity
+                .verify(&message, &bad_sig)
+                .expect("verify tampered"),
             "tampered signature must not verify"
         );
     }

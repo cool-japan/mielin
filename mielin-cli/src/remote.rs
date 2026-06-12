@@ -459,9 +459,7 @@ impl RemoteManager {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
 
-            let mut req = client
-                .get(&url)
-                .context("Failed to create GET request")?;
+            let mut req = client.get(&url).context("Failed to create GET request")?;
 
             // Add authentication header based on method
             req = match &node.auth {

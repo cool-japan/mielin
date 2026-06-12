@@ -460,7 +460,6 @@ mod tests {
     use super::*;
     use crate::certs::Certificate;
 
-
     #[tokio::test]
     async fn test_ca_creation() {
         let config = CaConfig::new();

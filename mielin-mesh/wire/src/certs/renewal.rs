@@ -510,7 +510,6 @@ impl RenewalScheduler {
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_renewal_config_creation() {
         let config = RenewalConfig::new()

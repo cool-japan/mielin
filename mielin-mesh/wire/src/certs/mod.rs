@@ -415,7 +415,6 @@ impl Default for CertManager {
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_cert_generation() {
         let cert = Certificate::generate_self_signed("test-node".to_string(), 365);
