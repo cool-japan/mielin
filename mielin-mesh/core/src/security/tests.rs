@@ -637,3 +637,187 @@ fn test_security_error_variants() {
         let _ = format!("{}", err); // Should not panic
     }
 }
+
+// ========================================================================
+// Signature verification known-answer / round-trip tests
+//
+// These pin the migrated oxicrypto-sig verification paths used by
+// `IdentityVerifier::verify_signature` for each supported algorithm.
+// ========================================================================
+
+fn hex_to_vec(s: &str) -> Vec<u8> {
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("valid hex"))
+        .collect()
+}
+
+/// Ed25519 known-answer test (RFC 8032 §7.1 TEST 2) routed through the
+/// `IdentityVerifier::verify_signature` public path.
+///
+///   pk  = 3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c
+///   msg = 72
+///   sig = 92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da
+///         085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00
+#[tokio::test]
+async fn ed25519_rfc8032_verify_through_identity_verifier() {
+    let pk = hex_to_vec("3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c");
+    let message = hex_to_vec("72");
+    let good_sig = hex_to_vec(
+        "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da\
+         085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00",
+    );
+
+    let node_id = NodeId::new_v4();
+    let public_key = PublicKey::new(KeyAlgorithm::Ed25519, pk);
+    let identity = NodeIdentity::new(node_id, public_key);
+
+    let verifier = IdentityVerifier::new();
+    verifier.register(identity).await.expect("register");
+
+    let good = Signature::new(KeyAlgorithm::Ed25519, good_sig.clone());
+    verifier
+        .verify_signature(&node_id, &message, &good)
+        .await
+        .expect("RFC 8032 Ed25519 signature must verify");
+
+    // A tampered signature must be rejected.
+    let mut bad_bytes = good_sig;
+    bad_bytes[0] ^= 0xff;
+    let bad = Signature::new(KeyAlgorithm::Ed25519, bad_bytes);
+    assert!(
+        verifier
+            .verify_signature(&node_id, &message, &bad)
+            .await
+            .is_err(),
+        "tampered Ed25519 signature must be rejected"
+    );
+}
+
+/// ECDSA P-256 round-trip through the verifier: a SEC1 public key + ASN.1 DER
+/// signature produced by oxicrypto-sig's signer must verify, and a wrong
+/// message must be rejected. This exercises the exact `EcdsaP256Verify` path.
+#[tokio::test]
+async fn ecdsa_p256_verify_through_identity_verifier() {
+    use oxicrypto_sig::EcdsaP256Signer;
+
+    // Deterministic 32-byte scalar → P-256 signing key.
+    let scalar = [0x11u8; 32];
+    let signer = EcdsaP256Signer::from_bytes(&scalar).expect("p256 signer");
+    let pk_sec1 = signer.verifying_key_bytes(); // compressed SEC1 (33 bytes)
+
+    let message = b"mielin mesh ecdsa p256 identity test";
+    let sig_der = signer.sign(message).expect("p256 sign (DER)");
+
+    let node_id = NodeId::new_v4();
+    let public_key = PublicKey::new(KeyAlgorithm::EcdsaP256, pk_sec1);
+    let identity = NodeIdentity::new(node_id, public_key);
+
+    let verifier = IdentityVerifier::new();
+    verifier.register(identity).await.expect("register");
+
+    let good = Signature::new(KeyAlgorithm::EcdsaP256, sig_der);
+    verifier
+        .verify_signature(&node_id, message, &good)
+        .await
+        .expect("ECDSA P-256 signature must verify");
+
+    // Verifying a different message with a signature over that other message,
+    // checked against `message`, must fail.
+    let wrong = Signature::new(
+        KeyAlgorithm::EcdsaP256,
+        signer.sign(b"a different message").expect("sign other"),
+    );
+    assert!(
+        verifier
+            .verify_signature(&node_id, message, &wrong)
+            .await
+            .is_err(),
+        "ECDSA P-256 signature over a different message must be rejected"
+    );
+}
+
+/// ECDSA P-384 round-trip through the verifier (SEC1 pubkey + DER signature).
+#[tokio::test]
+async fn ecdsa_p384_verify_through_identity_verifier() {
+    use oxicrypto_sig::EcdsaP384Signer;
+
+    let scalar = [0x22u8; 48];
+    let signer = EcdsaP384Signer::from_bytes(&scalar).expect("p384 signer");
+    let pk_sec1 = signer.verifying_key_bytes(); // compressed SEC1 (49 bytes)
+
+    let message = b"mielin mesh ecdsa p384 identity test";
+    let sig_der = signer.sign(message).expect("p384 sign (DER)");
+
+    let node_id = NodeId::new_v4();
+    let public_key = PublicKey::new(KeyAlgorithm::EcdsaP384, pk_sec1);
+    let identity = NodeIdentity::new(node_id, public_key);
+
+    let verifier = IdentityVerifier::new();
+    verifier.register(identity).await.expect("register");
+
+    let good = Signature::new(KeyAlgorithm::EcdsaP384, sig_der);
+    verifier
+        .verify_signature(&node_id, message, &good)
+        .await
+        .expect("ECDSA P-384 signature must verify");
+
+    let mut tampered = good.bytes.clone();
+    tampered[0] ^= 0xff;
+    let bad = Signature::new(KeyAlgorithm::EcdsaP384, tampered);
+    assert!(
+        verifier
+            .verify_signature(&node_id, message, &bad)
+            .await
+            .is_err(),
+        "tampered ECDSA P-384 signature must be rejected"
+    );
+}
+
+/// X25519 two-party ECDH round-trip + HKDF-SHA-256 derivation.
+///
+/// Both sides independently generate ephemeral key pairs, perform X25519, and
+/// must arrive at the same shared secret; an HKDF-SHA-256 expansion over that
+/// secret must likewise agree on both sides.
+#[test]
+fn x25519_dh_and_hkdf_roundtrip() {
+    use oxicrypto_core::{Kdf, KeyAgreement};
+    use oxicrypto_kdf::HkdfSha256;
+    use oxicrypto_kex::{x25519_generate_keypair, X25519};
+
+    let mut rng = oxicrypto_rand::OxiRng::new().expect("OxiRng");
+    let (alice_sk, alice_pk) = x25519_generate_keypair(&mut rng).expect("alice keygen");
+    let (bob_sk, bob_pk) = x25519_generate_keypair(&mut rng).expect("bob keygen");
+
+    let mut alice_shared = [0u8; 32];
+    X25519
+        .agree(alice_sk.as_bytes(), &bob_pk, &mut alice_shared)
+        .expect("alice agree");
+
+    let mut bob_shared = [0u8; 32];
+    X25519
+        .agree(bob_sk.as_bytes(), &alice_pk, &mut bob_shared)
+        .expect("bob agree");
+
+    assert_eq!(
+        alice_shared, bob_shared,
+        "X25519: both parties must derive the same shared secret"
+    );
+    assert_ne!(alice_shared, [0u8; 32], "shared secret must be non-zero");
+
+    // HKDF-SHA-256 over the shared secret must agree on both sides.
+    let mut alice_key = [0u8; 32];
+    let mut bob_key = [0u8; 32];
+    HkdfSha256
+        .derive(
+            &alice_shared,
+            b"mielin-mesh-test",
+            b"session-key",
+            &mut alice_key,
+        )
+        .expect("alice hkdf");
+    HkdfSha256
+        .derive(&bob_shared, b"mielin-mesh-test", b"session-key", &mut bob_key)
+        .expect("bob hkdf");
+    assert_eq!(alice_key, bob_key, "HKDF-derived keys must match");
+}

@@ -3,7 +3,6 @@
 //! Handles TLS certificates for secure QUIC connections between mesh nodes.
 //! Supports self-signed certificates and Let's Encrypt (ACME) integration.
 
-use rcgen::generate_simple_self_signed;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -228,18 +227,16 @@ impl Certificate {
             subject_alt_names.push("127.0.0.1".to_string());
         }
 
-        // Generate the certificate
-        let cert_key = generate_simple_self_signed(subject_alt_names.clone())
+        // Generate the certificate using Pure-Rust oxitls-rcgen (ECDSA P-256).
+        let san_strs: Vec<&str> = subject_alt_names.iter().map(String::as_str).collect();
+        let ck = oxitls_rcgen::generate_self_signed_p256(&san_strs)
             .map_err(|e| CertError::GenerationFailed(e.to_string()))?;
 
-        // Serialize certificate and key
-        let cert_der = CertificateDer::from(cert_key.cert.der().to_vec());
-        let key_der =
-            PrivateKeyDer::try_from(cert_key.signing_key.serialize_der()).map_err(|e| {
-                CertError::KeyError {
-                    details: format!("Key serialization failed: {:?}", e),
-                }
-            })?;
+        // Wire cert_der / pkcs8_der into rustls types.
+        let cert_der = CertificateDer::from(ck.cert_der);
+        let key_der = PrivateKeyDer::try_from(ck.pkcs8_der).map_err(|e| CertError::KeyError {
+            details: format!("Key serialization failed: {:?}", e),
+        })?;
 
         let info = CertInfo {
             common_name,
@@ -417,19 +414,10 @@ impl Default for CertManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Once;
 
-    static INIT: Once = Once::new();
-
-    fn init_crypto() {
-        INIT.call_once(|| {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        });
-    }
 
     #[test]
     fn test_cert_generation() {
-        init_crypto();
         let cert = Certificate::generate_self_signed("test-node".to_string(), 365);
         assert!(cert.is_ok());
 
@@ -459,7 +447,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_cert_manager() {
-        init_crypto();
         let manager = CertManager::new();
 
         // Generate certificate
@@ -476,7 +463,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_cert_rotation() {
-        init_crypto();
         let manager = CertManager::new();
 
         // Generate initial certificate

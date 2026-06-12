@@ -32,9 +32,12 @@ hex.workspace = true
 rand.workspace = true
 
 # Cryptography & Security
-ring.workspace = true
-rustls.workspace = true
-rcgen.workspace = true
+oxicrypto-rand.workspace = true
+oxicrypto-aead.workspace = true
+oxicrypto-sig.workspace = true
+oxicrypto-kex.workspace = true
+oxicrypto-kdf.workspace = true
+oxicrypto-core.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true

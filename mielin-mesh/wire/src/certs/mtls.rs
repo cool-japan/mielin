@@ -215,18 +215,9 @@ impl ClientCertVerifier for MtlsClientVerifier {
     }
 
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
-        vec![
-            SignatureScheme::RSA_PKCS1_SHA256,
-            SignatureScheme::RSA_PKCS1_SHA384,
-            SignatureScheme::RSA_PKCS1_SHA512,
-            SignatureScheme::ECDSA_NISTP256_SHA256,
-            SignatureScheme::ECDSA_NISTP384_SHA384,
-            SignatureScheme::ECDSA_NISTP521_SHA512,
-            SignatureScheme::RSA_PSS_SHA256,
-            SignatureScheme::RSA_PSS_SHA384,
-            SignatureScheme::RSA_PSS_SHA512,
-            SignatureScheme::ED25519,
-        ]
+        oxiquic_crypto::quic_crypto_provider()
+            .signature_verification_algorithms
+            .supported_schemes()
     }
 }
 
@@ -303,18 +294,9 @@ impl ServerCertVerifier for MtlsServerVerifier {
     }
 
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
-        vec![
-            SignatureScheme::RSA_PKCS1_SHA256,
-            SignatureScheme::RSA_PKCS1_SHA384,
-            SignatureScheme::RSA_PKCS1_SHA512,
-            SignatureScheme::ECDSA_NISTP256_SHA256,
-            SignatureScheme::ECDSA_NISTP384_SHA384,
-            SignatureScheme::ECDSA_NISTP521_SHA512,
-            SignatureScheme::RSA_PSS_SHA256,
-            SignatureScheme::RSA_PSS_SHA384,
-            SignatureScheme::RSA_PSS_SHA512,
-            SignatureScheme::ED25519,
-        ]
+        oxiquic_crypto::quic_crypto_provider()
+            .signature_verification_algorithms
+            .supported_schemes()
     }
 }
 
@@ -348,7 +330,12 @@ impl MtlsContext {
         let cert_chain = self.certificate.cert_chain.clone();
         let private_key = self.certificate.private_key.clone_key();
 
-        let mut config = ServerConfig::builder()
+        let provider = std::sync::Arc::new(oxiquic_crypto::quic_crypto_provider());
+        let mut config = ServerConfig::builder_with_provider(provider.clone())
+            .with_safe_default_protocol_versions()
+            .map_err(|e| CertError::TlsConfigError {
+                details: format!("Protocol version error: {}", e),
+            })?
             .with_no_client_auth()
             .with_single_cert(cert_chain, private_key)
             .map_err(|e| CertError::TlsConfigError {
@@ -364,7 +351,11 @@ impl MtlsContext {
                 self.pin_store.clone(),
             ));
 
-            config = ServerConfig::builder()
+            config = ServerConfig::builder_with_provider(provider)
+                .with_safe_default_protocol_versions()
+                .map_err(|e| CertError::TlsConfigError {
+                    details: format!("Protocol version error: {}", e),
+                })?
                 .with_client_cert_verifier(client_verifier)
                 .with_single_cert(
                     self.certificate.cert_chain.clone(),
@@ -392,7 +383,12 @@ impl MtlsContext {
             self.pin_store.clone(),
         ));
 
-        let mut config = ClientConfig::builder()
+        let provider = std::sync::Arc::new(oxiquic_crypto::quic_crypto_provider());
+        let mut config = ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map_err(|e| CertError::TlsConfigError {
+                details: format!("Protocol version error: {}", e),
+            })?
             .dangerous()
             .with_custom_certificate_verifier(server_verifier)
             .with_client_auth_cert(cert_chain, private_key)
@@ -419,15 +415,6 @@ impl MtlsContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Once;
-
-    static INIT: Once = Once::new();
-
-    fn init_crypto() {
-        INIT.call_once(|| {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        });
-    }
 
     #[test]
     fn test_mtls_config_creation() {
@@ -478,7 +465,6 @@ mod tests {
 
     #[test]
     fn test_mtls_server_config_creation() {
-        init_crypto();
         let config = MtlsConfig::development();
         let cert = Certificate::generate_self_signed("test-node".to_string(), 365).unwrap();
 
@@ -490,7 +476,6 @@ mod tests {
 
     #[test]
     fn test_mtls_client_config_creation() {
-        init_crypto();
         let config = MtlsConfig::development();
         let cert = Certificate::generate_self_signed("test-node".to_string(), 365).unwrap();
 
@@ -502,7 +487,6 @@ mod tests {
 
     #[test]
     fn test_mtls_with_client_cert_required() {
-        init_crypto();
         let config = MtlsConfig::new()
             .require_client_cert(true)
             .allow_self_signed();

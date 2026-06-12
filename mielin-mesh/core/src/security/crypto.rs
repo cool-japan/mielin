@@ -13,11 +13,8 @@ pub struct Nonce(pub [u8; 12]);
 impl Nonce {
     /// Generate random nonce
     pub fn generate() -> Self {
-        use ring::rand::{SecureRandom, SystemRandom};
-        let rng = SystemRandom::new();
-        let mut bytes = [0u8; 12];
-        rng.fill(&mut bytes)
-            .expect("Failed to generate random nonce");
+        let bytes: [u8; 12] =
+            oxicrypto_rand::random_nonce().expect("Failed to generate random nonce");
         Self(bytes)
     }
 
@@ -46,11 +43,8 @@ pub struct GossipKey {
 impl GossipKey {
     /// Generate new random key
     pub fn generate() -> SecurityResult<Self> {
-        use ring::rand::{SecureRandom, SystemRandom};
-        let rng = SystemRandom::new();
-        let mut bytes = [0u8; 32];
-        rng.fill(&mut bytes)
-            .map_err(|_| SecurityError::KeyGenerationFailed {
+        let bytes: [u8; 32] =
+            oxicrypto_rand::random_nonce().map_err(|_| SecurityError::KeyGenerationFailed {
                 details: "Failed to generate random key".to_string(),
             })?;
 
@@ -171,26 +165,16 @@ impl GossipEncryption {
         sender: NodeId,
         plaintext: &[u8],
     ) -> SecurityResult<EncryptedMessage> {
-        use ring::aead::{Aad, LessSafeKey, UnboundKey, AES_256_GCM};
+        use oxicrypto_aead::Aes256Gcm;
+        use oxicrypto_core::Aead;
 
         let key = self.current_key.read().await;
         let nonce = Nonce::generate();
 
-        // Create the key and encrypt
-        let unbound_key = UnboundKey::new(&AES_256_GCM, &key.bytes).map_err(|_| {
-            SecurityError::EncryptionFailed {
-                details: "Failed to create encryption key".to_string(),
-            }
-        })?;
-        let sealing_key = LessSafeKey::new(unbound_key);
-
-        // Create nonce
-        let aead_nonce = ring::aead::Nonce::assume_unique_for_key(*nonce.as_bytes());
-
-        // Encrypt in place
-        let mut ciphertext = plaintext.to_vec();
-        sealing_key
-            .seal_in_place_append_tag(aead_nonce, Aad::empty(), &mut ciphertext)
+        // Encrypt with AES-256-GCM (empty AAD); the 16-byte authentication tag
+        // is appended to the ciphertext.
+        let ciphertext = Aes256Gcm
+            .seal_to_vec(&key.bytes, nonce.as_bytes(), &[], plaintext)
             .map_err(|_| SecurityError::EncryptionFailed {
                 details: "Encryption failed".to_string(),
             })?;
@@ -211,7 +195,8 @@ impl GossipEncryption {
 
     /// Decrypt a message
     pub async fn decrypt(&self, message: &EncryptedMessage) -> SecurityResult<Vec<u8>> {
-        use ring::aead::{Aad, LessSafeKey, UnboundKey, AES_256_GCM};
+        use oxicrypto_aead::Aes256Gcm;
+        use oxicrypto_core::Aead;
 
         // Check message age
         let now = SystemTime::now()
@@ -248,26 +233,15 @@ impl GossipEncryption {
             }
         };
 
-        // Create the key and decrypt
-        let unbound_key = UnboundKey::new(&AES_256_GCM, &key_bytes).map_err(|_| {
-            SecurityError::DecryptionFailed {
-                details: "Failed to create decryption key".to_string(),
-            }
-        })?;
-        let opening_key = LessSafeKey::new(unbound_key);
-
-        // Create nonce
-        let nonce = ring::aead::Nonce::assume_unique_for_key(message.nonce);
-
-        // Decrypt in place
-        let mut plaintext = message.ciphertext.clone();
-        let decrypted = opening_key
-            .open_in_place(nonce, Aad::empty(), &mut plaintext)
+        // Decrypt and authenticate with AES-256-GCM (empty AAD). The trailing
+        // 16-byte tag is verified and stripped, returning the recovered plaintext.
+        let plaintext = Aes256Gcm
+            .open_to_vec(&key_bytes, &message.nonce, &[], &message.ciphertext)
             .map_err(|_| SecurityError::DecryptionFailed {
                 details: "Decryption failed - message may be corrupted or tampered".to_string(),
             })?;
 
-        Ok(decrypted.to_vec())
+        Ok(plaintext)
     }
 
     /// Rotate the encryption key

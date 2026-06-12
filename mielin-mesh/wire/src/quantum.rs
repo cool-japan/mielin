@@ -8,7 +8,8 @@
 //! - [`MlKemVariant::MlKem768`]  — 192-bit post-quantum security (recommended)
 //! - [`MlKemVariant::MlKem1024`] — 256-bit post-quantum security
 
-use ring::{agreement, hkdf};
+use oxicrypto_core::KeyAgreement;
+use oxicrypto_kex::{x25519_generate_keypair, X25519};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -17,18 +18,6 @@ use ml_kem::{
     EncapsulationKey1024, EncapsulationKey512, EncapsulationKey768, KeyExport, KeyInit, MlKem1024,
     MlKem512, MlKem768, Seed,
 };
-
-// ---------------------------------------------------------------------------
-// HKDF key-type helper — provides the 32-byte length needed for `Prk::expand`
-// ---------------------------------------------------------------------------
-
-/// A 32-byte HKDF output length marker.
-struct HkdfKeyLen;
-impl hkdf::KeyType for HkdfKeyLen {
-    fn len(&self) -> usize {
-        32
-    }
-}
 
 // ---------------------------------------------------------------------------
 // MlKemVariant
@@ -192,12 +181,14 @@ pub struct MlKemKeyPair {
     inner_dk: DecapsulationKeyInner,
 }
 
-/// Fill a byte slice from system entropy using the `ring` secure RNG.
+/// Fill a byte slice from system entropy using the OxiCrypto secure RNG.
 fn fill_system_random(buf: &mut [u8]) -> Result<(), QuantumCryptoError> {
-    use ring::rand::SecureRandom;
-    let rng = ring::rand::SystemRandom::new();
+    use oxicrypto_core::Rng;
+    let mut rng = oxicrypto_rand::OxiRng::new().map_err(|_| {
+        QuantumCryptoError::RandomnessFailure("OxiRng initialisation failed".to_string())
+    })?;
     rng.fill(buf)
-        .map_err(|_| QuantumCryptoError::RandomnessFailure("ring SystemRandom failed".to_string()))
+        .map_err(|_| QuantumCryptoError::RandomnessFailure("OxiRng fill failed".to_string()))
 }
 
 impl MlKemKeyPair {
@@ -458,7 +449,8 @@ impl MlKemEncapsulation {
 /// that security holds as long as *at least one* of the two primitives is secure,
 /// following the hybrid key exchange framework of draft-ietf-tls-hybrid-design.
 pub struct HybridKexState {
-    x25519_private: agreement::EphemeralPrivateKey,
+    /// X25519 ephemeral private scalar (32-byte static secret form).
+    x25519_private: [u8; 32],
     x25519_public: [u8; 32],
     mlkem_keypair: MlKemKeyPair,
     variant: MlKemVariant,
@@ -476,25 +468,18 @@ impl std::fmt::Debug for HybridKexState {
 impl HybridKexState {
     /// Initialise a new hybrid key exchange state with fresh ephemeral keys.
     pub fn new(variant: MlKemVariant) -> Result<Self, QuantumCryptoError> {
-        let sys_rng = ring::rand::SystemRandom::new();
-
-        // Generate X25519 ephemeral private key
-        let x25519_private = agreement::EphemeralPrivateKey::generate(&agreement::X25519, &sys_rng)
-            .map_err(|e| QuantumCryptoError::X25519Failure(e.to_string()))?;
-
-        let x25519_public_key = x25519_private
-            .compute_public_key()
-            .map_err(|e| QuantumCryptoError::X25519Failure(e.to_string()))?;
-
-        let x25519_public: [u8; 32] = x25519_public_key.as_ref().try_into().map_err(|_| {
-            QuantumCryptoError::X25519Failure("unexpected X25519 public key length".to_string())
+        // Generate X25519 ephemeral key pair via the OxiCrypto CSPRNG.
+        let mut rng = oxicrypto_rand::OxiRng::new().map_err(|_| {
+            QuantumCryptoError::X25519Failure("OxiRng initialisation failed".to_string())
         })?;
+        let (x25519_secret, x25519_public) = x25519_generate_keypair(&mut rng)
+            .map_err(|_| QuantumCryptoError::X25519Failure("X25519 keygen failed".to_string()))?;
 
         // Generate ML-KEM key pair
         let mlkem_keypair = MlKemKeyPair::generate(variant, None)?;
 
         Ok(Self {
-            x25519_private,
+            x25519_private: *x25519_secret.as_bytes(),
             x25519_public,
             mlkem_keypair,
             variant,
@@ -520,44 +505,28 @@ impl HybridKexState {
             )));
         }
 
-        // X25519: agree on shared secret using client's classical share
-        let client_classical =
-            agreement::UnparsedPublicKey::new(&agreement::X25519, &client_share.classical_share);
-
-        // The ring API consumes EphemeralPrivateKey, but we need to keep state,
-        // so we need a new ephemeral key for the server side.
-        let sys_rng = ring::rand::SystemRandom::new();
-        let server_x25519_private =
-            agreement::EphemeralPrivateKey::generate(&agreement::X25519, &sys_rng)
-                .map_err(|e| QuantumCryptoError::X25519Failure(e.to_string()))?;
-
-        let server_x25519_public = server_x25519_private
-            .compute_public_key()
-            .map_err(|e| QuantumCryptoError::X25519Failure(e.to_string()))?;
-
-        let server_x25519_public_bytes: [u8; 32] =
-            server_x25519_public.as_ref().try_into().map_err(|_| {
-                QuantumCryptoError::X25519Failure("unexpected X25519 public key length".to_string())
+        // X25519: agree on shared secret using client's classical share.
+        // Generate a fresh server-side ephemeral key pair (the server keeps no
+        // long-lived X25519 secret in this state object).
+        let mut rng = oxicrypto_rand::OxiRng::new().map_err(|_| {
+            QuantumCryptoError::X25519Failure("OxiRng initialisation failed".to_string())
+        })?;
+        let (server_x25519_secret, server_x25519_public_bytes) = x25519_generate_keypair(&mut rng)
+            .map_err(|_| {
+                QuantumCryptoError::X25519Failure("server X25519 keygen failed".to_string())
             })?;
 
         let x25519_classical = {
             let mut classical_buf = [0u8; 32];
-            agreement::agree_ephemeral(
-                server_x25519_private,
-                &client_classical,
-                |key_material| -> Result<(), QuantumCryptoError> {
-                    let km: &[u8; 32] = key_material.try_into().map_err(|_| {
-                        QuantumCryptoError::X25519Failure(
-                            "X25519 key material wrong length".to_string(),
-                        )
-                    })?;
-                    classical_buf.copy_from_slice(km);
-                    Ok(())
-                },
-            )
-            .map_err(|_| {
-                QuantumCryptoError::X25519Failure("X25519 agreement failed".to_string())
-            })??;
+            X25519
+                .agree(
+                    server_x25519_secret.as_bytes(),
+                    &client_share.classical_share,
+                    &mut classical_buf,
+                )
+                .map_err(|_| {
+                    QuantumCryptoError::X25519Failure("X25519 agreement failed".to_string())
+                })?;
             classical_buf
         };
 
@@ -598,28 +567,18 @@ impl HybridKexState {
         server_share: &PqKeyShareExtension,
         server_ciphertext: &[u8],
     ) -> Result<HybridSharedSecret, QuantumCryptoError> {
-        // X25519: agree with server's classical share (consumes self.x25519_private)
-        let server_classical =
-            agreement::UnparsedPublicKey::new(&agreement::X25519, &server_share.classical_share);
-
+        // X25519: agree with server's classical share using our ephemeral secret.
         let x25519_classical = {
             let mut classical_buf = [0u8; 32];
-            agreement::agree_ephemeral(
-                self.x25519_private,
-                &server_classical,
-                |key_material| -> Result<(), QuantumCryptoError> {
-                    let km: &[u8; 32] = key_material.try_into().map_err(|_| {
-                        QuantumCryptoError::X25519Failure(
-                            "X25519 key material wrong length".to_string(),
-                        )
-                    })?;
-                    classical_buf.copy_from_slice(km);
-                    Ok(())
-                },
-            )
-            .map_err(|_| {
-                QuantumCryptoError::X25519Failure("X25519 agreement failed".to_string())
-            })??;
+            X25519
+                .agree(
+                    &self.x25519_private,
+                    &server_share.classical_share,
+                    &mut classical_buf,
+                )
+                .map_err(|_| {
+                    QuantumCryptoError::X25519Failure("X25519 agreement failed".to_string())
+                })?;
             classical_buf
         };
 
@@ -805,16 +764,13 @@ fn build_hybrid_info(variant: MlKemVariant) -> Vec<u8> {
 ///   `HKDF-Extract(salt=classical, IKM=pq)` then `HKDF-Expand(info)`.
 pub fn hkdf_sha256_combine(classical: &[u8], pq: &[u8], info: &[u8]) -> [u8; 32] {
     // HKDF-Extract: salt = classical secret, IKM = pq secret
-    let salt = hkdf::Salt::new(hkdf::HKDF_SHA256, classical);
-    let prk = salt.extract(pq);
+    let prk = oxicrypto_kdf::hkdf_sha256_extract(classical, pq);
 
     // HKDF-Expand: info = domain-separation label
     let mut out = [0u8; 32];
-    if let Ok(okm) = prk.expand(&[info], HkdfKeyLen) {
-        // If fill fails we fall back to a zero array, which must never happen
-        // for valid inputs — the error path indicates an impossible length.
-        let _ = okm.fill(&mut out);
-    }
+    // If expand fails we fall back to a zero array, which must never happen
+    // for valid inputs — the error path indicates an impossible length.
+    let _ = oxicrypto_kdf::hkdf_sha256_expand(&prk, info, &mut out);
     out
 }
 

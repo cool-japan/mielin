@@ -192,9 +192,8 @@ impl CertificateAuthority {
 
         // Calculate fingerprint (SHA-256 of DER)
         let fingerprint = {
-            use ring::digest;
-            let hash = digest::digest(&digest::SHA256, cert.as_ref());
-            hex::encode(hash.as_ref())
+            let hash = oxicrypto_hash::Sha256.hash_fixed(cert.as_ref());
+            hex::encode(hash)
         };
 
         info!("Adding CA certificate: {} ({})", common_name, fingerprint);
@@ -460,15 +459,7 @@ impl Default for CertificateAuthority {
 mod tests {
     use super::*;
     use crate::certs::Certificate;
-    use std::sync::Once;
 
-    static INIT: Once = Once::new();
-
-    fn init_crypto() {
-        INIT.call_once(|| {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        });
-    }
 
     #[tokio::test]
     async fn test_ca_creation() {
@@ -481,7 +472,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_ca_cert() {
-        init_crypto();
         let ca = CertificateAuthority::new(CaConfig::new());
 
         // Generate a test certificate
@@ -495,7 +485,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_remove_ca_cert() {
-        init_crypto();
         let ca = CertificateAuthority::new(CaConfig::new());
 
         let cert = Certificate::generate_self_signed("Test CA".to_string(), 365).unwrap();
@@ -510,7 +499,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_ca_certs() {
-        init_crypto();
         let ca = CertificateAuthority::new(CaConfig::new());
 
         let cert = Certificate::generate_self_signed("Test CA".to_string(), 365).unwrap();

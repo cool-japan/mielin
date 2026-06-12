@@ -1,44 +1,75 @@
-//! QUIC transport implementation using Quinn
+//! QUIC transport implementation using oxiquic-transport
 //!
 //! Provides low-latency, multiplexed transport for MielinMesh communication.
+//! The crypto provider is oxiquic_crypto (pure-Rust, no ring/aws-lc).
 
 use crate::certs::{CertManager, Certificate};
 use crate::{Message, WireError};
-use quinn::{ClientConfig, Connection, Endpoint, ServerConfig, VarInt};
+use oxiquic_transport::{
+    ClientEndpoint, DrivenConnection, QuicConnection as OxiQuicConnection, ServerEndpoint,
+    TransportConfig,
+};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::RwLock;
 
-/// Maximum message size (16MB)
+/// Maximum message size (16 MiB).
+/// Inbound reads are capped with `.take(MAX_MESSAGE_SIZE as u64)` because
+/// `AsyncReadExt::read_to_end` is uncapped unlike quinn's `read_to_end(max)`.
 const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 
 /// Connection timeout duration
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(10);
 
+// ---------------------------------------------------------------------------
+// Build the shared TransportConfig once.
+// Keep-alive every 15 seconds: deliberate robustness improvement for NAT'd
+// mesh links where long-idle connections would otherwise be silently dropped
+// by intermediate NAT boxes.
+// ---------------------------------------------------------------------------
+fn mesh_transport_config() -> TransportConfig {
+    TransportConfig::default().keep_alive_interval(Some(Duration::from_secs(15)))
+}
+
+// ---------------------------------------------------------------------------
+// Build the shared CryptoProvider (oxiquic pure-Rust provider, no ring).
+// The same Arc<CryptoProvider> is reused for every TLS config in this file
+// to guarantee provider consistency on hot-rotated ServerConfigs.
+// ---------------------------------------------------------------------------
+fn quic_provider() -> Arc<rustls::crypto::CryptoProvider> {
+    Arc::new(oxiquic_crypto::quic_crypto_provider())
+}
+
 /// QUIC transport for MielinMesh
 pub struct QuicTransport {
-    endpoint: Endpoint,
+    /// Server endpoint — Some on the server side; None for client-only.
+    server: Option<ServerEndpoint>,
+    /// Client endpoint — always present (used for outgoing connections).
+    client: Option<ClientEndpoint>,
     connections: Arc<RwLock<ConnectionPool>>,
     cert_manager: Option<Arc<CertManager>>,
 }
 
 impl QuicTransport {
-    /// Create a new QUIC transport bound to the given address
+    /// Create a new QUIC transport bound to the given address (server + implicit client).
     pub async fn new(bind_addr: SocketAddr) -> Result<Self, WireError> {
-        let server_config = Self::configure_server()?;
-        let endpoint = Endpoint::server(server_config, bind_addr)
-            .map_err(|e| WireError::TransportError(format!("Failed to create endpoint: {}", e)))?;
+        let server_cfg = Self::build_server_config()?;
+        let server = ServerEndpoint::bind(bind_addr, server_cfg, mesh_transport_config())
+            .await
+            .map_err(|e| WireError::TransportError(format!("Failed to create server endpoint: {e}")))?;
 
         Ok(Self {
-            endpoint,
+            server: Some(server),
+            client: None,
             connections: Arc::new(RwLock::new(ConnectionPool::new())),
             cert_manager: None,
         })
     }
 
-    /// Create a new QUIC transport with managed certificates
+    /// Create a new QUIC transport with managed certificates.
     pub async fn new_with_certs(
         bind_addr: SocketAddr,
         node_id: &str,
@@ -47,49 +78,50 @@ impl QuicTransport {
         let cert = cert_manager
             .get_or_generate_cert(node_id)
             .await
-            .map_err(|e| WireError::TransportError(format!("Failed to get certificate: {}", e)))?;
+            .map_err(|e| WireError::TransportError(format!("Failed to get certificate: {e}")))?;
 
-        let server_config = Self::configure_server_with_cert(&cert)?;
-        let endpoint = Endpoint::server(server_config, bind_addr)
-            .map_err(|e| WireError::TransportError(format!("Failed to create endpoint: {}", e)))?;
+        let server_cfg = Self::build_server_config_from_cert(&cert)?;
+        let server = ServerEndpoint::bind(bind_addr, server_cfg, mesh_transport_config())
+            .await
+            .map_err(|e| WireError::TransportError(format!("Failed to create server endpoint: {e}")))?;
 
         Ok(Self {
-            endpoint,
+            server: Some(server),
+            client: None,
             connections: Arc::new(RwLock::new(ConnectionPool::new())),
             cert_manager: Some(cert_manager),
         })
     }
 
-    /// Create a client-only QUIC transport
+    /// Create a client-only QUIC transport (no server endpoint).
     pub async fn new_client() -> Result<Self, WireError> {
-        let client_config = Self::configure_client()?;
-
-        let mut endpoint = Endpoint::client(
-            "[::]:0"
-                .parse()
-                .expect("static IPv6 wildcard addr must parse"),
-        )
-        .map_err(|e| {
-            WireError::TransportError(format!("Failed to create client endpoint: {}", e))
-        })?;
-
-        endpoint.set_default_client_config(client_config);
+        let client_cfg = Self::build_client_config()?;
+        // Bind to IPv4 wildcard so the client socket can connect to IPv4
+        // server addresses (e.g. 127.0.0.1).  macOS does not implement
+        // dual-stack on loopback — an IPv6 socket cannot reach 127.0.0.1.
+        let wildcard: SocketAddr = "0.0.0.0:0"
+            .parse()
+            .expect("static IPv4 wildcard addr must parse");
+        let client = ClientEndpoint::bind(wildcard, client_cfg, mesh_transport_config())
+            .await
+            .map_err(|e| WireError::TransportError(format!("Failed to create client endpoint: {e}")))?;
 
         Ok(Self {
-            endpoint,
+            server: None,
+            client: Some(client),
             connections: Arc::new(RwLock::new(ConnectionPool::new())),
             cert_manager: None,
         })
     }
 
-    /// Get certificate manager (if available)
+    /// Get certificate manager (if available).
     pub fn cert_manager(&self) -> Option<&Arc<CertManager>> {
         self.cert_manager.as_ref()
     }
 
-    /// Connect to a remote peer
+    /// Connect to a remote peer.
     pub async fn connect(&self, addr: SocketAddr) -> Result<QuicConnection, WireError> {
-        // Check if we already have a connection
+        // Check if we already have a live pooled connection.
         {
             let mut pool = self.connections.write().await;
             if let Some(conn) = pool.get(&addr) {
@@ -97,56 +129,63 @@ impl QuicTransport {
             }
         }
 
-        // Create new connection
-        let connecting = self
-            .endpoint
-            .connect(addr, "localhost")
-            .map_err(|e| WireError::ConnectionFailed(format!("Connection failed: {}", e)))?;
+        let endpoint = self.client_endpoint_or_err()?;
 
-        let connection = tokio::time::timeout(CONNECTION_TIMEOUT, connecting)
-            .await
-            .map_err(|_| WireError::ConnectionFailed("Connection timeout".to_string()))?
-            .map_err(|e| WireError::ConnectionFailed(format!("Connection failed: {}", e)))?;
+        let oxi_conn = tokio::time::timeout(
+            CONNECTION_TIMEOUT,
+            endpoint.connect(addr, "localhost"),
+        )
+        .await
+        .map_err(|_| WireError::ConnectionFailed("Connection timeout".to_string()))?
+        .map_err(|e| WireError::ConnectionFailed(format!("Connection failed: {e}")))?;
 
+        let remote_addr = oxi_conn.peer_addr().unwrap_or(addr);
+        let driven = Arc::new(oxi_conn.into_driven());
         let quic_conn = QuicConnection {
-            connection: connection.clone(),
-            remote_addr: addr,
-        };
-
-        // Store in pool
-        let mut pool = self.connections.write().await;
-        pool.insert(addr, quic_conn.clone());
-
-        Ok(quic_conn)
-    }
-
-    /// Accept an incoming connection
-    pub async fn accept(&self) -> Result<QuicConnection, WireError> {
-        let connecting = self
-            .endpoint
-            .accept()
-            .await
-            .ok_or_else(|| WireError::TransportError("Endpoint closed".to_string()))?;
-
-        let connection = connecting
-            .await
-            .map_err(|e| WireError::ConnectionFailed(format!("Accept failed: {}", e)))?;
-
-        let remote_addr = connection.remote_address();
-
-        let quic_conn = QuicConnection {
-            connection: connection.clone(),
+            connection: driven,
             remote_addr,
         };
 
-        // Store in pool
-        let mut pool = self.connections.write().await;
-        pool.insert(remote_addr, quic_conn.clone());
+        {
+            let mut pool = self.connections.write().await;
+            pool.insert(addr, quic_conn.clone());
+        }
 
         Ok(quic_conn)
     }
 
-    /// Connect with exponential backoff retry
+    /// Accept an incoming connection (server side).
+    pub async fn accept(&self) -> Result<QuicConnection, WireError> {
+        let server = self
+            .server
+            .as_ref()
+            .ok_or_else(|| WireError::TransportError("No server endpoint".to_string()))?;
+
+        let oxi_conn: OxiQuicConnection = server
+            .accept()
+            .await
+            .map_err(|e| WireError::ConnectionFailed(format!("Accept failed: {e}")))?;
+
+        // Capture peer_addr before consuming the QuicConnection into DrivenConnection.
+        let remote_addr = oxi_conn
+            .peer_addr()
+            .ok_or_else(|| WireError::TransportError("Accept: no peer address".to_string()))?;
+
+        let driven = Arc::new(oxi_conn.into_driven());
+        let quic_conn = QuicConnection {
+            connection: driven,
+            remote_addr,
+        };
+
+        {
+            let mut pool = self.connections.write().await;
+            pool.insert(remote_addr, quic_conn.clone());
+        }
+
+        Ok(quic_conn)
+    }
+
+    /// Connect with exponential backoff retry.
     pub async fn connect_with_retry(
         &self,
         addr: SocketAddr,
@@ -171,111 +210,131 @@ impl QuicTransport {
         )))
     }
 
-    /// Get connection pool statistics
+    /// Get connection pool statistics.
     pub async fn pool_stats(&self) -> ConnectionPoolStats {
         let pool = self.connections.read().await;
         pool.stats.clone()
     }
 
-    /// Cleanup idle connections from the pool
+    /// Cleanup idle connections from the pool.
     pub async fn cleanup_pool(&self) {
         let mut pool = self.connections.write().await;
         pool.evict_idle();
     }
 
-    /// Close the transport
-    pub fn close(&self) {
-        self.endpoint.close(VarInt::from_u32(0), b"shutdown");
+    /// Close the transport.
+    ///
+    /// Note: oxiquic-transport has no endpoint-level `close()` / `wait_idle()`.
+    /// We close all pooled connections then drop them; the server and client
+    /// endpoint structs are dropped when this value is dropped, which aborts
+    /// any background demux tasks.
+    pub async fn close(&self) {
+        let mut pool = self.connections.write().await;
+        for (_, pooled) in pool.connections.drain() {
+            // Best-effort close — ignore errors (connection may already be gone).
+            let _ = pooled.conn.connection.close(0, b"shutdown").await;
+        }
     }
 
-    /// Get local address
+    /// Get local address.
     pub fn local_addr(&self) -> Result<SocketAddr, WireError> {
-        self.endpoint
-            .local_addr()
-            .map_err(|e| WireError::TransportError(format!("Failed to get local addr: {}", e)))
+        if let Some(ref server) = self.server {
+            return server
+                .local_addr()
+                .map_err(|e| WireError::TransportError(format!("Failed to get local addr: {e}")));
+        }
+        if let Some(ref client) = self.client {
+            return client
+                .local_addr()
+                .map_err(|e| WireError::TransportError(format!("Failed to get local addr: {e}")));
+        }
+        Err(WireError::TransportError("No endpoint available".to_string()))
     }
 
-    /// Configure server with self-signed certificate
-    fn configure_server() -> Result<ServerConfig, WireError> {
-        let cert_key = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
-            .map_err(|e| WireError::TransportError(format!("Failed to generate cert: {}", e)))?;
+    // -----------------------------------------------------------------------
+    // Private helpers
+    // -----------------------------------------------------------------------
 
-        let cert_der = cert_key.cert.der();
-        let priv_key = cert_key.signing_key.serialize_der();
+    fn client_endpoint_or_err(&self) -> Result<&ClientEndpoint, WireError> {
+        // Prefer an explicit client endpoint; for server transports create one
+        // on demand is not possible without mutability — callers that need to
+        // initiate outgoing connections should use `new_client()`.
+        self.client
+            .as_ref()
+            .ok_or_else(|| WireError::TransportError("No client endpoint (use new_client())".to_string()))
+    }
 
-        let priv_key = PrivateKeyDer::try_from(priv_key.to_vec())
+    /// Build a server rustls config with a fresh self-signed certificate.
+    fn build_server_config() -> Result<Arc<rustls::ServerConfig>, WireError> {
+        let ck = oxitls_rcgen::generate_self_signed_p256(&["localhost"])
+            .map_err(|e| WireError::TransportError(format!("Failed to generate cert: {e}")))?;
+
+        let priv_key = PrivateKeyDer::try_from(ck.pkcs8_der)
             .map_err(|_| WireError::TransportError("Failed to parse private key".to_string()))?;
-        let cert_chain = vec![cert_der.clone()];
+        let cert_chain = vec![CertificateDer::from(ck.cert_der)];
+        let provider = quic_provider();
 
-        let mut server_crypto = rustls::ServerConfig::builder()
+        let mut server_cfg = rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map_err(|e| WireError::TransportError(format!("Protocol version error: {e}")))?
             .with_no_client_auth()
             .with_single_cert(cert_chain, priv_key)
-            .map_err(|e| {
-                WireError::TransportError(format!("Failed to create server config: {}", e))
-            })?;
+            .map_err(|e| WireError::TransportError(format!("Failed to create server config: {e}")))?;
 
-        server_crypto.alpn_protocols = vec![b"h3".to_vec()];
-
-        let server_config = ServerConfig::with_crypto(Arc::new(
-            quinn::crypto::rustls::QuicServerConfig::try_from(server_crypto).map_err(|e| {
-                WireError::TransportError(format!("Failed to create QUIC config: {}", e))
-            })?,
-        ));
-
-        Ok(server_config)
+        server_cfg.alpn_protocols = vec![b"h3".to_vec()];
+        Ok(Arc::new(server_cfg))
     }
 
-    /// Configure server with a managed certificate
-    fn configure_server_with_cert(cert: &Certificate) -> Result<ServerConfig, WireError> {
+    /// Build a server rustls config from a managed certificate.
+    fn build_server_config_from_cert(cert: &Certificate) -> Result<Arc<rustls::ServerConfig>, WireError> {
         let cert_chain = cert.cert_chain.clone();
         let priv_key = cert.private_key.clone_key();
+        let provider = quic_provider();
 
-        let mut server_crypto = rustls::ServerConfig::builder()
+        let mut server_cfg = rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map_err(|e| WireError::TransportError(format!("Protocol version error: {e}")))?
             .with_no_client_auth()
             .with_single_cert(cert_chain, priv_key)
-            .map_err(|e| {
-                WireError::TransportError(format!("Failed to create server config: {}", e))
-            })?;
+            .map_err(|e| WireError::TransportError(format!("Failed to create server config: {e}")))?;
 
-        server_crypto.alpn_protocols = vec![b"h3".to_vec()];
-
-        let server_config = ServerConfig::with_crypto(Arc::new(
-            quinn::crypto::rustls::QuicServerConfig::try_from(server_crypto).map_err(|e| {
-                WireError::TransportError(format!("Failed to create QUIC config: {}", e))
-            })?,
-        ));
-
-        Ok(server_config)
+        server_cfg.alpn_protocols = vec![b"h3".to_vec()];
+        Ok(Arc::new(server_cfg))
     }
 
-    /// Configure client to skip certificate verification (for development)
-    fn configure_client() -> Result<ClientConfig, WireError> {
-        let mut crypto = rustls::ClientConfig::builder()
+    /// Build a client rustls config (skips server cert verification for dev).
+    fn build_client_config() -> Result<Arc<rustls::ClientConfig>, WireError> {
+        let provider = quic_provider();
+
+        // supported_verify_schemes derived from the provider's sig-verification algorithms.
+        let schemes = provider
+            .signature_verification_algorithms
+            .supported_schemes();
+
+        let mut client_cfg = rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map_err(|e| WireError::TransportError(format!("Protocol version error: {e}")))?
             .dangerous()
-            .with_custom_certificate_verifier(SkipServerVerification::new())
+            .with_custom_certificate_verifier(SkipServerVerification::new(schemes))
             .with_no_client_auth();
 
-        crypto.alpn_protocols = vec![b"h3".to_vec()];
-
-        let client_config = ClientConfig::new(Arc::new(
-            quinn::crypto::rustls::QuicClientConfig::try_from(crypto).map_err(|e| {
-                WireError::TransportError(format!("Failed to create QUIC client config: {}", e))
-            })?,
-        ));
-
-        Ok(client_config)
+        client_cfg.alpn_protocols = vec![b"h3".to_vec()];
+        Ok(Arc::new(client_cfg))
     }
 }
 
-/// A QUIC connection to a remote peer
+/// A QUIC connection to a remote peer backed by `Arc<DrivenConnection>`.
+///
+/// `DrivenConnection` is not `Clone`; we wrap in `Arc` so the pool can hand
+/// out multiple references to the same live connection.
 #[derive(Clone)]
 pub struct QuicConnection {
-    connection: Connection,
+    connection: Arc<DrivenConnection>,
     remote_addr: SocketAddr,
 }
 
 impl QuicConnection {
-    /// Send a message to the remote peer
+    /// Send a message to the remote peer.
     pub async fn send(&self, message: &Message) -> Result<(), WireError> {
         let data = message.serialize()?;
 
@@ -289,52 +348,63 @@ impl QuicConnection {
 
         let mut send = self
             .connection
-            .open_uni()
+            .open_uni_stream()
             .await
-            .map_err(|e| WireError::TransportError(format!("Failed to open stream: {}", e)))?;
+            .map_err(|e| WireError::TransportError(format!("Failed to open stream: {e}")))?;
 
         send.write_all(&data)
             .await
-            .map_err(|e| WireError::TransportError(format!("Failed to write: {}", e)))?;
+            .map_err(|e| WireError::TransportError(format!("Failed to write: {e}")))?;
 
-        send.finish()
-            .map_err(|e| WireError::TransportError(format!("Failed to finish: {}", e)))?;
+        // shutdown() sends the FIN, replacing quinn's `finish()`.
+        send.shutdown()
+            .await
+            .map_err(|e| WireError::TransportError(format!("Failed to finish: {e}")))?;
 
         Ok(())
     }
 
-    /// Receive a message from the remote peer
+    /// Receive a message from the remote peer.
     pub async fn receive(&self) -> Result<Message, WireError> {
-        let mut recv =
-            self.connection.accept_uni().await.map_err(|e| {
-                WireError::TransportError(format!("Failed to accept stream: {}", e))
-            })?;
-
-        let data = recv
-            .read_to_end(MAX_MESSAGE_SIZE)
+        let recv = self
+            .connection
+            .accept_uni_stream()
             .await
-            .map_err(|e| WireError::TransportError(format!("Failed to read: {}", e)))?;
+            .map_err(|e| WireError::TransportError(format!("Failed to accept stream: {e}")))?;
 
-        Message::deserialize(&data)
+        // Cap the read at MAX_MESSAGE_SIZE bytes — AsyncReadExt::read_to_end is
+        // uncapped (unlike quinn's read_to_end(max)), so we apply a take() limit
+        // to bound memory usage.
+        let mut buf = Vec::new();
+        recv.take(MAX_MESSAGE_SIZE as u64)
+            .read_to_end(&mut buf)
+            .await
+            .map_err(|e| WireError::TransportError(format!("Failed to read: {e}")))?;
+
+        Message::deserialize(&buf)
     }
 
-    /// Get remote address
+    /// Get remote address.
     pub fn remote_addr(&self) -> SocketAddr {
         self.remote_addr
     }
 
-    /// Check if connection is closed
+    /// Check if connection is closed.
     pub fn is_closed(&self) -> bool {
-        self.connection.close_reason().is_some()
+        self.connection.is_closed()
     }
 
-    /// Close the connection
+    /// Close the connection.
     pub fn close(&self) {
-        self.connection.close(VarInt::from_u32(0), b"closed");
+        // Spawn a best-effort close task; errors are ignored.
+        let conn = self.connection.clone();
+        tokio::spawn(async move {
+            let _ = conn.close(0, b"closed").await;
+        });
     }
 }
 
-/// Connection pool for managing multiple connections with health tracking
+/// Connection pool for managing multiple connections with health tracking.
 pub struct ConnectionPool {
     connections: std::collections::HashMap<SocketAddr, PooledConnection>,
     /// Maximum connections per pool
@@ -343,7 +413,7 @@ pub struct ConnectionPool {
     pub stats: ConnectionPoolStats,
 }
 
-/// A pooled connection with metadata
+/// A pooled connection with metadata.
 struct PooledConnection {
     conn: QuicConnection,
     #[allow(dead_code)]
@@ -353,7 +423,7 @@ struct PooledConnection {
     use_count: u64,
 }
 
-/// Connection pool statistics
+/// Connection pool statistics.
 #[derive(Debug, Default)]
 pub struct ConnectionPoolStats {
     /// Total connections created
@@ -393,7 +463,7 @@ impl Clone for ConnectionPoolStats {
 }
 
 impl ConnectionPoolStats {
-    /// Get hit rate (reused / total)
+    /// Get hit rate (reused / total).
     pub fn hit_rate(&self) -> f64 {
         let created = self
             .connections_created
@@ -409,7 +479,7 @@ impl ConnectionPoolStats {
         }
     }
 
-    /// Get a snapshot of stats as simple values
+    /// Get a snapshot of stats as simple values.
     pub fn snapshot(&self) -> ConnectionPoolStatsSnapshot {
         use std::sync::atomic::Ordering::Relaxed;
         ConnectionPoolStatsSnapshot {
@@ -423,7 +493,7 @@ impl ConnectionPoolStats {
     }
 }
 
-/// Snapshot of connection pool statistics (non-atomic)
+/// Snapshot of connection pool statistics (non-atomic).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ConnectionPoolStatsSnapshot {
     /// Total connections created
@@ -441,9 +511,9 @@ pub struct ConnectionPoolStatsSnapshot {
 }
 
 impl ConnectionPool {
-    /// Default maximum connections
+    /// Default maximum connections.
     const DEFAULT_MAX_CONNECTIONS: usize = 100;
-    /// Maximum connection idle time before cleanup
+    /// Maximum connection idle time before cleanup.
     const MAX_IDLE_TIME: Duration = Duration::from_secs(300);
 
     fn new() -> Self {
@@ -454,7 +524,7 @@ impl ConnectionPool {
         }
     }
 
-    /// Create pool with custom max connections
+    /// Create pool with custom max connections.
     #[allow(dead_code)]
     fn with_max_connections(max: usize) -> Self {
         Self {
@@ -466,7 +536,6 @@ impl ConnectionPool {
 
     fn get(&mut self, addr: &SocketAddr) -> Option<QuicConnection> {
         if let Some(pooled) = self.connections.get_mut(addr) {
-            // Check if connection is still alive
             if pooled.conn.is_closed() {
                 self.connections.remove(addr);
                 self.stats
@@ -488,7 +557,6 @@ impl ConnectionPool {
     }
 
     fn insert(&mut self, addr: SocketAddr, conn: QuicConnection) {
-        // Evict idle connections if at capacity
         if self.connections.len() >= self.max_connections {
             self.evict_idle();
         }
@@ -523,7 +591,7 @@ impl ConnectionPool {
         }
     }
 
-    /// Remove idle and closed connections
+    /// Remove idle and closed connections.
     fn evict_idle(&mut self) {
         let now = std::time::Instant::now();
         let before_count = self.connections.len();
@@ -545,19 +613,19 @@ impl ConnectionPool {
         }
     }
 
-    /// Get number of active connections
+    /// Get number of active connections.
     #[allow(dead_code)]
     fn len(&self) -> usize {
         self.connections.len()
     }
 
-    /// Check if pool is empty
+    /// Check if pool is empty.
     #[allow(dead_code)]
     fn is_empty(&self) -> bool {
         self.connections.is_empty()
     }
 
-    /// Cleanup all closed connections
+    /// Cleanup all closed connections.
     #[allow(dead_code)]
     fn cleanup_closed(&mut self) {
         let before_count = self.connections.len();
@@ -575,13 +643,18 @@ impl ConnectionPool {
     }
 }
 
-/// Skip server certificate verification (for development only)
+// ---------------------------------------------------------------------------
+// Skip server certificate verification (for development only)
+// ---------------------------------------------------------------------------
+
 #[derive(Debug)]
-struct SkipServerVerification;
+struct SkipServerVerification {
+    schemes: Vec<rustls::SignatureScheme>,
+}
 
 impl SkipServerVerification {
-    fn new() -> Arc<Self> {
-        Arc::new(Self)
+    fn new(schemes: Vec<rustls::SignatureScheme>) -> Arc<Self> {
+        Arc::new(Self { schemes })
     }
 }
 
@@ -616,103 +689,88 @@ impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
     }
 
     fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        vec![
-            rustls::SignatureScheme::RSA_PKCS1_SHA256,
-            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
-            rustls::SignatureScheme::ED25519,
-        ]
+        self.schemes.clone()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Once;
-
-    static INIT: Once = Once::new();
-
-    fn init_crypto() {
-        INIT.call_once(|| {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        });
-    }
 
     #[tokio::test]
     async fn test_transport_creation() {
-        init_crypto();
-        let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let addr: SocketAddr = "127.0.0.1:0".parse().expect("addr must parse");
         let transport = QuicTransport::new(addr).await;
         assert!(transport.is_ok());
     }
 
     #[tokio::test]
     async fn test_client_creation() {
-        init_crypto();
         let transport = QuicTransport::new_client().await;
         assert!(transport.is_ok());
     }
 
     #[tokio::test]
     async fn test_transport_with_cert_manager() {
-        init_crypto();
-        let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let addr: SocketAddr = "127.0.0.1:0".parse().expect("addr must parse");
         let cert_manager = Arc::new(CertManager::new());
         let transport =
             QuicTransport::new_with_certs(addr, "test-node", cert_manager.clone()).await;
         assert!(transport.is_ok());
 
-        let transport = transport.unwrap();
+        let transport = transport.expect("transport");
         assert!(transport.cert_manager().is_some());
         assert!(Arc::ptr_eq(
-            transport.cert_manager().unwrap(),
+            transport.cert_manager().expect("cert_manager"),
             &cert_manager
         ));
     }
 
     #[tokio::test]
     async fn test_cert_manager_access() {
-        init_crypto();
         // Transport without cert manager
-        let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-        let transport = QuicTransport::new(addr).await.unwrap();
+        let addr: SocketAddr = "127.0.0.1:0".parse().expect("addr must parse");
+        let transport = QuicTransport::new(addr).await.expect("transport");
         assert!(transport.cert_manager().is_none());
 
         // Transport with cert manager
         let cert_manager = Arc::new(CertManager::new());
         let transport = QuicTransport::new_with_certs(addr, "test-node", cert_manager.clone())
             .await
-            .unwrap();
+            .expect("transport with certs");
         assert!(transport.cert_manager().is_some());
     }
 
     #[tokio::test]
     async fn test_message_send_receive() {
-        init_crypto();
         // Create server
-        let server_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-        let server = QuicTransport::new(server_addr).await.unwrap();
-        let actual_addr = server.local_addr().unwrap();
+        let server_addr: SocketAddr = "127.0.0.1:0".parse().expect("addr must parse");
+        let server = QuicTransport::new(server_addr).await.expect("server");
+        let actual_addr = server.local_addr().expect("local addr");
 
         // Create client
-        let client = QuicTransport::new_client().await.unwrap();
+        let client = QuicTransport::new_client().await.expect("client");
 
         // Spawn server task
         let server_task = tokio::spawn(async move {
-            let conn = server.accept().await.unwrap();
-            let msg = conn.receive().await.unwrap();
-            msg
+            let conn = server.accept().await.expect("accept");
+            conn.receive().await.expect("receive")
         });
 
-        // Give server time to start
+        // Give server time to start listening
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Connect and send message
-        let conn = client.connect(actual_addr).await.unwrap();
+        let conn = client.connect(actual_addr).await.expect("connect");
         let test_msg = Message::Ping { timestamp: 12345 };
-        conn.send(&test_msg).await.unwrap();
+        conn.send(&test_msg).await.expect("send");
 
         // Wait for server to receive
-        let received = server_task.await.unwrap();
+        let received = server_task.await.expect("server task");
         assert!(matches!(received, Message::Ping { timestamp: 12345 }));
     }
 }

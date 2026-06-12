@@ -131,3 +131,24 @@ MielinOS v0.1.0 "Oligodendrocyte" is a complete distributed agent mesh operating
 - ✅ Production-ready documentation
 
 For detailed feature descriptions, see individual crate README files and the project [README.md](README.md).
+
+## Stubs to implement (added 2026-06-12 by /cooljapan-stub-check)
+
+- [ ] `mielin-kernel`: `mielin-kernel/src/vmm/mod.rs:582` — implement page-table cleanup in VMM drop/free path
+  - Priority: P2 | Scope: medium | Hint: none
+- [ ] `mielin-kernel`: `mielin-kernel/src/ipc.rs:218` — implement platform-specific IPI delivery for ARM and RISC-V
+  - Priority: P2 | Scope: medium | Hint: none
+- [ ] `mielin-kernel`: `mielin-kernel/src/interrupt.rs:733` — implement `read_tsc` for ARM (CNTVCT_EL0) and RISC-V
+  - Priority: P2 | Scope: small | Hint: none
+- [ ] `mielin-kernel`: `mielin-kernel/src/interrupt.rs:789` — implement corresponding TSC calibration for ARM and RISC-V
+  - Priority: P2 | Scope: small | Hint: none
+- [ ] `mielin-kernel`: `mielin-kernel/src/rt.rs:278` — add proper error type for task-not-found / invalid-page-count instead of reusing `TaskNotFound`/`InvalidPageCount` in wrong context
+  - Priority: P2 | Scope: trivial | Hint: none
+- [ ] `mielin-mesh`: `mielin-mesh/wire/src/certs/ca.rs:388` — implement real CRL fetching in CA certificate validation
+  - Priority: P2 | Scope: medium | Hint: oxitls
+- [ ] `mielin-mesh`: `mielin-mesh/wire/src/certs/ca.rs:430` — parse name constraints extension in certificate validation
+  - Priority: P2 | Scope: small | Hint: oxitls
+- [ ] `mielin-mesh`: `mielin-mesh/wire/src/certs/mtls.rs:174` — implement proper certificate chain validation with CA in mTLS
+  - Priority: P2 | Scope: medium | Hint: oxitls
+- [ ] `mielin-tensor`: `mielin-tensor/src/quant.rs:150` — implement true per-channel quantization (currently falls back to per-tensor)
+  - Priority: P2 | Scope: small | Hint: none

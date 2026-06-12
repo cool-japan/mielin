@@ -13,13 +13,15 @@ documentation = "https://docs.rs/mielin-mesh-wire"
 
 [dependencies]
 tokio.workspace = true
-quinn.workspace = true
+oxiquic-transport.workspace = true
+oxiquic-crypto.workspace = true
 serde.workspace = true
 oxicode.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 rustls.workspace = true
 rcgen.workspace = true
+oxitls-rcgen.workspace = true
 rand.workspace = true
 oxiarc-lz4.workspace = true
 oxiarc-zstd.workspace = true
@@ -31,12 +33,17 @@ serde_json.workspace = true
 tokio-tungstenite = "0.29"
 futures.workspace = true
 
-# ACME / Let's Encrypt integration
-instant-acme = "0.8"  # Updated from 0.7 with API migration completed
+# ACME / Let's Encrypt integration (in-house RFC 8555 client — instant-acme removed)
 base64 = "0.22"
-reqwest.workspace = true
 x509-parser = "0.18.1"
-ring.workspace = true
+oxihttp-client = { version = "0.1.3", features = ["tls"] }
+p256 = { version = "0.14.0-rc.11", default-features = false, features = ["ecdsa", "alloc"] }
+oxicrypto-sig.workspace = true
+oxicrypto-hash.workspace = true
+oxicrypto-rand.workspace = true
+oxicrypto-kex.workspace = true
+oxicrypto-kdf.workspace = true
+oxicrypto-core.workspace = true
 ml-kem.workspace = true
 rustls-pemfile = "2.2"
 postcard.workspace = true

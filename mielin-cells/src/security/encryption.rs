@@ -3,11 +3,8 @@
 //! This module provides encryption/decryption for agent state snapshots using AES-256-GCM.
 
 use crate::CellError;
-use ring::aead::{
-    Aad, BoundKey, Nonce, NonceSequence, OpeningKey, SealingKey, UnboundKey, AES_256_GCM,
-};
-use ring::error::Unspecified;
-use ring::rand::SecureRandom;
+use oxicrypto_aead::Aes256Gcm;
+use oxicrypto_core::Aead;
 use serde::{Deserialize, Serialize};
 
 /// Encryption key for state snapshots
@@ -20,10 +17,8 @@ pub struct EncryptionKey {
 impl EncryptionKey {
     /// Generate a new random encryption key
     pub fn generate() -> Self {
-        let rng = ring::rand::SystemRandom::new();
-        let mut key_bytes = vec![0u8; 32]; // AES-256 requires 32 bytes
-        rng.fill(&mut key_bytes)
-            .expect("Failed to generate random key");
+        // AES-256 requires 32 bytes of key material.
+        let key_bytes = oxicrypto_rand::random_bytes(32).expect("Failed to generate random key");
 
         Self { key_bytes }
     }
@@ -137,31 +132,13 @@ impl StateEncryptor {
         plaintext: &[u8],
     ) -> Result<EncryptedSnapshot, CellError> {
         // Generate a unique nonce for this encryption
-        let rng = ring::rand::SystemRandom::new();
-        let mut nonce_bytes = [0u8; 12];
-        rng.fill(&mut nonce_bytes)
+        let nonce_bytes: [u8; 12] = oxicrypto_rand::random_nonce()
             .map_err(|_| CellError::InvalidState("Failed to generate nonce".to_string()))?;
 
-        // Create the sealing key
-        let unbound_key = UnboundKey::new(&AES_256_GCM, self.key.as_bytes())
-            .map_err(|_| CellError::InvalidState("Failed to create encryption key".to_string()))?;
-
-        struct FixedNonce([u8; 12]);
-        impl NonceSequence for FixedNonce {
-            fn advance(&mut self) -> Result<Nonce, Unspecified> {
-                Nonce::try_assume_unique_for_key(&self.0)
-            }
-        }
-
-        let mut sealing_key = SealingKey::new(unbound_key, FixedNonce(nonce_bytes));
-
-        // Prepare data for encryption
-        let mut in_out = plaintext.to_vec();
-
-        // Encrypt the data
-        let aad = Aad::from(&agent_id);
-        sealing_key
-            .seal_in_place_append_tag(aad, &mut in_out)
+        // Encrypt with AES-256-GCM; the agent ID is the additional authenticated
+        // data, and the 16-byte authentication tag is appended to the ciphertext.
+        let in_out = Aes256Gcm
+            .seal_to_vec(self.key.as_bytes(), &nonce_bytes, &agent_id, plaintext)
             .map_err(|_| CellError::InvalidState("Encryption failed".to_string()))?;
 
         let timestamp = std::time::SystemTime::now()
@@ -192,29 +169,19 @@ impl StateEncryptor {
         let mut nonce_bytes = [0u8; 12];
         nonce_bytes.copy_from_slice(&snapshot.nonce);
 
-        // Create the opening key
-        let unbound_key = UnboundKey::new(&AES_256_GCM, self.key.as_bytes())
-            .map_err(|_| CellError::InvalidState("Failed to create decryption key".to_string()))?;
-
-        struct FixedNonce([u8; 12]);
-        impl NonceSequence for FixedNonce {
-            fn advance(&mut self) -> Result<Nonce, Unspecified> {
-                Nonce::try_assume_unique_for_key(&self.0)
-            }
-        }
-
-        let mut opening_key = OpeningKey::new(unbound_key, FixedNonce(nonce_bytes));
-
-        // Prepare data for decryption
-        let mut in_out = snapshot.ciphertext.clone();
-
-        // Decrypt the data
-        let aad = Aad::from(&snapshot.agent_id);
-        let plaintext = opening_key
-            .open_in_place(aad, &mut in_out)
+        // Decrypt and authenticate with AES-256-GCM. The agent ID is the
+        // additional authenticated data; the trailing 16-byte tag is verified
+        // and stripped, returning the recovered plaintext.
+        let plaintext = Aes256Gcm
+            .open_to_vec(
+                self.key.as_bytes(),
+                &nonce_bytes,
+                &snapshot.agent_id,
+                &snapshot.ciphertext,
+            )
             .map_err(|_| CellError::InvalidState("Decryption failed".to_string()))?;
 
-        Ok(plaintext.to_vec())
+        Ok(plaintext)
     }
 
     /// Rotate the encryption key
@@ -359,5 +326,84 @@ mod tests {
         assert_eq!(encrypted.metadata.algorithm, "AES-256-GCM");
         assert_eq!(encrypted.metadata.original_size, plaintext.len());
         assert!(encrypted.metadata.encrypted_at > 0);
+    }
+
+    // ── AES-256-GCM known-answer test (NIST CAVP gcmEncryptExtIV256) ─────────
+    //
+    // Pins the migrated oxicrypto-aead AES-256-GCM primitive to a published
+    // NIST test vector (all-zero key/IV/plaintext, empty AAD):
+    //   Key = 0x00 * 32, IV = 0x00 * 12, PT = 0x00 * 16, AAD = (empty)
+    //   CT  = cea7403d4d606b6e074ec5d3baf39d18
+    //   Tag = d0d1c8a799996bf0265b98b5d48ab919
+
+    fn hex_to_vec(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("valid hex"))
+            .collect()
+    }
+
+    #[test]
+    fn aes256gcm_nist_known_answer() {
+        let key = [0u8; 32];
+        let nonce = [0u8; 12];
+        let plaintext = [0u8; 16];
+        let expected_ct_tag =
+            hex_to_vec("cea7403d4d606b6e074ec5d3baf39d18d0d1c8a799996bf0265b98b5d48ab919");
+
+        let ct = Aes256Gcm
+            .seal_to_vec(&key, &nonce, &[], &plaintext)
+            .expect("seal");
+        assert_eq!(
+            ct, expected_ct_tag,
+            "AES-256-GCM NIST vector ciphertext||tag mismatch"
+        );
+
+        // Round-trip back to the original plaintext.
+        let pt = Aes256Gcm.open_to_vec(&key, &nonce, &[], &ct).expect("open");
+        assert_eq!(pt, plaintext);
+    }
+
+    #[test]
+    fn aes256gcm_tag_mismatch_is_rejected() {
+        // A flipped tag byte must cause open() to fail with an authentication error.
+        let key = [0x42u8; 32];
+        let nonce = [0x24u8; 12];
+        let aad = b"agent-id-aad";
+        let plaintext = b"snapshot payload";
+
+        let mut ct = Aes256Gcm
+            .seal_to_vec(&key, &nonce, aad, plaintext)
+            .expect("seal");
+        // Corrupt the final byte (within the 16-byte authentication tag).
+        let last = ct.len() - 1;
+        ct[last] ^= 0xff;
+
+        let result = Aes256Gcm.open_to_vec(&key, &nonce, aad, &ct);
+        assert!(result.is_err(), "corrupted tag must be rejected");
+    }
+
+    #[test]
+    fn state_encryptor_tamper_detection() {
+        // High-level API: tampering with the ciphertext must fail decryption.
+        let encryptor = StateEncryptor::new();
+        let agent_id = [9u8; 16];
+        let plaintext = b"sensitive agent state";
+
+        let mut encrypted = encryptor.encrypt(agent_id, plaintext).expect("encrypt");
+        // Flip a byte in the authenticated ciphertext.
+        encrypted.ciphertext[0] ^= 0xff;
+        assert!(
+            encryptor.decrypt(&encrypted).is_err(),
+            "tampered ciphertext must not decrypt"
+        );
+
+        // Tampering with the AAD (agent_id) must also fail.
+        let mut encrypted2 = encryptor.encrypt(agent_id, plaintext).expect("encrypt");
+        encrypted2.agent_id[0] ^= 0xff;
+        assert!(
+            encryptor.decrypt(&encrypted2).is_err(),
+            "tampered AAD (agent_id) must not decrypt"
+        );
     }
 }

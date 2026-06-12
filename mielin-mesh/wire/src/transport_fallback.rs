@@ -233,15 +233,6 @@ pub struct TransportStats {
 mod tests {
     use super::*;
 
-    /// Initialize crypto provider for tests
-    fn init_crypto() {
-        use std::sync::Once;
-        static INIT: Once = Once::new();
-        INIT.call_once(|| {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        });
-    }
-
     #[test]
     fn test_transport_mode_equality() {
         assert_eq!(TransportMode::Quic, TransportMode::Quic);
@@ -251,7 +242,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_fallback_transport_creation() {
-        init_crypto();
         let addr = "127.0.0.1:0".parse().unwrap();
         let transport = FallbackTransport::new(addr).await;
         assert!(transport.is_ok());
@@ -259,7 +249,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_fallback_transport_modes() {
-        init_crypto();
         let addr = "127.0.0.1:0".parse().unwrap();
         let transport = FallbackTransport::new(addr).await.unwrap();
 

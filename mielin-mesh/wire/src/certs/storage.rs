@@ -303,19 +303,10 @@ impl CertStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Once;
 
-    static INIT: Once = Once::new();
-
-    fn init_crypto() {
-        INIT.call_once(|| {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        });
-    }
 
     #[tokio::test]
     async fn test_memory_storage() {
-        init_crypto();
         let storage = CertStorage::memory();
         assert_eq!(storage.backend(), StorageBackend::Memory);
 
@@ -333,7 +324,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_certificates() {
-        init_crypto();
         let storage = CertStorage::memory();
 
         // Store multiple certificates
@@ -350,7 +340,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_certificate() {
-        init_crypto();
         let storage = CertStorage::memory();
 
         let cert = Certificate::generate_self_signed("test-node".to_string(), 365).unwrap();
@@ -368,7 +357,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_cleanup_expired() {
-        init_crypto();
         let storage = CertStorage::memory();
 
         // Store valid certificate

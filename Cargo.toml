@@ -64,7 +64,8 @@ serde_json = "1.0.149"
 oxicode = { version = "0.2.4", features = ["serde"] }
 
 # Networking
-quinn = "0.11.9"
+oxiquic-transport = "0.1.3"
+oxiquic-crypto = "0.1.3"
 tokio-util = "0.7.18"
 
 # WebAssembly
@@ -73,12 +74,22 @@ wasmtime-wasi = "43.0.1"
 wit-bindgen = "0.54.0"
 
 # Cryptography & Security
-ring = "0.17.14"
+# ring removed — replaced by oxiquic-crypto (pure-Rust QUIC provider) in mesh-wire
+# Pure-Rust OxiCrypto sub-crates (replacing direct `ring` usage; ring remains a
+# transitive dep via rustls/quinn/rcgen — that migration is tracked separately).
+oxicrypto-hash = "0.1.2"
+oxicrypto-rand = "0.1.2"
+oxicrypto-aead = "0.1.2"
+oxicrypto-sig = "0.1.2"
+oxicrypto-kex = "0.1.2"
+oxicrypto-kdf = "0.1.2"
+oxicrypto-core = "0.1.2"
 ml-kem = "0.3"
 uuid = { version = "1.23.0", features = ["v4", "v5", "serde"] }
 postcard = { version = "1", features = ["alloc"] }
-rustls = { version = "0.23.37", default-features = false, features = ["ring", "std"] }
-rcgen = "0.14.7"
+rustls = { version = "0.23.37", default-features = false, features = ["std"] }
+rcgen = { version = "0.14.7", default-features = false, features = ["pem"] }
+oxitls-rcgen = "0.1.2"
 
 # Error handling
 anyhow = "1.0.102"
@@ -119,12 +130,13 @@ toml = "1.1.0"
 
 # Random number generation
 rand = "0.10"
+rand_core = "0.10"
 
 # Scripting
 rhai = "1.24.0"
 
-# HTTP client for remote operations
-reqwest = { version = "0.13.2", features = ["json", "rustls"], default-features = false }
+# HTTP client for remote operations (reqwest removed — replaced by oxihttp-client)
+oxihttp-client = { version = "0.1.3", features = ["tls"] }
 
 # HTTP server for control plane
 axum = "0.8.9"

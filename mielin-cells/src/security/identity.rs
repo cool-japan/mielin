@@ -3,7 +3,8 @@
 //! This module provides Ed25519-based identity for agents.
 
 use crate::CellError;
-use ring::signature::{Ed25519KeyPair, KeyPair, UnparsedPublicKey, ED25519};
+use oxicrypto_core::{Signer, Verifier};
+use oxicrypto_sig::{Ed25519, Ed25519Verifier};
 use serde::{Deserialize, Serialize};
 
 /// Agent identity with public/private key pair
@@ -11,9 +12,9 @@ use serde::{Deserialize, Serialize};
 pub struct AgentIdentity {
     /// Agent ID (derived from public key)
     agent_id: [u8; 16],
-    /// Private key (Ed25519)
+    /// Private key — the raw 32-byte Ed25519 seed (secret scalar source).
     private_key: Vec<u8>,
-    /// Public key (Ed25519)
+    /// Public key (Ed25519, 32-byte compressed Edwards-y point)
     public_key: Vec<u8>,
     /// Identity metadata
     metadata: IdentityMetadata,
@@ -44,15 +45,12 @@ pub struct IdentityMetadata {
 impl AgentIdentity {
     /// Generate a new random identity
     pub fn generate() -> Self {
-        let rng = ring::rand::SystemRandom::new();
-        let pkcs8_bytes =
-            Ed25519KeyPair::generate_pkcs8(&rng).expect("Failed to generate key pair");
+        let mut rng = oxicrypto_rand::OxiRng::new().expect("Failed to initialise CSPRNG");
+        let (seed, public) = oxicrypto_sig::ed25519_generate_keypair(&mut rng)
+            .expect("Failed to generate Ed25519 key pair");
 
-        let key_pair = Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref())
-            .expect("Failed to parse generated key pair");
-
-        let public_key = key_pair.public_key().as_ref().to_vec();
-        let private_key = pkcs8_bytes.as_ref().to_vec();
+        let public_key = public.to_vec();
+        let private_key = seed.as_bytes().to_vec();
 
         // Derive agent ID from public key (first 16 bytes of SHA-256 hash)
         let agent_id = Self::derive_agent_id(&public_key);
@@ -74,13 +72,24 @@ impl AgentIdentity {
         }
     }
 
-    /// Create identity from existing key material (PKCS8 format)
-    pub fn from_pkcs8(pkcs8_bytes: &[u8]) -> Result<Self, CellError> {
-        let key_pair = Ed25519KeyPair::from_pkcs8(pkcs8_bytes)
-            .map_err(|e| CellError::InvalidState(format!("Invalid PKCS8 key: {}", e)))?;
+    /// Create identity from existing key material.
+    ///
+    /// `seed_bytes` must be the raw 32-byte Ed25519 seed (the same value
+    /// returned by [`AgentIdentity::export_private_key`]). The matching public
+    /// key is re-derived from the seed.
+    pub fn from_pkcs8(seed_bytes: &[u8]) -> Result<Self, CellError> {
+        let seed: [u8; 32] = seed_bytes.try_into().map_err(|_| {
+            CellError::InvalidState(format!(
+                "Ed25519 seed must be 32 bytes, got {}",
+                seed_bytes.len()
+            ))
+        })?;
 
-        let public_key = key_pair.public_key().as_ref().to_vec();
-        let private_key = pkcs8_bytes.to_vec();
+        let public = derive_ed25519_public_key(&seed)
+            .map_err(|e| CellError::InvalidState(format!("Invalid Ed25519 seed: {}", e)))?;
+
+        let public_key = public.to_vec();
+        let private_key = seed.to_vec();
         let agent_id = Self::derive_agent_id(&public_key);
 
         let timestamp = std::time::SystemTime::now()
@@ -102,10 +111,9 @@ impl AgentIdentity {
 
     /// Derive agent ID from public key
     fn derive_agent_id(public_key: &[u8]) -> [u8; 16] {
-        use ring::digest;
-        let hash = digest::digest(&digest::SHA256, public_key);
+        let hash = oxicrypto_hash::Sha256.hash_fixed(public_key);
         let mut agent_id = [0u8; 16];
-        agent_id.copy_from_slice(&hash.as_ref()[0..16]);
+        agent_id.copy_from_slice(&hash[0..16]);
         agent_id
     }
 
@@ -121,17 +129,16 @@ impl AgentIdentity {
 
     /// Sign a message
     pub fn sign(&self, message: &[u8]) -> Result<Vec<u8>, CellError> {
-        let key_pair = Ed25519KeyPair::from_pkcs8(&self.private_key)
-            .map_err(|e| CellError::InvalidState(format!("Key pair error: {}", e)))?;
-
-        let signature = key_pair.sign(message);
-        Ok(signature.as_ref().to_vec())
+        let mut signature = [0u8; 64];
+        let len = Ed25519
+            .sign(&self.private_key, message, &mut signature)
+            .map_err(|e| CellError::InvalidState(format!("Signing error: {}", e)))?;
+        Ok(signature[..len].to_vec())
     }
 
     /// Verify a signature on a message
     pub fn verify(&self, message: &[u8], signature: &[u8]) -> Result<bool, CellError> {
-        let public_key = UnparsedPublicKey::new(&ED25519, &self.public_key);
-        match public_key.verify(message, signature) {
+        match Ed25519Verifier.verify(&self.public_key, message, signature) {
             Ok(()) => Ok(true),
             Err(_) => Ok(false),
         }
@@ -165,12 +172,60 @@ impl AgentIdentity {
 impl PublicIdentity {
     /// Verify a signature on a message using this public identity
     pub fn verify_signature(&self, message: &[u8], signature: &[u8]) -> Result<bool, CellError> {
-        let public_key = UnparsedPublicKey::new(&ED25519, &self.public_key);
-        match public_key.verify(message, signature) {
+        match Ed25519Verifier.verify(&self.public_key, message, signature) {
             Ok(()) => Ok(true),
             Err(_) => Ok(false),
         }
     }
+}
+
+/// Derive the 32-byte Ed25519 public key (compressed Edwards-y point) from a
+/// raw 32-byte seed.
+///
+/// Re-uses the exact key-derivation path of `oxicrypto_sig::ed25519_generate_keypair`
+/// by feeding the fixed seed through a one-shot deterministic RNG, avoiding any
+/// direct dependency on the underlying `ed25519-dalek` primitive.
+fn derive_ed25519_public_key(seed: &[u8; 32]) -> Result<[u8; 32], oxicrypto_core::CryptoError> {
+    /// One-shot RNG that emits a fixed 32-byte seed, then errors on overrun.
+    struct SeedRng {
+        seed: [u8; 32],
+        consumed: bool,
+    }
+
+    impl rand_core::TryRng for SeedRng {
+        type Error = oxicrypto_core::CryptoError;
+
+        fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+            let mut buf = [0u8; 4];
+            self.try_fill_bytes(&mut buf)?;
+            Ok(u32::from_le_bytes(buf))
+        }
+
+        fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+            let mut buf = [0u8; 8];
+            self.try_fill_bytes(&mut buf)?;
+            Ok(u64::from_le_bytes(buf))
+        }
+
+        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
+            // `ed25519_generate_keypair` fills exactly one 32-byte seed.
+            if self.consumed || dest.len() != self.seed.len() {
+                return Err(oxicrypto_core::CryptoError::Rng);
+            }
+            dest.copy_from_slice(&self.seed);
+            self.consumed = true;
+            Ok(())
+        }
+    }
+
+    impl rand_core::TryCryptoRng for SeedRng {}
+
+    let mut rng = SeedRng {
+        seed: *seed,
+        consumed: false,
+    };
+    let (_sk, pk) = oxicrypto_sig::ed25519_generate_keypair(&mut rng)?;
+    Ok(pk)
 }
 
 /// Identity provider for managing identities
@@ -352,5 +407,77 @@ mod tests {
 
         let list = provider.list_identities();
         assert_eq!(list.len(), 2);
+    }
+
+    // ── Known-answer test: Ed25519, RFC 8032 §7.1 (TEST 2) ───────────────────
+    //
+    // Fixed seed → fixed public key → sign a known message → verify the exact
+    // expected signature bytes. This pins the migrated oxicrypto-sig Ed25519
+    // primitive to the RFC 8032 reference vector.
+    //
+    //   sk (seed) = 4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb
+    //   pk        = 3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c
+    //   msg       = 72
+    //   sig       = 92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da
+    //               085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00
+
+    fn hex_to_vec(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("valid hex"))
+            .collect()
+    }
+
+    #[test]
+    fn ed25519_rfc8032_test2_known_answer() {
+        let seed = hex_to_vec("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb");
+        let expected_pk =
+            hex_to_vec("3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c");
+        let message = hex_to_vec("72");
+        let expected_sig = hex_to_vec(
+            "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da\
+             085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00",
+        );
+
+        // Reconstruct identity from the fixed seed; the public key must match.
+        let identity = AgentIdentity::from_pkcs8(&seed).expect("import seed");
+        assert_eq!(
+            identity.public_key(),
+            expected_pk.as_slice(),
+            "RFC 8032 public key derivation mismatch"
+        );
+
+        // Signing the known message must reproduce the exact RFC 8032 signature.
+        let sig = identity.sign(&message).expect("sign");
+        assert_eq!(
+            sig, expected_sig,
+            "RFC 8032 §7.1 TEST 2 signature bytes mismatch"
+        );
+
+        // The expected signature must verify, and a tampered one must be rejected.
+        assert!(identity.verify(&message, &expected_sig).expect("verify"));
+        let mut bad_sig = expected_sig.clone();
+        bad_sig[0] ^= 0xff;
+        assert!(
+            !identity.verify(&message, &bad_sig).expect("verify tampered"),
+            "tampered signature must not verify"
+        );
+    }
+
+    #[test]
+    fn ed25519_seed_roundtrip_export_import() {
+        // export_private_key() now yields the raw 32-byte seed; re-importing it
+        // must reproduce the same agent ID, public key, and signing behaviour.
+        let identity = AgentIdentity::generate();
+        let seed = identity.export_private_key().to_vec();
+        assert_eq!(seed.len(), 32, "exported seed must be 32 bytes");
+
+        let imported = AgentIdentity::from_pkcs8(&seed).expect("re-import seed");
+        assert_eq!(imported.agent_id(), identity.agent_id());
+        assert_eq!(imported.public_key(), identity.public_key());
+
+        let msg = b"seed roundtrip message";
+        let sig = imported.sign(msg).expect("sign with imported key");
+        assert!(identity.verify(msg, &sig).expect("cross-verify"));
     }
 }

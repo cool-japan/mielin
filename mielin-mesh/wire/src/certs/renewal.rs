@@ -509,15 +509,7 @@ impl RenewalScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Once;
 
-    static INIT: Once = Once::new();
-
-    fn init_crypto() {
-        INIT.call_once(|| {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        });
-    }
 
     #[test]
     fn test_renewal_config_creation() {
@@ -560,7 +552,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_set_and_get_certificate() {
-        init_crypto();
         let config = RenewalConfig::new();
         let strategy = RenewalStrategy::SelfSigned {
             node_id: "test-node".to_string(),
@@ -618,7 +609,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_renewal_with_short_lived_cert() {
-        init_crypto();
         let config = RenewalConfig::new()
             .with_check_interval(Duration::from_millis(100))
             .with_renewal_threshold(25); // Renew if < 25 days

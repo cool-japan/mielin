@@ -4,6 +4,7 @@
 //! the CLI, enabling centralized control of distributed deployments.
 
 use anyhow::{Context, Result};
+use oxihttp_client::{Client, HttpsClient};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -260,6 +261,23 @@ impl RemoteManager {
         Ok(())
     }
 
+    /// Build a TLS-capable HTTP client for the given node options.
+    ///
+    /// `try_clone()` has no equivalent in oxihttp-client. The caller constructs
+    /// a fresh client per attempt — `HttpsClient: Clone` makes this cheap.
+    fn build_http_client(options: &ConnectionOptions) -> Result<HttpsClient> {
+        let timeout = std::time::Duration::from_secs(options.timeout_secs);
+        let accept_invalid = !options.verify_ssl;
+
+        Client::builder()
+            .with_webpki_roots()
+            .danger_accept_invalid_certs(accept_invalid)
+            .connect_timeout(timeout)
+            .read_timeout(timeout)
+            .build_https()
+            .context("Failed to build HTTP client")
+    }
+
     /// Execute a command on a remote node
     pub async fn execute_command(
         &self,
@@ -304,18 +322,8 @@ impl RemoteManager {
 
         let start_time = std::time::Instant::now();
 
-        // Build HTTP client with configured options
-        let mut client_builder = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(node.options.timeout_secs));
-
-        // Configure TLS if enabled
-        if node.options.tls {
-            client_builder = client_builder.danger_accept_invalid_certs(!node.options.verify_ssl);
-        }
-
-        let client = client_builder
-            .build()
-            .context("Failed to build HTTP client")?;
+        // Build HTTP client with configured options (cheap to clone)
+        let client = Self::build_http_client(&node.options)?;
 
         // Construct API endpoint URL
         let url = if node.options.tls {
@@ -324,47 +332,52 @@ impl RemoteManager {
             format!("http://{}/api/v1/command", node.address)
         };
 
-        // Build request with authentication
-        let mut request_builder = client.post(&url).json(&serde_json::json!({
+        let body_json = serde_json::json!({
             "command": command.command,
             "args": command.args,
             "env": command.env,
-        }));
+        });
 
-        // Add authentication header based on method
-        request_builder = match &node.auth {
-            AuthMethod::None => request_builder,
-            AuthMethod::ApiKey { key } => request_builder.header("X-API-Key", key),
-            AuthMethod::Token { token } => {
-                request_builder.header("Authorization", format!("Bearer {}", token))
-            }
-            AuthMethod::Certificate { .. } => {
-                // Certificate-based auth would be configured in the TLS client builder
-                request_builder
-            }
-        };
-
-        // Execute request with retry logic
-        let mut last_error = None;
+        // Execute request with retry logic.
+        // oxihttp-client has no `try_clone()` — build a fresh request per attempt.
+        let mut last_error: Option<String> = None;
         for attempt in 0..node.options.max_retries {
             if attempt > 0 {
                 debug!("Retrying command execution (attempt {})", attempt + 1);
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
 
-            match request_builder
-                .try_clone()
-                .ok_or_else(|| anyhow::anyhow!("Failed to clone request"))?
-                .send()
-                .await
-            {
+            let mut req = client
+                .post(&url)
+                .context("Failed to create POST request")?
+                .json(&body_json)
+                .context("Failed to set JSON body")?;
+
+            // Add authentication header based on method
+            req = match &node.auth {
+                AuthMethod::None => req,
+                AuthMethod::ApiKey { key } => req
+                    .header("X-API-Key", key)
+                    .context("Failed to set X-API-Key header")?,
+                AuthMethod::Token { token } => req
+                    .header("Authorization", &format!("Bearer {}", token))
+                    .context("Failed to set Authorization header")?,
+                AuthMethod::Certificate { .. } => {
+                    // Certificate-based auth is handled via TLS client config
+                    req
+                }
+            };
+
+            match req.send().await {
                 Ok(response) => {
                     let duration_ms = start_time.elapsed().as_millis() as u64;
 
                     if response.status().is_success() {
                         // Parse successful response
-                        let result: serde_json::Value =
-                            response.json().await.context("Failed to parse response")?;
+                        let result: serde_json::Value = response
+                            .body_json()
+                            .await
+                            .context("Failed to parse response")?;
 
                         return Ok(RemoteCommandResult {
                             node_id: node.id.clone(),
@@ -386,8 +399,9 @@ impl RemoteManager {
                         });
                     } else {
                         // Handle error response
+                        let duration_ms = start_time.elapsed().as_millis() as u64;
                         let error_text = response
-                            .text()
+                            .body_text()
                             .await
                             .unwrap_or_else(|_| "Unknown error".to_string());
 
@@ -401,7 +415,7 @@ impl RemoteManager {
                     }
                 }
                 Err(e) => {
-                    last_error = Some(e);
+                    last_error = Some(e.to_string());
                 }
             }
         }
@@ -415,9 +429,7 @@ impl RemoteManager {
             stderr: format!(
                 "Connection failed after {} attempts: {}",
                 node.options.max_retries,
-                last_error
-                    .map(|e| e.to_string())
-                    .unwrap_or_else(|| "Unknown error".to_string())
+                last_error.unwrap_or_else(|| "Unknown error".to_string())
             ),
             duration_ms,
         })
@@ -431,18 +443,7 @@ impl RemoteManager {
 
         debug!("Testing connection to remote node: {}", node.address);
 
-        // Build HTTP client with configured options
-        let mut client_builder = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(node.options.timeout_secs));
-
-        // Configure TLS if enabled
-        if node.options.tls {
-            client_builder = client_builder.danger_accept_invalid_certs(!node.options.verify_ssl);
-        }
-
-        let client = client_builder
-            .build()
-            .context("Failed to build HTTP client")?;
+        let client = Self::build_http_client(&node.options)?;
 
         // Construct health check URL
         let url = if node.options.tls {
@@ -451,35 +452,30 @@ impl RemoteManager {
             format!("http://{}/api/v1/health", node.address)
         };
 
-        // Build request with authentication
-        let mut request_builder = client.get(&url);
-
-        // Add authentication header based on method
-        request_builder = match &node.auth {
-            AuthMethod::None => request_builder,
-            AuthMethod::ApiKey { key } => request_builder.header("X-API-Key", key),
-            AuthMethod::Token { token } => {
-                request_builder.header("Authorization", format!("Bearer {}", token))
-            }
-            AuthMethod::Certificate { .. } => {
-                // Certificate-based auth would be configured in the TLS client builder
-                request_builder
-            }
-        };
-
-        // Execute request with retry logic
+        // Execute request with retry logic — fresh request per attempt
         for attempt in 0..node.options.max_retries {
             if attempt > 0 {
                 debug!("Retrying connection test (attempt {})", attempt + 1);
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
 
-            match request_builder
-                .try_clone()
-                .ok_or_else(|| anyhow::anyhow!("Failed to clone request"))?
-                .send()
-                .await
-            {
+            let mut req = client
+                .get(&url)
+                .context("Failed to create GET request")?;
+
+            // Add authentication header based on method
+            req = match &node.auth {
+                AuthMethod::None => req,
+                AuthMethod::ApiKey { key } => req
+                    .header("X-API-Key", key)
+                    .context("Failed to set X-API-Key header")?,
+                AuthMethod::Token { token } => req
+                    .header("Authorization", &format!("Bearer {}", token))
+                    .context("Failed to set Authorization header")?,
+                AuthMethod::Certificate { .. } => req,
+            };
+
+            match req.send().await {
                 Ok(response) => {
                     if response.status().is_success() {
                         info!("Connection test successful for {}", node.name);
@@ -581,7 +577,7 @@ mod tests {
             key: "test-key".to_string(),
         };
 
-        let toml_str = toml::to_string(&auth).unwrap();
+        let toml_str = toml::to_string(&auth).expect("serialize");
         assert!(toml_str.contains("apikey"));
         assert!(toml_str.contains("test-key"));
     }
@@ -608,7 +604,7 @@ mod tests {
             description: "A test node".to_string(),
         };
 
-        let toml_str = toml::to_string(&node).unwrap();
+        let toml_str = toml::to_string(&node).expect("serialize");
         assert!(toml_str.contains("node1"));
         assert!(toml_str.contains("Test Node"));
     }
@@ -639,12 +635,12 @@ mod tests {
 
     #[test]
     fn test_add_and_remove_node() {
-        let mut manager = RemoteManager::new().unwrap();
+        let mut manager = RemoteManager::new().expect("create manager");
 
         // Use timestamp-based unique ID to avoid conflicts with persistent config
         let timestamp = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
+            .expect("time since epoch")
             .as_micros();
         let node_id = format!("test-node-{}", timestamp);
 
@@ -666,12 +662,12 @@ mod tests {
 
     #[test]
     fn test_list_nodes_by_tag() {
-        let mut manager = RemoteManager::new().unwrap();
+        let mut manager = RemoteManager::new().expect("create manager");
 
         // Use timestamp-based unique IDs to avoid conflicts with persistent config
         let timestamp = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
+            .expect("time since epoch")
             .as_micros();
         let node1_id = format!("test-tag-node1-{}", timestamp);
         let node2_id = format!("test-tag-node2-{}", timestamp);

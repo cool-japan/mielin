@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use ring::digest;
+use oxicrypto_hash::{Sha256, Sha384, Sha512};
 use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -38,12 +38,12 @@ pub enum PinHashAlgorithm {
 }
 
 impl PinHashAlgorithm {
-    /// Get the digest algorithm
-    fn algorithm(&self) -> &'static digest::Algorithm {
+    /// Compute the digest of `data` for this algorithm, returning the raw hash bytes.
+    fn digest_bytes(&self, data: &[u8]) -> Vec<u8> {
         match self {
-            PinHashAlgorithm::Sha256 => &digest::SHA256,
-            PinHashAlgorithm::Sha384 => &digest::SHA384,
-            PinHashAlgorithm::Sha512 => &digest::SHA512,
+            PinHashAlgorithm::Sha256 => Sha256.hash_fixed(data).to_vec(),
+            PinHashAlgorithm::Sha384 => Sha384.hash_fixed(data).to_vec(),
+            PinHashAlgorithm::Sha512 => Sha512.hash_fixed(data).to_vec(),
         }
     }
 
@@ -433,8 +433,8 @@ impl PinStore {
             }
         };
 
-        let hash = digest::digest(hash_algorithm.algorithm(), &data_to_hash);
-        Ok(hex::encode(hash.as_ref()))
+        let hash = hash_algorithm.digest_bytes(&data_to_hash);
+        Ok(hex::encode(hash))
     }
 
     /// Extract Subject Public Key Info (SPKI) from certificate DER
@@ -562,15 +562,7 @@ impl Default for PinStore {
 mod tests {
     use super::*;
     use crate::certs::Certificate;
-    use std::sync::Once;
 
-    static INIT: Once = Once::new();
-
-    fn init_crypto() {
-        INIT.call_once(|| {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        });
-    }
 
     #[test]
     fn test_pin_creation() {
@@ -667,7 +659,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_certificate_pinning() {
-        init_crypto();
         let store = PinStore::new();
 
         // Generate a test certificate
@@ -703,7 +694,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_pin_rotation() {
-        init_crypto();
         let store = PinStore::new();
 
         let cert1 = Certificate::generate_self_signed("test.example.com".to_string(), 365).unwrap();

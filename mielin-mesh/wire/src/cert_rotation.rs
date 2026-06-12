@@ -412,7 +412,10 @@ impl CertRotator {
             vec![CertificateDer::from(cert.as_ref().to_vec())];
         let private_key: PrivateKeyDer<'static> = key.clone_key();
 
-        let server_cfg = rustls::ServerConfig::builder()
+        let provider = Arc::new(oxiquic_crypto::quic_crypto_provider());
+        let server_cfg = rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map_err(|e| CertRotationError::TlsConfigBuild(e.to_string()))?
             .with_no_client_auth()
             .with_single_cert(cert_chain, private_key)
             .map_err(|e| CertRotationError::TlsConfigBuild(e.to_string()))?;
@@ -439,14 +442,15 @@ impl CertRotator {
 
 /// Generate a self-signed certificate for localhost and return
 /// `(CertificateDer, PrivateKeyDer)` in `'static` form.
+///
+/// Uses oxitls-rcgen (Pure-Rust ECDSA P-256) — no ring involved.
 pub fn generate_self_signed_cert_der(
 ) -> Result<(CertificateDer<'static>, PrivateKeyDer<'static>), String> {
-    let cert_key =
-        rcgen::generate_simple_self_signed(vec!["localhost".to_string(), "127.0.0.1".to_string()])
-            .map_err(|e| e.to_string())?;
+    let ck = oxitls_rcgen::generate_self_signed_p256(&["localhost", "127.0.0.1"])
+        .map_err(|e| e.to_string())?;
 
-    let cert_der = CertificateDer::from(cert_key.cert.der().to_vec());
-    let key_der = PrivateKeyDer::try_from(cert_key.signing_key.serialize_der())
+    let cert_der = CertificateDer::from(ck.cert_der);
+    let key_der = PrivateKeyDer::try_from(ck.pkcs8_der)
         .map_err(|e| format!("key serialization failed: {:?}", e))?;
 
     Ok((cert_der, key_der))
@@ -459,16 +463,7 @@ pub fn generate_self_signed_cert_der(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Once;
     use tokio::sync::broadcast;
-
-    static INIT: Once = Once::new();
-
-    fn init_crypto() {
-        INIT.call_once(|| {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        });
-    }
 
     // -----------------------------------------------------------------------
     // Helper: build a valid self-signed cert + key pair
@@ -484,7 +479,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_new_creates_rotator_and_handle() {
-        init_crypto();
         let (cert_der, key_der) = fresh_cert_key();
         let initial = Arc::new(
             CertRotator::build_server_config(&cert_der, &key_der).expect("build must succeed"),
@@ -496,7 +490,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_with_self_signed_initial_succeeds() {
-        init_crypto();
         let result = CertRotator::with_self_signed_initial(CertRotationConfig::permissive());
         assert!(result.is_ok());
     }
@@ -507,7 +500,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_rotate_succeeds_with_fresh_cert() {
-        init_crypto();
         let (rotator, _handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -518,7 +510,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_rotate_updates_watch_channel() {
-        init_crypto();
         let (rotator, handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -537,7 +528,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_changed_receives_new_config() {
-        init_crypto();
         let (rotator, mut handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -565,7 +555,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_stats_track_total_rotations() {
-        init_crypto();
         let (rotator, _handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -582,7 +571,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_stats_track_failed_rotations() {
-        init_crypto();
         let (rotator, _handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -599,7 +587,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_rotation_counter_increments() {
-        init_crypto();
         let (rotator, _handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -615,7 +602,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limit_rejects_rapid_rotations() {
-        init_crypto();
         let config = CertRotationConfig {
             max_rotations_per_hour: 2,
             min_rotation_interval: Duration::ZERO,
@@ -644,7 +630,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_min_interval_enforced() {
-        init_crypto();
         let config = CertRotationConfig {
             max_rotations_per_hour: 100,
             min_rotation_interval: Duration::from_secs(3600),
@@ -673,7 +658,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_rotation_fails_with_empty_cert() {
-        init_crypto();
         let (rotator, _handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -688,7 +672,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_rotation_fails_with_invalid_key_material() {
-        init_crypto();
         let (rotator, _handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -743,7 +726,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_two_rotators_are_independent() {
-        init_crypto();
         let cfg = CertRotationConfig::permissive();
         let (rotator_a, handle_a) =
             CertRotator::with_self_signed_initial(cfg.clone()).expect("init a");
@@ -770,7 +752,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_subscribe_to_renewal_triggers_on_event() {
-        init_crypto();
         let (rotator, _handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -798,7 +779,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_subscribe_to_renewal_ignores_non_succeeded_events() {
-        init_crypto();
         let (rotator, _handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -826,7 +806,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_subscribe_to_renewal_handles_channel_close() {
-        init_crypto();
         let (rotator, _handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -851,7 +830,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_handles_receive_rotation() {
-        init_crypto();
         let (rotator, handle1) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -897,7 +875,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_rotation_in_progress_flag_resets_on_failure() {
-        init_crypto();
         let (rotator, _handle) =
             CertRotator::with_self_signed_initial(CertRotationConfig::permissive()).expect("init");
 
@@ -921,7 +898,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_stats_last_rotation_at_initially_none() {
-        init_crypto();
         let (cert_der, key_der) = fresh_cert_key();
         let initial =
             Arc::new(CertRotator::build_server_config(&cert_der, &key_der).expect("build"));
@@ -938,7 +914,6 @@ mod tests {
 
     #[test]
     fn test_generate_self_signed_cert_der_returns_non_empty() {
-        init_crypto();
         let (cert, key) = generate_self_signed_cert_der().expect("must succeed");
         assert!(!cert.is_empty());
         match &key {

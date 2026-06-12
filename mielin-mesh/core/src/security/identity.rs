@@ -318,48 +318,55 @@ impl IdentityVerifier {
         message: &[u8],
         signature: &[u8],
     ) -> SecurityResult<()> {
-        use ring::signature::{UnparsedPublicKey, ED25519};
+        use oxicrypto_core::Verifier;
+        use oxicrypto_sig::Ed25519Verifier;
 
-        let peer_public_key = UnparsedPublicKey::new(&ED25519, public_key);
-        peer_public_key.verify(message, signature).map_err(|_| {
-            SecurityError::SignatureVerificationFailed {
+        Ed25519Verifier
+            .verify(public_key, message, signature)
+            .map_err(|_| SecurityError::SignatureVerificationFailed {
                 details: "Ed25519 signature verification failed".to_string(),
-            }
-        })
+            })
     }
 
-    /// Verify ECDSA P-256 signature
+    /// Verify ECDSA P-256 signature.
+    ///
+    /// `public_key` is a SEC1-encoded point (compressed 33 bytes or uncompressed
+    /// 65 bytes) and `signature` is ASN.1 DER, matching ring's
+    /// `ECDSA_P256_SHA256_ASN1` interface.
     fn verify_ecdsa_p256(
         &self,
         public_key: &[u8],
         message: &[u8],
         signature: &[u8],
     ) -> SecurityResult<()> {
-        use ring::signature::{UnparsedPublicKey, ECDSA_P256_SHA256_ASN1};
+        use oxicrypto_core::Verifier;
+        use oxicrypto_sig::EcdsaP256Verify;
 
-        let peer_public_key = UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, public_key);
-        peer_public_key.verify(message, signature).map_err(|_| {
-            SecurityError::SignatureVerificationFailed {
+        EcdsaP256Verify
+            .verify(public_key, message, signature)
+            .map_err(|_| SecurityError::SignatureVerificationFailed {
                 details: "ECDSA P-256 signature verification failed".to_string(),
-            }
-        })
+            })
     }
 
-    /// Verify ECDSA P-384 signature
+    /// Verify ECDSA P-384 signature.
+    ///
+    /// `public_key` is a SEC1-encoded point and `signature` is ASN.1 DER,
+    /// matching ring's `ECDSA_P384_SHA384_ASN1` interface.
     fn verify_ecdsa_p384(
         &self,
         public_key: &[u8],
         message: &[u8],
         signature: &[u8],
     ) -> SecurityResult<()> {
-        use ring::signature::{UnparsedPublicKey, ECDSA_P384_SHA384_ASN1};
+        use oxicrypto_core::Verifier;
+        use oxicrypto_sig::EcdsaP384Verify;
 
-        let peer_public_key = UnparsedPublicKey::new(&ECDSA_P384_SHA384_ASN1, public_key);
-        peer_public_key.verify(message, signature).map_err(|_| {
-            SecurityError::SignatureVerificationFailed {
+        EcdsaP384Verify
+            .verify(public_key, message, signature)
+            .map_err(|_| SecurityError::SignatureVerificationFailed {
                 details: "ECDSA P-384 signature verification failed".to_string(),
-            }
-        })
+            })
     }
 
     /// Get all registered identities

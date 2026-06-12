@@ -5,7 +5,7 @@
 //! tracking. All types integrate cleanly with the existing `security.rs` and
 //! `cert_rotation.rs` infrastructure.
 
-use ring::digest::{digest, SHA256, SHA384, SHA512};
+use oxicrypto_hash::{Sha256, Sha384, Sha512};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -70,9 +70,9 @@ impl PinAlgorithm {
     /// Digest raw bytes with the selected algorithm
     fn digest_bytes(self, data: &[u8]) -> Vec<u8> {
         match self {
-            PinAlgorithm::Sha256 => digest(&SHA256, data).as_ref().to_vec(),
-            PinAlgorithm::Sha384 => digest(&SHA384, data).as_ref().to_vec(),
-            PinAlgorithm::Sha512 => digest(&SHA512, data).as_ref().to_vec(),
+            PinAlgorithm::Sha256 => Sha256.hash_fixed(data).to_vec(),
+            PinAlgorithm::Sha384 => Sha384.hash_fixed(data).to_vec(),
+            PinAlgorithm::Sha512 => Sha512.hash_fixed(data).to_vec(),
         }
     }
 }
@@ -436,7 +436,7 @@ impl CertChainVerifier {
         };
 
         // Compute leaf fingerprint (SHA-256 of DER bytes)
-        let leaf_fingerprint = digest(&SHA256, leaf).as_ref().to_vec();
+        let leaf_fingerprint = Sha256.hash_fixed(leaf).to_vec();
 
         // Derive a best-effort subject string from the DER prefix (hex of first 16 bytes)
         let preview_len = leaf.len().min(16);
@@ -972,10 +972,7 @@ mod tests {
 
     /// Compute the SHA-256 fingerprint of `data`
     fn sha256_of(data: &[u8]) -> [u8; 32] {
-        let d = ring::digest::digest(&ring::digest::SHA256, data);
-        let mut out = [0u8; 32];
-        out.copy_from_slice(d.as_ref());
-        out
+        Sha256.hash_fixed(data)
     }
 
     // -----------------------------------------------------------------------

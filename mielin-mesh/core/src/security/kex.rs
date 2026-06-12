@@ -52,27 +52,21 @@ impl KeyExchange {
 
     /// Start key exchange by generating ephemeral keys
     pub fn initiate(&mut self, peer_node_id: NodeId) -> SecurityResult<Vec<u8>> {
-        use ring::agreement::{EphemeralPrivateKey, X25519};
-        use ring::rand::SystemRandom;
+        use oxicrypto_kex::x25519_generate_keypair;
 
-        let rng = SystemRandom::new();
-        let private_key = EphemeralPrivateKey::generate(&X25519, &rng).map_err(|_| {
-            SecurityError::KeyExchangeFailed {
+        let mut rng =
+            oxicrypto_rand::OxiRng::new().map_err(|_| SecurityError::KeyExchangeFailed {
+                details: "Failed to initialise CSPRNG".to_string(),
+            })?;
+        let (private_key, public_key) =
+            x25519_generate_keypair(&mut rng).map_err(|_| SecurityError::KeyExchangeFailed {
                 details: "Failed to generate ephemeral key".to_string(),
-            }
-        })?;
+            })?;
 
-        let public_key =
-            private_key
-                .compute_public_key()
-                .map_err(|_| SecurityError::KeyExchangeFailed {
-                    details: "Failed to compute public key".to_string(),
-                })?;
+        let public_key_bytes = public_key.to_vec();
 
-        let public_key_bytes = public_key.as_ref().to_vec();
-
-        // Store private key bytes for later (we can't store EphemeralPrivateKey directly)
-        // In a real implementation, we'd use a different approach
+        // Store the ephemeral private scalar and public key for later derivation.
+        self.local_private_key = Some(private_key.as_bytes().to_vec());
         self.local_public_key = Some(public_key_bytes.clone());
         self.peer_node_id = Some(peer_node_id);
         self.state = KeyExchangeState::WaitingForPeerKey;
@@ -114,27 +108,25 @@ impl KeyExchange {
                     details: "Peer public key not set".to_string(),
                 })?;
 
-        // Use HKDF to derive the shared secret
-        use ring::hkdf::{Salt, HKDF_SHA256};
-
-        let salt = Salt::new(HKDF_SHA256, b"mielin-mesh-key-exchange");
+        // Use HKDF-SHA-256 to derive the shared secret.
+        use oxicrypto_core::Kdf;
+        use oxicrypto_kdf::HkdfSha256;
 
         // Combine both public keys as input key material
         let mut ikm = Vec::with_capacity(local_pk.len() + peer_pk.len());
         ikm.extend_from_slice(local_pk);
         ikm.extend_from_slice(peer_pk);
 
-        let prk = salt.extract(&ikm);
-        let okm = prk
-            .expand(&[b"gossip-encryption-key"], HKDF_SHA256)
+        let mut shared_secret = [0u8; 32];
+        HkdfSha256
+            .derive(
+                &ikm,
+                b"mielin-mesh-key-exchange",
+                b"gossip-encryption-key",
+                &mut shared_secret,
+            )
             .map_err(|_| SecurityError::KeyExchangeFailed {
                 details: "HKDF expansion failed".to_string(),
-            })?;
-
-        let mut shared_secret = [0u8; 32];
-        okm.fill(&mut shared_secret)
-            .map_err(|_| SecurityError::KeyExchangeFailed {
-                details: "Failed to fill shared secret".to_string(),
             })?;
 
         self.shared_secret = Some(shared_secret);

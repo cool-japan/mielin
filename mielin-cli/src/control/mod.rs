@@ -2,7 +2,7 @@
 //!
 //! Provides:
 //! - `ControlServer` — an axum HTTP server that exposes `MeshService` state
-//! - `ControlClient` — a typed `reqwest` wrapper that speaks to the server
+//! - `ControlClient` — a typed `oxihttp-client` wrapper that speaks to the server
 //! - `dto` — the shared serde-serialisable data transfer objects
 
 pub mod client;

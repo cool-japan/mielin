@@ -21,7 +21,12 @@ tokio = { workspace = true, features = ["sync", "time", "rt"] }
 oxiarc-lz4.workspace = true
 oxiarc-zstd.workspace = true
 rand.workspace = true
-ring.workspace = true
+rand_core.workspace = true
+oxicrypto-hash.workspace = true
+oxicrypto-rand.workspace = true
+oxicrypto-aead.workspace = true
+oxicrypto-sig.workspace = true
+oxicrypto-core.workspace = true
 
 mielin-mesh-core.workspace = true
 
