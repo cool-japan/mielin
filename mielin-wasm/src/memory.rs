@@ -579,8 +579,8 @@ mod tests {
             compressed.len(),
             data.len() + 13
         );
-        let recovered = MemorySnapshot::decompress(&compressed)
-            .expect("decompression should succeed");
+        let recovered =
+            MemorySnapshot::decompress(&compressed).expect("decompression should succeed");
         assert_eq!(recovered.data, data);
         assert_eq!(recovered.pages, 1);
         assert!(recovered.verify(), "checksum should pass");

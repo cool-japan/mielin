@@ -1300,7 +1300,10 @@ mod tests {
         let scheduled = scheduler.schedule(0);
         assert_eq!(scheduled.map(|h| h.id), scheduled.map(|h| h.id)); // it exists
         let scheduled_handle = scheduled.expect("should get a task");
-        assert_eq!(scheduled_handle.priority, 200, "should schedule high priority first");
+        assert_eq!(
+            scheduled_handle.priority, 200,
+            "should schedule high priority first"
+        );
         // Yield it back (using yield_task which should preserve priority=200)
         scheduler.yield_task(0);
         // Now schedule again — should get the yielded task (priority 200) before low (priority 1)

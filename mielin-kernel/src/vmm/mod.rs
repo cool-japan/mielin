@@ -901,7 +901,9 @@ unsafe fn flush_tlb_all() {
 pub fn handle_tlb_shootdown_ipi() {
     if crate::ipc::handle_ipi(crate::ipc::IpiType::TlbFlush) {
         // Safe: interrupt context, local-only flush, no VMM lock held.
-        unsafe { flush_tlb_all(); }
+        unsafe {
+            flush_tlb_all();
+        }
         TLB_SHOOTDOWN_ACK.fetch_add(1, Ordering::Release);
     }
 }
@@ -925,7 +927,9 @@ pub fn handle_tlb_shootdown_ipi() {
 pub fn flush_tlb_range_smp(start: usize, page_count: usize) -> Result<(), VmmError> {
     // 1. Flush locally (raw — avoids VMM lock).
     for i in 0..page_count {
-        unsafe { flush_tlb_page(start + i * PAGE_SIZE); }
+        unsafe {
+            flush_tlb_page(start + i * PAGE_SIZE);
+        }
     }
 
     // 2. If running single-core, we are done.

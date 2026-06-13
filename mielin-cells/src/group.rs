@@ -1090,7 +1090,7 @@ mod coordinator_tests {
         group.add_member(missing_id, GroupRole::Member).unwrap();
         let coord = GroupCoordinator::new(group);
         let agents: HashMap<AgentId, Agent> = HashMap::new(); // empty
-        // all() on member that maps to false (missing) → false
+                                                              // all() on member that maps to false (missing) → false
         assert!(!coord.all_in_state(&agents, |s| *s == AgentState::Running));
     }
 }

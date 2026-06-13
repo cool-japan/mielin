@@ -5,7 +5,6 @@
 //! - TensorFlow Lite
 //! - Custom binary format
 
-
 use crate::error::{TensorError, TensorResult};
 use crate::tensor::Tensor;
 use alloc::collections::BTreeMap;
@@ -490,7 +489,7 @@ fn base64_encode(data: &[u8]) -> alloc::string::String {
         let b0 = chunk[0] as usize;
         let b1 = chunk[1] as usize;
         let b2 = chunk[2] as usize;
-        out.push(CHARS[(b0 >> 2)] as char);
+        out.push(CHARS[b0 >> 2] as char);
         out.push(CHARS[((b0 & 0x3) << 4) | (b1 >> 4)] as char);
         out.push(CHARS[((b1 & 0xf) << 2) | (b2 >> 6)] as char);
         out.push(CHARS[b2 & 0x3f] as char);
@@ -661,15 +660,14 @@ mod tests {
 
         // Serialize
         let mut ser = crate::serialize::Serializer::new();
-        ser.serialize_imported_model(&original).expect("serialize ok");
+        ser.serialize_imported_model(&original)
+            .expect("serialize ok");
         let bytes = ser.into_bytes();
         assert!(!bytes.is_empty());
 
         // Deserialize
         let mut deser = crate::serialize::Deserializer::new(&bytes);
-        let recovered = deser
-            .deserialize_imported_model()
-            .expect("deserialize ok");
+        let recovered = deser.deserialize_imported_model().expect("deserialize ok");
 
         assert_eq!(recovered.info.name, original.info.name);
         assert_eq!(recovered.info.version, original.info.version);
@@ -686,7 +684,9 @@ mod tests {
         // Verify attributes round-trip
         let attrs = &recovered.graph.nodes[0].attributes;
         assert!(matches!(attrs.get("axis"), Some(AttributeValue::Int(0))));
-        assert!(matches!(attrs.get("scale"), Some(AttributeValue::Float(v)) if (*v - 0.5).abs() < 1e-6));
+        assert!(
+            matches!(attrs.get("scale"), Some(AttributeValue::Float(v)) if (*v - 0.5).abs() < 1e-6)
+        );
         assert!(matches!(attrs.get("name_attr"), Some(AttributeValue::String(s)) if s == "relu"));
         assert!(matches!(attrs.get("dims"), Some(AttributeValue::Ints(v)) if v == &[1i64, 2, 3]));
         assert!(matches!(attrs.get("alphas"), Some(AttributeValue::Floats(v)) if v.len() == 2));

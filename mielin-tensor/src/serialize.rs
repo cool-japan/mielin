@@ -298,10 +298,7 @@ impl Serializer {
     ///
     /// Layout: count u32, then (key-string, tensor-raw) pairs.
     /// Tensors are stored without their own MIEL header (raw shape + data).
-    fn serialize_parameters(
-        &mut self,
-        params: &BTreeMap<String, Tensor<f32>>,
-    ) -> TensorResult<()> {
+    fn serialize_parameters(&mut self, params: &BTreeMap<String, Tensor<f32>>) -> TensorResult<()> {
         self.write_u32(params.len() as u32);
         for (key, tensor) in params {
             self.write_string(key);
@@ -626,9 +623,7 @@ impl<'a> Deserializer<'a> {
     }
 
     /// Deserialize a full `ImportedModel` (counterpart to `serialize_imported_model`).
-    pub fn deserialize_imported_model(
-        &mut self,
-    ) -> TensorResult<crate::formats::ImportedModel> {
+    pub fn deserialize_imported_model(&mut self) -> TensorResult<crate::formats::ImportedModel> {
         self.read_header()?;
         let info = self.deserialize_model_info()?;
         let parameters = self.deserialize_parameters()?;
@@ -768,9 +763,7 @@ impl<'a> Deserializer<'a> {
     }
 
     /// Deserialize an `AttributeValue` (reads the type tag then the payload).
-    fn deserialize_attribute_value(
-        &mut self,
-    ) -> TensorResult<crate::formats::AttributeValue> {
+    fn deserialize_attribute_value(&mut self) -> TensorResult<crate::formats::AttributeValue> {
         use crate::formats::AttributeValue;
         let tag = self.read_u8()?;
         match tag {

@@ -19,7 +19,6 @@
 //! let dense = sparse.to_dense();
 //! ```
 
-
 use crate::error::{TensorError, TensorResult};
 use crate::tensor::Tensor;
 use alloc::vec;
