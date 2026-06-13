@@ -1082,8 +1082,7 @@ pub fn build_jws_for_test(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use oxicrypto_sig::{EcdsaP256Verifier, SignatureFormat};
     use serde_json::Value;
     use std::collections::HashMap;
@@ -1248,7 +1247,8 @@ mod tests {
 
         // Signature must verify with the corresponding verifying key
         let sk = p256::SecretKey::from_slice(&KAT_SCALAR).expect("scalar");
-        let vk_bytes = sk.public_key().to_encoded_point(true).as_bytes().to_vec();
+        use p256::elliptic_curve::sec1::ToSec1Point;
+        let vk_bytes = sk.public_key().to_sec1_point(true).as_bytes().to_vec();
         let verifier = EcdsaP256Verifier::from_sec1_bytes(&vk_bytes).expect("verifier");
 
         let signing_input = format!("{}.{}", protected_b64, payload_b64);
@@ -1398,7 +1398,10 @@ mod tests {
                                 "newAccount": format!("http://{addr}/new-account"),
                                 "newOrder": format!("http://{addr}/new-order"),
                             });
-                            (200, serde_json::to_string(&dir).unwrap())
+                            (
+                                200,
+                                serde_json::to_string(&dir).expect("mock dir serialize"),
+                            )
                         }
                         Some(p) if p == "/nonce" || request.contains("HEAD") => {
                             // Return nonce header, empty body
@@ -1408,10 +1411,12 @@ mod tests {
                         }
                         Some("/new-account") => {
                             let body = serde_json::json!({"status": "valid"});
+                            let body_str =
+                                serde_json::to_string(&body).expect("mock account serialize");
                             let response = format!(
                                 "HTTP/1.1 201 Created\r\nLocation: http://{addr}/acct/1\r\nReplay-Nonce: nonce-after-account\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-                                serde_json::to_string(&body).unwrap().len(),
-                                serde_json::to_string(&body).unwrap()
+                                body_str.len(),
+                                body_str
                             );
                             let _ = stream.write_all(response.as_bytes()).await;
                             return;
@@ -1422,7 +1427,8 @@ mod tests {
                                 "authorizations": [format!("http://{addr}/authz/1")],
                                 "finalize": format!("http://{addr}/finalize/1"),
                             });
-                            let body_str = serde_json::to_string(&body).unwrap();
+                            let body_str =
+                                serde_json::to_string(&body).expect("mock order serialize");
                             let response = format!(
                                 "HTTP/1.1 201 Created\r\nLocation: http://{addr}/order/1\r\nReplay-Nonce: nonce-after-order\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
                                 body_str.len(), body_str
@@ -1441,18 +1447,27 @@ mod tests {
                                     "status": "valid"
                                 }]
                             });
-                            (200, serde_json::to_string(&body).unwrap())
+                            (
+                                200,
+                                serde_json::to_string(&body).expect("mock authz serialize"),
+                            )
                         }
                         Some("/challenge/1") => {
                             let body = serde_json::json!({"status": "valid"});
-                            (200, serde_json::to_string(&body).unwrap())
+                            (
+                                200,
+                                serde_json::to_string(&body).expect("mock challenge serialize"),
+                            )
                         }
                         Some("/finalize/1") => {
                             let body = serde_json::json!({
                                 "status": "valid",
                                 "certificate": format!("http://{addr}/cert/1"),
                             });
-                            (200, serde_json::to_string(&body).unwrap())
+                            (
+                                200,
+                                serde_json::to_string(&body).expect("mock finalize serialize"),
+                            )
                         }
                         Some("/order/1") => {
                             let body = serde_json::json!({
@@ -1461,7 +1476,10 @@ mod tests {
                                 "authorizations": [],
                                 "finalize": format!("http://{addr}/finalize/1"),
                             });
-                            (200, serde_json::to_string(&body).unwrap())
+                            (
+                                200,
+                                serde_json::to_string(&body).expect("mock order-poll serialize"),
+                            )
                         }
                         Some("/cert/1") => (200, cert_pem2.as_ref().clone()),
                         _ => (404, "Not Found".to_string()),
@@ -1510,11 +1528,12 @@ mod tests {
             .with_directory_url(format!("{base_url}/dir"))
             .with_challenge_type(AcmeChallengeType::Http01);
 
-        // Build a plain HTTP client for the mock server
-        let http = Client::builder().build_https().unwrap_or_else(|_| {
-            // If TLS build fails (shouldn't in test env), panic with info
-            panic!("HttpsClient build failed — check oxitls/rustls TLS stack");
-        });
+        // Build HTTP client for the mock server (plain HTTP).
+        // HttpsClient requires TLS roots even for plain-HTTP connections.
+        let http = Client::builder()
+            .with_webpki_roots()
+            .build_https()
+            .expect("HttpsClient build failed — check oxitls/rustls TLS stack");
 
         let validator = Arc::new(MockValidator::default());
         let client = AcmeClient::new_with_http(config, http)

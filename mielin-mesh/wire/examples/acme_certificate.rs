@@ -116,7 +116,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Create ACME client with validator
     let validator = Arc::new(SimpleHttp01Validator);
-    let client = AcmeClient::new(config).with_validator(validator);
+    let client = AcmeClient::new(config)?.with_validator(validator);
 
     // Initialize ACME account
     info!("Initializing ACME account...");
