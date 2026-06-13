@@ -47,28 +47,28 @@ use spin::Mutex;
 /// Get current CPU ID (wrapper for test compatibility)
 #[cfg(not(test))]
 #[inline]
-fn get_current_cpu_id() -> usize {
+pub fn get_current_cpu_id() -> usize {
     crate::percpu::current_cpu_id()
 }
 
 /// Get current CPU ID (test stub - always returns 0)
 #[cfg(test)]
 #[inline]
-fn get_current_cpu_id() -> usize {
+pub fn get_current_cpu_id() -> usize {
     0
 }
 
 /// Get number of online CPUs (wrapper for test compatibility)
 #[cfg(not(test))]
 #[inline]
-fn get_num_online_cpus() -> usize {
+pub fn get_num_online_cpus() -> usize {
     crate::percpu::num_online_cpus()
 }
 
 /// Get number of online CPUs (test stub - returns MAX_CPUS)
 #[cfg(test)]
 #[inline]
-fn get_num_online_cpus() -> usize {
+pub fn get_num_online_cpus() -> usize {
     MAX_CPUS
 }
 
@@ -1050,5 +1050,15 @@ mod tests {
     fn test_ipi_invalid_cpu_returns_false() {
         assert!(!send_ipi(MAX_CPUS, IpiType::Wakeup));
         assert!(!send_ipi(usize::MAX, IpiType::Halt));
+    }
+}
+
+/// Set an IPI as pending on a specific CPU (for testing/simulation purposes).
+///
+/// In production, IPIs are set pending by `send_ipi`.
+#[cfg(test)]
+pub fn set_pending(cpu_id: usize, ipi_type: IpiType) {
+    if cpu_id < MAX_CPUS {
+        IPI_STATES[cpu_id].set_pending(ipi_type);
     }
 }

@@ -5,7 +5,6 @@
 //! - TensorFlow Lite
 //! - Custom binary format
 
-#![allow(unused)]
 
 use crate::error::{TensorError, TensorResult};
 use crate::tensor::Tensor;
@@ -300,9 +299,10 @@ pub fn convert_model(
         #[cfg(feature = "tflite")]
         ModelFormat::TfLite => tflite::TfLiteImporter::import(input_data)?,
         ModelFormat::Mielin => {
-            return Err(TensorError::other(
-                "Mielin format import not yet implemented",
-            ));
+            let mut deser = crate::serialize::Deserializer::new(input_data);
+            deser
+                .deserialize_imported_model()
+                .map_err(|e| TensorError::other(alloc::format!("Mielin import failed: {}", e)))?
         }
         #[allow(unreachable_patterns)]
         _ => {
@@ -327,9 +327,16 @@ pub fn convert_model(
         ModelFormat::TfLite => tflite_export(&export_model),
         #[cfg(not(feature = "tflite"))]
         ModelFormat::TfLite => tflite_export(&export_model),
-        ModelFormat::Mielin => Err(TensorError::other(
-            "Mielin format export not yet implemented",
-        )),
+        ModelFormat::Mielin => {
+            let mut ser = crate::serialize::Serializer::new();
+            ser.serialize_imported_model(&ImportedModel {
+                info: export_model.info.clone(),
+                parameters: export_model.parameters.clone(),
+                graph: export_model.graph.clone(),
+            })
+            .map_err(|e| TensorError::other(alloc::format!("Mielin export failed: {}", e)))?;
+            Ok(ser.into_bytes())
+        }
         #[allow(unreachable_patterns)]
         _ => Err(TensorError::other("Output format not compiled")),
     }
@@ -594,5 +601,99 @@ mod tests {
         let _ = int_val;
         let _ = float_val;
         let _ = str_val;
+    }
+
+    #[test]
+    fn test_mielin_format_roundtrip() {
+        // Build a simple ImportedModel and verify serialize/deserialize round-trip.
+        let mut parameters = BTreeMap::new();
+        parameters.insert(
+            "weight".to_string(),
+            Tensor::matrix(alloc::vec![1.0, 2.0, 3.0, 4.0], 2, 2).unwrap(),
+        );
+
+        let mut attr = BTreeMap::new();
+        attr.insert("axis".to_string(), AttributeValue::Int(0));
+        attr.insert("scale".to_string(), AttributeValue::Float(0.5));
+        attr.insert(
+            "name_attr".to_string(),
+            AttributeValue::String("relu".to_string()),
+        );
+        attr.insert(
+            "dims".to_string(),
+            AttributeValue::Ints(alloc::vec![1, 2, 3]),
+        );
+        attr.insert(
+            "alphas".to_string(),
+            AttributeValue::Floats(alloc::vec![0.1, 0.2]),
+        );
+
+        let graph = ModelGraph {
+            nodes: alloc::vec![GraphNode {
+                name: "node0".to_string(),
+                op_type: "MatMul".to_string(),
+                inputs: alloc::vec![0, 1],
+                attributes: attr,
+            }],
+            inputs: alloc::vec![0],
+            outputs: alloc::vec![0],
+        };
+
+        let mut model_inputs = BTreeMap::new();
+        model_inputs.insert("x".to_string(), alloc::vec![2usize, 2usize]);
+        let mut model_outputs = BTreeMap::new();
+        model_outputs.insert("y".to_string(), alloc::vec![2usize, 2usize]);
+
+        let info = ModelInfo {
+            name: "test_model".to_string(),
+            version: "1.0".to_string(),
+            format: ModelFormat::Mielin,
+            inputs: model_inputs,
+            outputs: model_outputs,
+            size: 4,
+        };
+
+        let original = ImportedModel {
+            info,
+            parameters,
+            graph,
+        };
+
+        // Serialize
+        let mut ser = crate::serialize::Serializer::new();
+        ser.serialize_imported_model(&original).expect("serialize ok");
+        let bytes = ser.into_bytes();
+        assert!(!bytes.is_empty());
+
+        // Deserialize
+        let mut deser = crate::serialize::Deserializer::new(&bytes);
+        let recovered = deser
+            .deserialize_imported_model()
+            .expect("deserialize ok");
+
+        assert_eq!(recovered.info.name, original.info.name);
+        assert_eq!(recovered.info.version, original.info.version);
+        assert_eq!(recovered.info.size, original.info.size);
+        assert_eq!(recovered.info.inputs.len(), 1);
+        assert_eq!(recovered.info.outputs.len(), 1);
+
+        assert_eq!(recovered.graph.nodes.len(), 1);
+        assert_eq!(recovered.graph.nodes[0].op_type, "MatMul");
+        assert_eq!(recovered.graph.nodes[0].inputs, alloc::vec![0usize, 1]);
+        assert_eq!(recovered.graph.inputs, alloc::vec![0usize]);
+        assert_eq!(recovered.graph.outputs, alloc::vec![0usize]);
+
+        // Verify attributes round-trip
+        let attrs = &recovered.graph.nodes[0].attributes;
+        assert!(matches!(attrs.get("axis"), Some(AttributeValue::Int(0))));
+        assert!(matches!(attrs.get("scale"), Some(AttributeValue::Float(v)) if (*v - 0.5).abs() < 1e-6));
+        assert!(matches!(attrs.get("name_attr"), Some(AttributeValue::String(s)) if s == "relu"));
+        assert!(matches!(attrs.get("dims"), Some(AttributeValue::Ints(v)) if v == &[1i64, 2, 3]));
+        assert!(matches!(attrs.get("alphas"), Some(AttributeValue::Floats(v)) if v.len() == 2));
+
+        // Verify parameters
+        let w = recovered.parameters.get("weight").expect("weight present");
+        assert_eq!(w.data(), &[1.0f32, 2.0, 3.0, 4.0]);
+        assert_eq!(w.shape(), &[2, 2]);
     }
 }

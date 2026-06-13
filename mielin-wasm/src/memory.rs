@@ -320,7 +320,7 @@ impl MemorySnapshot {
     }
 
     /// Compute a simple checksum (FNV-1a hash)
-    fn compute_checksum(data: &[u8]) -> u64 {
+    pub(crate) fn compute_checksum(data: &[u8]) -> u64 {
         const FNV_OFFSET: u64 = 0xcbf29ce484222325;
         const FNV_PRIME: u64 = 0x100000001b3;
 
@@ -342,20 +342,29 @@ impl MemorySnapshot {
         self.data.len()
     }
 
-    /// Create compressed snapshot (stub - would use real compression)
+    /// Create a compressed snapshot using LZ4.
+    ///
+    /// Format (13-byte header):
+    /// - Bytes 0..4  : pages (u32 LE)
+    /// - Bytes 4..12 : checksum (u64 LE)
+    /// - Byte 12     : format tag (1 = LZ4, 0 = raw fallback)
+    /// - Bytes 13..  : compressed or raw payload
     pub fn compress(&self) -> Vec<u8> {
-        // For now, just return the raw data
-        // In production, would use lz4 or similar
-        let mut result = Vec::with_capacity(self.data.len() + 12);
+        let (tag, payload) = match oxiarc_lz4::compress(&self.data) {
+            Ok(compressed) => (1u8, compressed),
+            Err(_) => (0u8, self.data.clone()),
+        };
+        let mut result = Vec::with_capacity(13 + payload.len());
         result.extend_from_slice(&self.pages.to_le_bytes());
         result.extend_from_slice(&self.checksum.to_le_bytes());
-        result.extend_from_slice(&self.data);
+        result.push(tag);
+        result.extend_from_slice(&payload);
         result
     }
 
-    /// Decompress snapshot
+    /// Decompress a snapshot produced by [`Self::compress`].
     pub fn decompress(data: &[u8]) -> Option<Self> {
-        if data.len() < 12 {
+        if data.len() < 13 {
             return None;
         }
 
@@ -363,7 +372,14 @@ impl MemorySnapshot {
         let checksum = u64::from_le_bytes([
             data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
         ]);
-        let memory_data = data[12..].to_vec();
+        let tag = data[12];
+        let payload = &data[13..];
+
+        let memory_data = match tag {
+            1 => oxiarc_lz4::decompress(payload, usize::MAX).ok()?,
+            0 => payload.to_vec(),
+            _ => return None,
+        };
 
         let snapshot = Self {
             data: memory_data,
@@ -543,5 +559,36 @@ mod tests {
         manager.initialize(65536); // 1 page
 
         assert_eq!(manager.stats().current_bytes(), 65536);
+    }
+
+    #[test]
+    fn test_snapshot_compress_decompress_roundtrip() {
+        // Use highly compressible data (repeated bytes)
+        let data = vec![0xABu8; 4096];
+        let checksum = MemorySnapshot::compute_checksum(&data);
+        let snapshot = MemorySnapshot {
+            data: data.clone(),
+            pages: 1,
+            checksum,
+        };
+        let compressed = snapshot.compress();
+        // Should be smaller than raw for highly repetitive data
+        assert!(
+            compressed.len() < data.len() + 13,
+            "compressed ({}) should be smaller than raw+header ({})",
+            compressed.len(),
+            data.len() + 13
+        );
+        let recovered = MemorySnapshot::decompress(&compressed)
+            .expect("decompression should succeed");
+        assert_eq!(recovered.data, data);
+        assert_eq!(recovered.pages, 1);
+        assert!(recovered.verify(), "checksum should pass");
+    }
+
+    #[test]
+    fn test_snapshot_compress_too_short_returns_none() {
+        assert!(MemorySnapshot::decompress(&[0u8; 5]).is_none());
+        assert!(MemorySnapshot::decompress(&[]).is_none());
     }
 }

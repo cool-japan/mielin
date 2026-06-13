@@ -14,14 +14,12 @@
 //!   worker id so different workers diverge immediately.
 //! - Metrics are tracked with relaxed atomics and summarised via snapshot.
 
-#![allow(dead_code)]
-
 extern crate alloc;
 
 use crate::lockfree::{Steal, WorkStealingDeque};
 use crate::KernelError;
 use alloc::boxed::Box;
-use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
 // =============================================================================
 // Constants
@@ -194,6 +192,8 @@ struct WorkerState {
     deques: PriorityDeques,
     /// Task id currently being executed, or `IDLE_SENTINEL`.
     current_task: AtomicUsize,
+    /// Priority of the task currently being executed.
+    current_priority: AtomicU32,
     steal_attempts: AtomicU64,
     steal_successes: AtomicU64,
 }
@@ -203,6 +203,7 @@ impl WorkerState {
         Self {
             deques: PriorityDeques::new(),
             current_task: AtomicUsize::new(IDLE_SENTINEL),
+            current_priority: AtomicU32::new(0),
             steal_attempts: AtomicU64::new(0),
             steal_successes: AtomicU64::new(0),
         }
@@ -330,6 +331,9 @@ impl WorkStealingScheduler {
             worker
                 .current_task
                 .store(entry.handle.id, Ordering::Relaxed);
+            worker
+                .current_priority
+                .store(entry.handle.priority as u32, Ordering::Relaxed);
             return Some(entry.handle);
         }
 
@@ -337,6 +341,9 @@ impl WorkStealingScheduler {
         let stolen = self.try_steal(worker_id);
         if let Some(handle) = stolen {
             worker.current_task.store(handle.id, Ordering::Relaxed);
+            worker
+                .current_priority
+                .store(handle.priority as u32, Ordering::Relaxed);
             self.metrics.total_stolen.fetch_add(1, Ordering::Relaxed);
             return Some(handle);
         }
@@ -355,12 +362,9 @@ impl WorkStealingScheduler {
         if current_id == IDLE_SENTINEL {
             return;
         }
-        // Reconstruct a minimal entry.  Priority 0 is used as a placeholder
-        // because we do not store priority alongside the running task id.
-        // Callers that need accurate re-queuing should use `yield_task_with_priority`.
         let handle = TaskHandle {
             id: current_id,
-            priority: 0,
+            priority: worker.current_priority.load(Ordering::Relaxed) as u8,
             worker_hint: worker_id,
         };
         worker.deques.push(TaskEntry { handle });
@@ -1282,5 +1286,33 @@ mod tests {
         // Both coexist in the same binary with no conflicts.
         let snap = ws.snapshot_metrics();
         assert_eq!(snap.total_scheduled, 1);
+    }
+
+    #[test]
+    fn test_yield_task_preserves_priority() {
+        // Create a scheduler with 1 worker
+        let scheduler = WorkStealingScheduler::new(1);
+        // Add low-priority task first (priority 1)
+        scheduler.spawn_task(0, 1).unwrap();
+        // Add high-priority task (priority 200)
+        scheduler.spawn_task(0, 200).unwrap();
+        // Schedule - should get high priority (200) first
+        let scheduled = scheduler.schedule(0);
+        assert_eq!(scheduled.map(|h| h.id), scheduled.map(|h| h.id)); // it exists
+        let scheduled_handle = scheduled.expect("should get a task");
+        assert_eq!(scheduled_handle.priority, 200, "should schedule high priority first");
+        // Yield it back (using yield_task which should preserve priority=200)
+        scheduler.yield_task(0);
+        // Now schedule again — should get the yielded task (priority 200) before low (priority 1)
+        let next = scheduler.schedule(0);
+        let next_handle = next.expect("should get a task after yield");
+        assert_eq!(
+            next_handle.priority, 200,
+            "yielded high-priority task should be re-scheduled before low-priority"
+        );
+        assert_eq!(
+            next_handle.id, scheduled_handle.id,
+            "should be the same task that was yielded"
+        );
     }
 }

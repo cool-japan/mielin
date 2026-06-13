@@ -685,7 +685,13 @@ impl VmmState {
     }
 }
 
-/// Global VMM state
+/// Acknowledgment counter for TLB shootdown IPIs.
+///
+/// Remote CPUs increment this after flushing their local TLB in response to
+/// a `TlbFlush` IPI.  The sender spins on this counter in
+/// `flush_tlb_range_smp` until all expected acknowledgments arrive.
+static TLB_SHOOTDOWN_ACK: AtomicUsize = AtomicUsize::new(0);
+
 pub(super) static VMM_STATE: Mutex<VmmState> = Mutex::new(VmmState::new());
 
 // Recycled ASID free list.
@@ -803,7 +809,7 @@ pub fn flush_tlb_range(start: usize, page_count: usize) {
 }
 
 /// Flush TLB page (architecture-specific)
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(any(test, feature = "std"))))]
 unsafe fn flush_tlb_page(virt_addr: usize) {
     core::arch::asm!(
         "invlpg [{}]",
@@ -812,7 +818,7 @@ unsafe fn flush_tlb_page(virt_addr: usize) {
     );
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", not(any(test, feature = "std"))))]
 unsafe fn flush_tlb_page(virt_addr: usize) {
     core::arch::asm!(
         "tlbi vaae1, {}",
@@ -821,9 +827,132 @@ unsafe fn flush_tlb_page(virt_addr: usize) {
     );
 }
 
-#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(all(target_arch = "riscv64", not(any(test, feature = "std"))))]
+unsafe fn flush_tlb_page(virt_addr: usize) {
+    core::arch::asm!("sfence.vma {}, zero", in(reg) virt_addr, options(nostack));
+}
+
+#[cfg(any(test, feature = "std"))]
 unsafe fn flush_tlb_page(_virt_addr: usize) {
-    // Platform-specific implementation needed
+    // No-op under host/test (privileged instructions fault in user space)
+}
+
+#[cfg(not(any(
+    test,
+    feature = "std",
+    target_arch = "x86_64",
+    target_arch = "aarch64",
+    target_arch = "riscv64"
+)))]
+unsafe fn flush_tlb_page(_virt_addr: usize) {
+    // Platform-specific implementation needed for other architectures
+}
+
+/// Full TLB flush (all pages) — architecture-specific.
+///
+/// Used by the IPI handler on remote CPUs during TLB shootdown.
+/// Must NOT hold VMM_STATE lock when called.
+#[cfg(all(target_arch = "x86_64", not(any(test, feature = "std"))))]
+unsafe fn flush_tlb_all() {
+    // Reload CR3 to flush the entire TLB.
+    let cr3: usize;
+    core::arch::asm!("mov {}, cr3", out(reg) cr3, options(nostack, nomem));
+    core::arch::asm!("mov cr3, {}", in(reg) cr3, options(nostack));
+}
+
+#[cfg(all(target_arch = "aarch64", not(any(test, feature = "std"))))]
+unsafe fn flush_tlb_all() {
+    core::arch::asm!("tlbi vmalle1", options(nostack));
+    core::arch::asm!("dsb sy", options(nostack));
+    core::arch::asm!("isb", options(nostack));
+}
+
+#[cfg(all(target_arch = "riscv64", not(any(test, feature = "std"))))]
+unsafe fn flush_tlb_all() {
+    core::arch::asm!("sfence.vma", options(nostack));
+}
+
+#[cfg(any(test, feature = "std"))]
+unsafe fn flush_tlb_all() {
+    // No-op under host/test (privileged instructions fault in user space)
+}
+
+#[cfg(not(any(
+    test,
+    feature = "std",
+    target_arch = "x86_64",
+    target_arch = "aarch64",
+    target_arch = "riscv64"
+)))]
+unsafe fn flush_tlb_all() {
+    // Platform-specific implementation needed for other architectures
+}
+
+/// Called from the IPI handler when `IpiType::TlbFlush` is received.
+///
+/// Flushes the local TLB (all pages) and increments the global shootdown
+/// acknowledgment counter so that the sender's `flush_tlb_range_smp` spin
+/// loop can detect completion.
+///
+/// # Constraints
+///
+/// **Must NOT hold `VMM_STATE` lock when called.** Acquiring the lock here
+/// would deadlock because `flush_tlb` already holds it.
+pub fn handle_tlb_shootdown_ipi() {
+    if crate::ipc::handle_ipi(crate::ipc::IpiType::TlbFlush) {
+        // Safe: interrupt context, local-only flush, no VMM lock held.
+        unsafe { flush_tlb_all(); }
+        TLB_SHOOTDOWN_ACK.fetch_add(1, Ordering::Release);
+    }
+}
+
+/// Multi-core TLB shootdown for a virtual address range.
+///
+/// Flushes `page_count` pages starting at `start` on the local CPU, then
+/// broadcasts a `TlbFlush` IPI to every other online CPU and waits for all
+/// of them to acknowledge.
+///
+/// # Errors
+///
+/// Returns `VmmError::TlbShootdownFailed` if the acknowledgment spin-wait
+/// exceeds `MAX_SPINS` iterations (approximately 1 M iterations ≈ few ms).
+///
+/// # Note
+///
+/// This function deliberately does **not** call `flush_tlb()` (which holds
+/// `VMM_STATE`) to avoid potential deadlocks when called from contexts that
+/// may already hold the VMM lock.  It calls `flush_tlb_page` directly.
+pub fn flush_tlb_range_smp(start: usize, page_count: usize) -> Result<(), VmmError> {
+    // 1. Flush locally (raw — avoids VMM lock).
+    for i in 0..page_count {
+        unsafe { flush_tlb_page(start + i * PAGE_SIZE); }
+    }
+
+    // 2. If running single-core, we are done.
+    let num_cpus = crate::ipc::get_num_online_cpus();
+    if num_cpus <= 1 {
+        return Ok(());
+    }
+
+    // 3. Reset ACK counter, then broadcast shootdown IPI.
+    let expected_acks = num_cpus - 1;
+    TLB_SHOOTDOWN_ACK.store(0, Ordering::Release);
+    crate::ipc::send_ipi_all_but_self(crate::ipc::IpiType::TlbFlush);
+
+    // 4. Spin-wait for all remote CPUs to acknowledge.
+    let mut spins: usize = 0;
+    const MAX_SPINS: usize = 1_000_000;
+    loop {
+        if TLB_SHOOTDOWN_ACK.load(Ordering::Acquire) >= expected_acks {
+            break;
+        }
+        core::hint::spin_loop();
+        spins += 1;
+        if spins >= MAX_SPINS {
+            return Err(VmmError::TlbShootdownFailed);
+        }
+    }
+    Ok(())
 }
 
 /// VMM statistics
@@ -884,5 +1013,39 @@ pub fn get_stats() -> VmmStats {
         total_shared_regions: state.total_shared_regions.load(Ordering::SeqCst),
         total_shared_pages: state.total_shared_pages.load(Ordering::SeqCst),
         total_guard_pages: state.total_guard_pages.load(Ordering::SeqCst),
+    }
+}
+
+#[cfg(all(test, feature = "std"))]
+mod tlb_shootdown_tests {
+    use super::*;
+    use core::sync::atomic::Ordering;
+
+    #[test]
+    fn test_flush_tlb_range_smp_does_not_panic() {
+        // Exercises the booking code; on test/std it is a no-op flush + IPI sim.
+        // get_num_online_cpus() returns MAX_CPUS (16) in test stubs, and
+        // send_ipi_all_but_self sets pending bits on all other simulated CPUs.
+        // The ack counter stays at 0 so flush_tlb_range_smp will time-out —
+        // that is expected and acceptable here.
+        let result = flush_tlb_range_smp(0x1000, 1);
+        // May be Ok (single core stub) or Err::TlbShootdownFailed (multi-core stub,
+        // no real CPUs to ack). Either is a valid outcome — just no panic.
+        let _ = result;
+    }
+
+    #[test]
+    fn test_handle_tlb_shootdown_ipi_increments_ack() {
+        use crate::ipc::{set_pending, IpiType};
+        // Manually set a pending TlbFlush IPI on the test-stub current CPU (cpu 0).
+        set_pending(0, IpiType::TlbFlush);
+        let ack_before = TLB_SHOOTDOWN_ACK.load(Ordering::Acquire);
+        handle_tlb_shootdown_ipi();
+        let ack_after = TLB_SHOOTDOWN_ACK.load(Ordering::Acquire);
+        assert_eq!(
+            ack_after,
+            ack_before + 1,
+            "ack counter should increment when IPI is handled"
+        );
     }
 }

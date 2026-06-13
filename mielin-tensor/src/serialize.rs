@@ -18,10 +18,9 @@
 //! - Tensor metadata (shape, dtype)
 //! - Tensor data (raw bytes)
 
-#![allow(dead_code)]
-
 extern crate alloc;
 
+use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::mem::size_of;
@@ -231,6 +230,182 @@ impl Serializer {
 
         Ok(())
     }
+
+    /// Write an i64 value
+    fn write_i64(&mut self, value: i64) {
+        self.buffer.extend_from_slice(&value.to_le_bytes());
+    }
+
+    /// Serialize an `ImportedModel` including all parameters and graph.
+    ///
+    /// Binary layout (all multi-byte integers are little-endian):
+    /// - Magic `MIEL` (4 bytes) + version u32 (4 bytes)
+    /// - ModelInfo (see `serialize_model_info`)
+    /// - Parameters (see `serialize_parameters`)
+    /// - ModelGraph (see `serialize_graph`)
+    pub fn serialize_imported_model(
+        &mut self,
+        model: &crate::formats::ImportedModel,
+    ) -> TensorResult<()> {
+        self.write_header();
+        self.serialize_model_info(&model.info)?;
+        self.serialize_parameters(&model.parameters)?;
+        self.serialize_graph(&model.graph)?;
+        Ok(())
+    }
+
+    /// Serialize `ModelInfo`.
+    ///
+    /// Layout:
+    /// - name: usize-len + utf8 bytes
+    /// - version: usize-len + utf8 bytes
+    /// - format tag u8: 0=Onnx, 1=TfLite, 2=Mielin
+    /// - inputs: count u32, then (key, shape) pairs
+    /// - outputs: count u32, then (key, shape) pairs
+    /// - size: usize
+    fn serialize_model_info(&mut self, info: &crate::formats::ModelInfo) -> TensorResult<()> {
+        self.write_string(&info.name);
+        self.write_string(&info.version);
+        let fmt_tag: u8 = match info.format {
+            crate::formats::ModelFormat::Onnx => 0,
+            crate::formats::ModelFormat::TfLite => 1,
+            crate::formats::ModelFormat::Mielin => 2,
+        };
+        self.write_u8(fmt_tag);
+        // inputs
+        self.write_u32(info.inputs.len() as u32);
+        for (key, shape) in &info.inputs {
+            self.write_string(key);
+            self.write_usize(shape.len());
+            for &dim in shape {
+                self.write_usize(dim);
+            }
+        }
+        // outputs
+        self.write_u32(info.outputs.len() as u32);
+        for (key, shape) in &info.outputs {
+            self.write_string(key);
+            self.write_usize(shape.len());
+            for &dim in shape {
+                self.write_usize(dim);
+            }
+        }
+        self.write_usize(info.size);
+        Ok(())
+    }
+
+    /// Serialize the parameters map (BTreeMap<String, Tensor<f32>>).
+    ///
+    /// Layout: count u32, then (key-string, tensor-raw) pairs.
+    /// Tensors are stored without their own MIEL header (raw shape + data).
+    fn serialize_parameters(
+        &mut self,
+        params: &BTreeMap<String, Tensor<f32>>,
+    ) -> TensorResult<()> {
+        self.write_u32(params.len() as u32);
+        for (key, tensor) in params {
+            self.write_string(key);
+            self.serialize_tensor_raw(tensor)?;
+        }
+        Ok(())
+    }
+
+    /// Serialize a tensor without the MIEL file header (raw shape + data only).
+    fn serialize_tensor_raw(&mut self, tensor: &Tensor<f32>) -> TensorResult<()> {
+        let shape = tensor.shape();
+        self.write_usize(shape.len());
+        for &dim in shape {
+            self.write_usize(dim);
+        }
+        self.write_usize(tensor.data().len());
+        for &val in tensor.data() {
+            self.write_f32(val);
+        }
+        Ok(())
+    }
+
+    /// Serialize a `ModelGraph`.
+    ///
+    /// Layout:
+    /// - node count u32, then each `GraphNode`
+    /// - input_indices count u32, then each index as usize
+    /// - output_indices count u32, then each index as usize
+    fn serialize_graph(&mut self, graph: &crate::formats::ModelGraph) -> TensorResult<()> {
+        self.write_u32(graph.nodes.len() as u32);
+        for node in &graph.nodes {
+            self.serialize_graph_node(node)?;
+        }
+        self.write_u32(graph.inputs.len() as u32);
+        for &idx in &graph.inputs {
+            self.write_usize(idx);
+        }
+        self.write_u32(graph.outputs.len() as u32);
+        for &idx in &graph.outputs {
+            self.write_usize(idx);
+        }
+        Ok(())
+    }
+
+    /// Serialize a single `GraphNode`.
+    ///
+    /// Layout: name, op_type, inputs count + each usize, attributes count + each (key, value).
+    fn serialize_graph_node(&mut self, node: &crate::formats::GraphNode) -> TensorResult<()> {
+        self.write_string(&node.name);
+        self.write_string(&node.op_type);
+        self.write_u32(node.inputs.len() as u32);
+        for &inp in &node.inputs {
+            self.write_usize(inp);
+        }
+        self.write_u32(node.attributes.len() as u32);
+        for (key, val) in &node.attributes {
+            self.write_string(key);
+            self.serialize_attribute_value(val)?;
+        }
+        Ok(())
+    }
+
+    /// Serialize an `AttributeValue` with a leading type tag byte.
+    ///
+    /// Tags: 0=Int(i64), 1=Float(f32), 2=String, 3=Ints, 4=Floats, 5=Tensor
+    fn serialize_attribute_value(
+        &mut self,
+        value: &crate::formats::AttributeValue,
+    ) -> TensorResult<()> {
+        use crate::formats::AttributeValue;
+        match value {
+            AttributeValue::Int(v) => {
+                self.write_u8(0);
+                self.write_i64(*v);
+            }
+            AttributeValue::Float(v) => {
+                self.write_u8(1);
+                self.write_f32(*v);
+            }
+            AttributeValue::String(s) => {
+                self.write_u8(2);
+                self.write_string(s);
+            }
+            AttributeValue::Ints(vs) => {
+                self.write_u8(3);
+                self.write_u32(vs.len() as u32);
+                for &v in vs {
+                    self.write_i64(v);
+                }
+            }
+            AttributeValue::Floats(vs) => {
+                self.write_u8(4);
+                self.write_u32(vs.len() as u32);
+                for &v in vs {
+                    self.write_f32(v);
+                }
+            }
+            AttributeValue::Tensor(t) => {
+                self.write_u8(5);
+                self.serialize_tensor_raw(t)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Default for Serializer {
@@ -438,6 +613,191 @@ impl<'a> Deserializer<'a> {
         }
 
         Ok((metadata, tensors))
+    }
+
+    /// Read an i64 value
+    fn read_i64(&mut self) -> TensorResult<i64> {
+        let bytes = self.read_bytes(size_of::<i64>())?;
+        Ok(i64::from_le_bytes(bytes.try_into().map_err(|_| {
+            TensorError::Other {
+                message: "Failed to parse i64".into(),
+            }
+        })?))
+    }
+
+    /// Deserialize a full `ImportedModel` (counterpart to `serialize_imported_model`).
+    pub fn deserialize_imported_model(
+        &mut self,
+    ) -> TensorResult<crate::formats::ImportedModel> {
+        self.read_header()?;
+        let info = self.deserialize_model_info()?;
+        let parameters = self.deserialize_parameters()?;
+        let graph = self.deserialize_graph()?;
+        Ok(crate::formats::ImportedModel {
+            info,
+            parameters,
+            graph,
+        })
+    }
+
+    /// Deserialize `ModelInfo`.
+    fn deserialize_model_info(&mut self) -> TensorResult<crate::formats::ModelInfo> {
+        let name = self.read_string()?;
+        let version = self.read_string()?;
+        let fmt_tag = self.read_u8()?;
+        let format = match fmt_tag {
+            0 => crate::formats::ModelFormat::Onnx,
+            1 => crate::formats::ModelFormat::TfLite,
+            2 => crate::formats::ModelFormat::Mielin,
+            other => {
+                return Err(TensorError::Other {
+                    message: alloc::format!("Unknown ModelFormat tag: {}", other),
+                })
+            }
+        };
+        // inputs
+        let input_count = self.read_u32()? as usize;
+        let mut inputs = BTreeMap::new();
+        for _ in 0..input_count {
+            let key = self.read_string()?;
+            let ndim = self.read_usize()?;
+            let mut shape = Vec::with_capacity(ndim);
+            for _ in 0..ndim {
+                shape.push(self.read_usize()?);
+            }
+            inputs.insert(key, shape);
+        }
+        // outputs
+        let output_count = self.read_u32()? as usize;
+        let mut outputs = BTreeMap::new();
+        for _ in 0..output_count {
+            let key = self.read_string()?;
+            let ndim = self.read_usize()?;
+            let mut shape = Vec::with_capacity(ndim);
+            for _ in 0..ndim {
+                shape.push(self.read_usize()?);
+            }
+            outputs.insert(key, shape);
+        }
+        let size = self.read_usize()?;
+        Ok(crate::formats::ModelInfo {
+            name,
+            version,
+            format,
+            inputs,
+            outputs,
+            size,
+        })
+    }
+
+    /// Deserialize the parameters map.
+    fn deserialize_parameters(&mut self) -> TensorResult<BTreeMap<String, Tensor<f32>>> {
+        let count = self.read_u32()? as usize;
+        let mut params = BTreeMap::new();
+        for _ in 0..count {
+            let key = self.read_string()?;
+            let tensor = self.deserialize_tensor_raw()?;
+            params.insert(key, tensor);
+        }
+        Ok(params)
+    }
+
+    /// Deserialize a tensor stored without a MIEL file header.
+    fn deserialize_tensor_raw(&mut self) -> TensorResult<Tensor<f32>> {
+        let ndim = self.read_usize()?;
+        let mut shape = Vec::with_capacity(ndim);
+        for _ in 0..ndim {
+            shape.push(self.read_usize()?);
+        }
+        let data_len = self.read_usize()?;
+        let mut data = Vec::with_capacity(data_len);
+        for _ in 0..data_len {
+            data.push(self.read_f32()?);
+        }
+        Tensor::from_vec(data, shape).ok_or_else(|| TensorError::Other {
+            message: "Failed to reconstruct tensor from raw bytes".into(),
+        })
+    }
+
+    /// Deserialize a `ModelGraph`.
+    fn deserialize_graph(&mut self) -> TensorResult<crate::formats::ModelGraph> {
+        let node_count = self.read_u32()? as usize;
+        let mut nodes = Vec::with_capacity(node_count);
+        for _ in 0..node_count {
+            nodes.push(self.deserialize_graph_node()?);
+        }
+        let input_count = self.read_u32()? as usize;
+        let mut graph_inputs = Vec::with_capacity(input_count);
+        for _ in 0..input_count {
+            graph_inputs.push(self.read_usize()?);
+        }
+        let output_count = self.read_u32()? as usize;
+        let mut graph_outputs = Vec::with_capacity(output_count);
+        for _ in 0..output_count {
+            graph_outputs.push(self.read_usize()?);
+        }
+        Ok(crate::formats::ModelGraph {
+            nodes,
+            inputs: graph_inputs,
+            outputs: graph_outputs,
+        })
+    }
+
+    /// Deserialize a single `GraphNode`.
+    fn deserialize_graph_node(&mut self) -> TensorResult<crate::formats::GraphNode> {
+        let name = self.read_string()?;
+        let op_type = self.read_string()?;
+        let input_count = self.read_u32()? as usize;
+        let mut inputs = Vec::with_capacity(input_count);
+        for _ in 0..input_count {
+            inputs.push(self.read_usize()?);
+        }
+        let attr_count = self.read_u32()? as usize;
+        let mut attributes = BTreeMap::new();
+        for _ in 0..attr_count {
+            let key = self.read_string()?;
+            let val = self.deserialize_attribute_value()?;
+            attributes.insert(key, val);
+        }
+        Ok(crate::formats::GraphNode {
+            name,
+            op_type,
+            inputs,
+            attributes,
+        })
+    }
+
+    /// Deserialize an `AttributeValue` (reads the type tag then the payload).
+    fn deserialize_attribute_value(
+        &mut self,
+    ) -> TensorResult<crate::formats::AttributeValue> {
+        use crate::formats::AttributeValue;
+        let tag = self.read_u8()?;
+        match tag {
+            0 => Ok(AttributeValue::Int(self.read_i64()?)),
+            1 => Ok(AttributeValue::Float(self.read_f32()?)),
+            2 => Ok(AttributeValue::String(self.read_string()?)),
+            3 => {
+                let count = self.read_u32()? as usize;
+                let mut vs = Vec::with_capacity(count);
+                for _ in 0..count {
+                    vs.push(self.read_i64()?);
+                }
+                Ok(AttributeValue::Ints(vs))
+            }
+            4 => {
+                let count = self.read_u32()? as usize;
+                let mut vs = Vec::with_capacity(count);
+                for _ in 0..count {
+                    vs.push(self.read_f32()?);
+                }
+                Ok(AttributeValue::Floats(vs))
+            }
+            5 => Ok(AttributeValue::Tensor(self.deserialize_tensor_raw()?)),
+            other => Err(TensorError::Other {
+                message: alloc::format!("Unknown AttributeValue tag: {}", other),
+            }),
+        }
     }
 }
 

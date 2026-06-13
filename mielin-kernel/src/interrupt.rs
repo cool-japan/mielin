@@ -533,6 +533,15 @@ pub fn dispatch_interrupt(ctx: &InterruptContext) -> Result<(), InterruptError> 
         return Err(InterruptError::NestedOverflow);
     }
 
+    // Fast path for TLB shootdown IPI (LAPIC vector 0xFE = 254).
+    // Handled directly to guarantee no VMM_STATE lock re-entrant acquisition.
+    if ctx.irq == 0xFE {
+        state.nesting_level[cpu_id].fetch_sub(1, Ordering::SeqCst);
+        drop(state);
+        crate::vmm::handle_tlb_shootdown_ipi();
+        return Ok(());
+    }
+
     // Get handler
     let irq = ctx.irq as usize;
     let desc = &state.irq_table[irq];

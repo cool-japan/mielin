@@ -436,13 +436,23 @@ struct WasmtimeModule {
 
 impl Module for WasmtimeModule {
     fn size_bytes(&self) -> usize {
-        // Approximate size - in a full implementation we would track this
-        0
+        self.serialize().map(|b| b.len()).unwrap_or(0)
     }
 
     fn hash(&self) -> u64 {
-        // Compute a hash - for now return 0
-        0
+        match self.serialize() {
+            Ok(bytes) => {
+                const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+                const FNV_PRIME: u64 = 0x100000001b3;
+                let mut h = FNV_OFFSET;
+                for &byte in &bytes {
+                    h ^= byte as u64;
+                    h = h.wrapping_mul(FNV_PRIME);
+                }
+                h
+            }
+            Err(_) => 0,
+        }
     }
 
     fn serialize(&self) -> Result<Vec<u8>> {
@@ -819,5 +829,50 @@ mod tests {
         let serialized = module.serialize();
         assert!(serialized.is_ok());
         assert!(!serialized.expect("Serialization failed").is_empty());
+    }
+
+    #[test]
+    fn test_wasmtime_module_hash_non_zero() {
+        let runtime = RuntimeFactory::default_runtime().expect("Failed to create runtime");
+        let wasm = wat::parse_str("(module)").expect("Failed to parse WAT");
+        let module = runtime.compile(&wasm).expect("Failed to compile");
+        // A real serialized module is non-empty, so FNV-1a will produce a non-zero hash.
+        assert_ne!(module.hash(), 0);
+    }
+
+    #[test]
+    fn test_wasmtime_module_size_bytes_non_zero() {
+        let runtime = RuntimeFactory::default_runtime().expect("Failed to create runtime");
+        let wasm = wat::parse_str("(module)").expect("Failed to parse WAT");
+        let module = runtime.compile(&wasm).expect("Failed to compile");
+        assert!(module.size_bytes() > 0);
+    }
+
+    #[test]
+    fn test_fnv_hash_non_zero_for_nonempty() {
+        const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+        const FNV_PRIME: u64 = 0x100000001b3;
+        let data = b"hello";
+        let mut h = FNV_OFFSET;
+        for &byte in data.iter() {
+            h ^= byte as u64;
+            h = h.wrapping_mul(FNV_PRIME);
+        }
+        assert_ne!(h, 0);
+    }
+
+    #[test]
+    fn test_fnv_hash_differs_for_different_data() {
+        const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+        const FNV_PRIME: u64 = 0x100000001b3;
+        let hash_fn = |data: &[u8]| {
+            let mut h = FNV_OFFSET;
+            for &b in data {
+                h ^= b as u64;
+                h = h.wrapping_mul(FNV_PRIME);
+            }
+            h
+        };
+        assert_ne!(hash_fn(b"hello"), hash_fn(b"world"));
     }
 }

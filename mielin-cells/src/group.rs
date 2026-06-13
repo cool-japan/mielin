@@ -671,33 +671,46 @@ impl GroupCoordinator {
     }
 
     /// Apply a state transition to all agents in the group
-    pub fn transition_all<F>(&self, mut transition_fn: F) -> Vec<(AgentId, TransitionResult)>
+    pub fn transition_all<F>(
+        &self,
+        agents: &mut HashMap<AgentId, Agent>,
+        mut transition_fn: F,
+    ) -> Vec<(AgentId, TransitionResult)>
     where
         F: FnMut(&mut Agent) -> TransitionResult,
     {
         let members = self.group.members();
         let mut results = Vec::with_capacity(members.len());
-
-        // Note: In a real implementation, you would get the actual Agent instances
-        // from an agent registry. Here we just collect the IDs.
         for member in members {
-            // This is a placeholder - actual implementation would use agent registry
-            let mut placeholder_agent = Agent::new(vec![]);
-            let result = transition_fn(&mut placeholder_agent);
-            results.push((member.agent_id, result));
+            if let Some(agent) = agents.get_mut(&member.agent_id) {
+                let result = transition_fn(agent);
+                results.push((member.agent_id, result));
+            } else {
+                results.push((
+                    member.agent_id,
+                    TransitionResult::Blocked {
+                        reason: "Agent not found in provided agent map".to_string(),
+                    },
+                ));
+            }
         }
-
         results
     }
 
     /// Check if all agents in the group are in a specific state
-    pub fn all_in_state<F>(&self, check_fn: F) -> bool
+    pub fn all_in_state<F>(&self, agents: &HashMap<AgentId, Agent>, check_fn: F) -> bool
     where
         F: Fn(&AgentState) -> bool,
     {
-        // Placeholder - actual implementation would query agent registry
-        let _ = check_fn;
-        true
+        let members = self.group.members();
+        if members.is_empty() {
+            return true;
+        }
+        members.iter().all(|m| {
+            agents
+                .get(&m.agent_id)
+                .map_or(false, |a| check_fn(a.state()))
+        })
     }
 }
 
@@ -1002,5 +1015,82 @@ mod tests {
 
         let error: GroupResult<i32> = GroupResult::Error(GroupError::GroupFull);
         assert!(!error.is_success());
+    }
+}
+
+#[cfg(test)]
+mod coordinator_tests {
+    use super::*;
+    use crate::agent::{Agent, AgentState};
+    use std::collections::HashMap;
+
+    fn make_coordinator_with_agents(count: usize) -> (GroupCoordinator, HashMap<AgentId, Agent>) {
+        let group = Arc::new(AgentGroup::new("test-group"));
+        let mut agents = HashMap::new();
+        for _ in 0..count {
+            let agent = Agent::new(vec![]);
+            let id = agent.id();
+            group.add_member(id, GroupRole::Member).unwrap();
+            agents.insert(id, agent);
+        }
+        (GroupCoordinator::new(group), agents)
+    }
+
+    #[test]
+    fn test_transition_all_transitions_real_agents() {
+        let (coord, mut agents) = make_coordinator_with_agents(3);
+        let results = coord.transition_all(&mut agents, |a| a.start());
+        assert_eq!(results.len(), 3);
+        for (_, result) in &results {
+            assert!(
+                matches!(result, TransitionResult::Success),
+                "expected Success, got {:?}",
+                result
+            );
+        }
+        // Verify agents are actually Running
+        for agent in agents.values() {
+            assert_eq!(agent.state(), &AgentState::Running);
+        }
+    }
+
+    #[test]
+    fn test_transition_all_blocked_for_missing_agent() {
+        let group = Arc::new(AgentGroup::new("test-group"));
+        let missing_id = uuid::Uuid::new_v4();
+        group.add_member(missing_id, GroupRole::Member).unwrap();
+        let coord = GroupCoordinator::new(group);
+        let mut agents: HashMap<AgentId, Agent> = HashMap::new(); // empty — agent not in map
+        let results = coord.transition_all(&mut agents, |a| a.start());
+        assert_eq!(results.len(), 1);
+        assert!(matches!(results[0].1, TransitionResult::Blocked { .. }));
+    }
+
+    #[test]
+    fn test_all_in_state_returns_true_when_all_match() {
+        let (coord, mut agents) = make_coordinator_with_agents(2);
+        coord.transition_all(&mut agents, |a| a.start());
+        assert!(coord.all_in_state(&agents, |s| *s == AgentState::Running));
+    }
+
+    #[test]
+    fn test_all_in_state_returns_false_when_any_mismatch() {
+        let (coord, mut agents) = make_coordinator_with_agents(2);
+        // Only start one agent — manually start just the first
+        let first_id = agents.keys().next().copied().unwrap();
+        agents.get_mut(&first_id).unwrap().start();
+        // Second agent is still Created
+        assert!(!coord.all_in_state(&agents, |s| *s == AgentState::Running));
+    }
+
+    #[test]
+    fn test_all_in_state_false_when_agent_missing_from_map() {
+        let group = Arc::new(AgentGroup::new("test-group"));
+        let missing_id = uuid::Uuid::new_v4();
+        group.add_member(missing_id, GroupRole::Member).unwrap();
+        let coord = GroupCoordinator::new(group);
+        let agents: HashMap<AgentId, Agent> = HashMap::new(); // empty
+        // all() on member that maps to false (missing) → false
+        assert!(!coord.all_in_state(&agents, |s| *s == AgentState::Running));
     }
 }

@@ -19,7 +19,6 @@
 //! let dense = sparse.to_dense();
 //! ```
 
-#![allow(dead_code)]
 
 use crate::error::{TensorError, TensorResult};
 use crate::tensor::Tensor;
@@ -116,6 +115,73 @@ impl SparseTensor {
         })
     }
 
+    /// Create a sparse tensor from CSR (Compressed Sparse Row) format
+    ///
+    /// # Arguments
+    ///
+    /// * `row_ptr` - Row pointer array of length `nrows + 1`; `row_ptr[r]..row_ptr[r+1]`
+    ///   gives the range into `col_indices` / `values` for row `r`
+    /// * `col_indices` - Column index of each non-zero element
+    /// * `values` - Value of each non-zero element
+    /// * `nrows` - Total number of rows
+    /// * `ncols` - Total number of columns
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the array lengths are inconsistent or indices are out of bounds.
+    pub fn from_csr(
+        row_ptr: Vec<usize>,
+        col_indices: Vec<usize>,
+        values: Vec<f32>,
+        nrows: usize,
+        ncols: usize,
+    ) -> TensorResult<Self> {
+        if row_ptr.len() != nrows + 1 {
+            return Err(TensorError::Other {
+                message: alloc::format!(
+                    "CSR row_ptr must have length nrows+1={}, got {}",
+                    nrows + 1,
+                    row_ptr.len()
+                ),
+            });
+        }
+        if col_indices.len() != values.len() {
+            return Err(TensorError::Other {
+                message: alloc::format!(
+                    "CSR col_indices and values must have equal length: {} vs {}",
+                    col_indices.len(),
+                    values.len()
+                ),
+            });
+        }
+        let nnz = values.len();
+        if row_ptr[nrows] != nnz {
+            return Err(TensorError::Other {
+                message: alloc::format!(
+                    "CSR row_ptr[nrows]={} must equal nnz={}",
+                    row_ptr[nrows],
+                    nnz
+                ),
+            });
+        }
+        for &c in &col_indices {
+            if c >= ncols {
+                return Err(TensorError::IndexOutOfBounds {
+                    indices: vec![c],
+                    shape: vec![nrows, ncols],
+                });
+            }
+        }
+        Ok(Self {
+            rows: row_ptr,
+            cols: col_indices,
+            values,
+            nrows,
+            ncols,
+            format: SparseFormat::CSR,
+        })
+    }
+
     /// Create an empty sparse tensor
     pub fn zeros(nrows: usize, ncols: usize) -> Self {
         Self {
@@ -191,12 +257,20 @@ impl SparseTensor {
                 }
             }
             SparseFormat::CSR => {
-                // CSR format not yet implemented, fall back to COO interpretation
-                for i in 0..self.nnz() {
-                    let row = self.rows[i];
-                    let col = self.cols[i];
-                    let value = self.values[i];
-                    data[row * self.ncols + col] = value;
+                // rows is a row-pointer array: rows[r]..rows[r+1] indexes into cols/values
+                let nrows = self.rows.len().saturating_sub(1);
+                for row in 0..nrows {
+                    let row_start = self.rows[row];
+                    let row_end = self.rows[row + 1];
+                    for idx in row_start..row_end {
+                        if idx < self.cols.len() && idx < self.values.len() {
+                            let col = self.cols[idx];
+                            let flat = row * self.ncols + col;
+                            if flat < data.len() {
+                                data[flat] = self.values[idx];
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -625,5 +699,31 @@ mod tests {
         let display = alloc::format!("{}", sparse);
         assert!(display.contains("10 x 10"));
         assert!(display.contains("nnz=1"));
+    }
+
+    #[test]
+    fn test_csr_to_dense_correct() {
+        // 3x3 matrix:
+        // [1, 0, 2]
+        // [0, 0, 0]
+        // [3, 4, 0]
+        // CSR: row_ptr=[0,2,2,4], col_indices=[0,2,0,1], values=[1,2,3,4]
+        let st = SparseTensor::from_csr(
+            vec![0, 2, 2, 4],
+            vec![0, 2, 0, 1],
+            vec![1.0, 2.0, 3.0, 4.0],
+            3,
+            3,
+        )
+        .unwrap();
+        let dense = st.to_dense();
+        assert_eq!(dense.shape(), &[3, 3]);
+        let d = dense.data();
+        assert_eq!(d[0], 1.0); // [0,0]
+        assert_eq!(d[2], 2.0); // [0,2]
+        assert_eq!(d[6], 3.0); // [2,0]
+        assert_eq!(d[7], 4.0); // [2,1]
+        assert_eq!(d[1], 0.0); // [0,1] empty
+        assert_eq!(d[3], 0.0); // [1,0] empty
     }
 }
