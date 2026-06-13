@@ -856,7 +856,11 @@ pub unsafe fn disable_interrupts() -> bool {
     #[cfg(any(
         test,
         feature = "std",
-        not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64"))
+        not(any(
+            target_arch = "x86_64",
+            target_arch = "aarch64",
+            target_arch = "riscv64"
+        ))
     ))]
     {
         false
@@ -1073,7 +1077,12 @@ mod tests {
     fn test_read_tsc_monotonic() {
         let t1 = read_tsc();
         let t2 = read_tsc();
-        assert!(t2 >= t1, "CNTVCT_EL0 should be non-decreasing: t1={}, t2={}", t1, t2);
+        assert!(
+            t2 >= t1,
+            "CNTVCT_EL0 should be non-decreasing: t1={}, t2={}",
+            t1,
+            t2
+        );
     }
 
     #[test]

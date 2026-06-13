@@ -323,22 +323,16 @@ impl ServerCertVerifier for MtlsServerVerifier {
         }
 
         let provider = Arc::new(oxiquic_crypto::quic_crypto_provider());
-        let verifier =
-            rustls::client::WebPkiServerVerifier::builder_with_provider(
-                self.trust_anchors.clone(),
-                provider,
-            )
-            .build()
-            .map_err(|e| RustlsError::General(format!("server verifier build: {e}")))?;
+        let verifier = rustls::client::WebPkiServerVerifier::builder_with_provider(
+            self.trust_anchors.clone(),
+            provider,
+        )
+        .build()
+        .map_err(|e| RustlsError::General(format!("server verifier build: {e}")))?;
 
         // Delegate to the webpki verifier (includes name check)
-        let result = verifier.verify_server_cert(
-            end_entity,
-            intermediates,
-            server_name,
-            ocsp_response,
-            now,
-        );
+        let result =
+            verifier.verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now);
 
         // Pin-store check (post-chain)
         if result.is_ok() && self.config.use_pinning {
@@ -647,15 +641,16 @@ mod tests {
         rustls::pki_types::CertificateDer<'static>,
         rustls::pki_types::CertificateDer<'static>,
     ) {
-        use oxitls_rcgen::{SigningAlgorithm, generate_ca, generate_ca_signed_client_cert};
+        use oxitls_rcgen::{generate_ca, generate_ca_signed_client_cert, SigningAlgorithm};
         use rustls::pki_types::CertificateDer;
 
         // Build a CA certificate (Ed25519 is lighter for tests)
         let ca = generate_ca("Test CA", SigningAlgorithm::EcdsaP256).unwrap();
 
         // Build a leaf certificate signed by the CA with ClientAuth EKU
-        let leaf = generate_ca_signed_client_cert(&["leaf.example.com"], SigningAlgorithm::EcdsaP256, &ca)
-            .unwrap();
+        let leaf =
+            generate_ca_signed_client_cert(&["leaf.example.com"], SigningAlgorithm::EcdsaP256, &ca)
+                .unwrap();
 
         (
             CertificateDer::from(ca.certified_key.cert_der.clone()),
@@ -679,11 +674,8 @@ mod tests {
             .with_trust_anchor(ca_cert_der)
             .unwrap();
 
-        let verifier = MtlsClientVerifier::new(
-            context.config.clone(),
-            None,
-            context.trust_anchors.clone(),
-        );
+        let verifier =
+            MtlsClientVerifier::new(context.config.clone(), None, context.trust_anchors.clone());
 
         let now = UnixTime::now();
         let result = verifier.verify_client_cert(&leaf_cert_der, &[], now);
@@ -693,7 +685,7 @@ mod tests {
     /// A cert signed by a different CA (not in the trust store) must be rejected.
     #[test]
     fn test_mtls_wrong_ca_rejected() {
-        use oxitls_rcgen::{SigningAlgorithm, generate_ca, generate_ca_signed_leaf};
+        use oxitls_rcgen::{generate_ca, generate_ca_signed_leaf, SigningAlgorithm};
         use rustls::pki_types::{CertificateDer, UnixTime};
 
         // Generate CA A (in trust store)
@@ -716,11 +708,8 @@ mod tests {
             .with_trust_anchor(ca_a_der)
             .unwrap();
 
-        let verifier = MtlsClientVerifier::new(
-            context.config.clone(),
-            None,
-            context.trust_anchors.clone(),
-        );
+        let verifier =
+            MtlsClientVerifier::new(context.config.clone(), None, context.trust_anchors.clone());
 
         let now = UnixTime::now();
         let result = verifier.verify_client_cert(&leaf_b_der, &[], now);
@@ -744,11 +733,8 @@ mod tests {
             .allow_self_signed();
 
         let context = MtlsContext::new(config, node_cert);
-        let verifier = MtlsClientVerifier::new(
-            context.config.clone(),
-            None,
-            context.trust_anchors.clone(),
-        );
+        let verifier =
+            MtlsClientVerifier::new(context.config.clone(), None, context.trust_anchors.clone());
 
         let now = UnixTime::now();
         let result = verifier.verify_client_cert(&leaf_cert_der, &[], now);

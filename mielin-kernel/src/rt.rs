@@ -582,7 +582,10 @@ mod tests {
         let err = mutex.lock(task_id).unwrap_err();
         assert_eq!(
             err,
-            KernelError::PriorityCeilingViolation { task_id, ceiling: 200 }
+            KernelError::PriorityCeilingViolation {
+                task_id,
+                ceiling: 200
+            }
         );
     }
 
@@ -609,8 +612,12 @@ mod tests {
     #[test]
     fn test_rt_error_not_schedulable() {
         let sched = EdfScheduler::new(10);
-        sched.add_task(DeadlineParams::new(0, 1000, 600, 1000)).unwrap();
-        let err = sched.add_task(DeadlineParams::new(1, 1000, 500, 1000)).unwrap_err();
+        sched
+            .add_task(DeadlineParams::new(0, 1000, 600, 1000))
+            .unwrap();
+        let err = sched
+            .add_task(DeadlineParams::new(1, 1000, 500, 1000))
+            .unwrap_err();
         assert_eq!(err, KernelError::NotSchedulable);
     }
 }

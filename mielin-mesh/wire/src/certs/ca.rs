@@ -444,9 +444,7 @@ impl CertificateAuthority {
                     SystemTime::UNIX_EPOCH
                 }
             };
-            let reason = revoked
-                .reason_code()
-                .map(|(_, code)| format!("{:?}", code));
+            let reason = revoked.reason_code().map(|(_, code)| format!("{:?}", code));
             entries.push(CrlEntry {
                 serial_number: revoked.raw_serial().to_vec(),
                 revoked_at,
@@ -535,10 +533,7 @@ impl CertificateAuthority {
                         if !resp.status().is_success() {
                             debug!("CRL fetch returned non-success status from {}", uri);
                             last_err = Some(CertError::ValidationFailed {
-                                reason: format!(
-                                    "CRL GET returned {} from {uri}",
-                                    resp.status()
-                                ),
+                                reason: format!("CRL GET returned {} from {uri}", resp.status()),
                             });
                             continue;
                         }
@@ -829,8 +824,7 @@ mod tests {
     #[test]
     fn test_cert_to_trust_anchor_no_name_constraints() {
         let cert = Certificate::generate_self_signed("test-node".to_string(), 365).unwrap();
-        let trust_anchor =
-            CertificateAuthority::cert_to_trust_anchor(&cert.cert_chain[0]).unwrap();
+        let trust_anchor = CertificateAuthority::cert_to_trust_anchor(&cert.cert_chain[0]).unwrap();
         assert!(
             trust_anchor.name_constraints.is_none(),
             "expected no NameConstraints for plain self-signed cert"
@@ -858,8 +852,7 @@ mod tests {
         ];
 
         let nc_oid = vec![2u64, 5, 29, 30];
-        let custom_ext =
-            CustomExtension::from_oid_content(&nc_oid, name_constraints_value.clone());
+        let custom_ext = CustomExtension::from_oid_content(&nc_oid, name_constraints_value.clone());
 
         let mut params = CertificateParams::new(vec!["example.com".to_string()]).unwrap();
         params.custom_extensions.push(custom_ext);

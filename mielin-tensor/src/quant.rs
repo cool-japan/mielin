@@ -233,7 +233,11 @@ impl QuantizedTensor {
                     })
                     .collect()
             }
-            None => self.data.iter().map(|&val| self.params.dequantize(val)).collect(),
+            None => self
+                .data
+                .iter()
+                .map(|&val| self.params.dequantize(val))
+                .collect(),
         };
 
         Tensor::from_vec(dequantized_data, self.shape.clone())
@@ -631,15 +635,23 @@ mod tests {
     fn test_per_channel_quantization() {
         // 4 channels (rows), 3 elements each — very different magnitude per channel
         let data = alloc::vec![
-            0.1f32, 0.2, 0.3,           // channel 0: small positive
-            100.0, 200.0, 300.0,         // channel 1: large positive
-            -50.0, 0.0, 50.0,            // channel 2: signed range
-            0.001, 0.002, 0.003,         // channel 3: tiny values
+            0.1f32, 0.2, 0.3, // channel 0: small positive
+            100.0, 200.0, 300.0, // channel 1: large positive
+            -50.0, 0.0, 50.0, // channel 2: signed range
+            0.001, 0.002, 0.003, // channel 3: tiny values
         ];
         let tensor = Tensor::from_vec(data.clone(), alloc::vec![4, 3]).expect("valid tensor");
 
-        let qt_pc = QuantizedTensor::from_tensor(&tensor, QuantScheme::Asymmetric, QuantGranularity::PerChannel);
-        let qt_pt = QuantizedTensor::from_tensor(&tensor, QuantScheme::Asymmetric, QuantGranularity::PerTensor);
+        let qt_pc = QuantizedTensor::from_tensor(
+            &tensor,
+            QuantScheme::Asymmetric,
+            QuantGranularity::PerChannel,
+        );
+        let qt_pt = QuantizedTensor::from_tensor(
+            &tensor,
+            QuantScheme::Asymmetric,
+            QuantGranularity::PerTensor,
+        );
 
         // per_channel field populated
         assert!(qt_pc.per_channel_params().is_some());
@@ -671,8 +683,14 @@ mod tests {
     fn test_per_channel_quant_symmetric() {
         let data = alloc::vec![1.0f32, 2.0, 3.0, -100.0, -200.0, -300.0];
         let tensor = Tensor::from_vec(data, alloc::vec![2, 3]).expect("valid tensor");
-        let qt = QuantizedTensor::from_tensor(&tensor, QuantScheme::Symmetric, QuantGranularity::PerChannel);
-        let pc = qt.per_channel_params().expect("should have per-channel params");
+        let qt = QuantizedTensor::from_tensor(
+            &tensor,
+            QuantScheme::Symmetric,
+            QuantGranularity::PerChannel,
+        );
+        let pc = qt
+            .per_channel_params()
+            .expect("should have per-channel params");
         assert_eq!(pc.params.len(), 2);
         // channel 0 (small range [1,3]) should have smaller scale than channel 1 (large range [-300,0])
         assert!(
