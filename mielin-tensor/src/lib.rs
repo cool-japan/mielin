@@ -95,7 +95,8 @@ pub use profiling::{
     MemoryDiff, MemorySnapshot, MemoryTracker, PerfMetrics, PerfMonitor, RegressionDetector,
 };
 pub use quant::{
-    Quant4Tensor, QuantCalibrator, QuantGranularity, QuantParams, QuantScheme, QuantizedTensor,
+    PerChannelParams, Quant4Tensor, QuantCalibrator, QuantGranularity, QuantParams, QuantScheme,
+    QuantizedTensor,
 };
 pub use serialize::{DataType, Deserializer, ModelMetadata, Serializer};
 pub use sparse::{SparseFormat, SparseTensor};

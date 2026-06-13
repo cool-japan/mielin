@@ -134,21 +134,28 @@ For detailed feature descriptions, see individual crate README files and the pro
 
 ## Stubs to implement (added 2026-06-12 by /cooljapan-stub-check)
 
-- [ ] `mielin-kernel`: `mielin-kernel/src/vmm/mod.rs:582` — implement page-table cleanup in VMM drop/free path
+- [x] `mielin-kernel`: `mielin-kernel/src/vmm/mod.rs:582` — implement page-table cleanup in VMM drop/free path
   - Priority: P2 | Scope: medium | Hint: none
-- [ ] `mielin-kernel`: `mielin-kernel/src/ipc.rs:218` — implement platform-specific IPI delivery for ARM and RISC-V
+- [x] `mielin-kernel`: `mielin-kernel/src/ipc.rs:218` — implement platform-specific IPI delivery for ARM and RISC-V
   - Priority: P2 | Scope: medium | Hint: none
-- [ ] `mielin-kernel`: `mielin-kernel/src/interrupt.rs:733` — implement `read_tsc` for ARM (CNTVCT_EL0) and RISC-V
+- [x] `mielin-kernel`: `mielin-kernel/src/interrupt.rs:733` — implement `read_tsc` for ARM (CNTVCT_EL0) and RISC-V
   - Priority: P2 | Scope: small | Hint: none
-- [ ] `mielin-kernel`: `mielin-kernel/src/interrupt.rs:789` — implement corresponding TSC calibration for ARM and RISC-V
+- [x] `mielin-kernel`: `mielin-kernel/src/interrupt.rs:789` — implement corresponding TSC calibration for ARM and RISC-V
   - Priority: P2 | Scope: small | Hint: none
-- [ ] `mielin-kernel`: `mielin-kernel/src/rt.rs:278` — add proper error type for task-not-found / invalid-page-count instead of reusing `TaskNotFound`/`InvalidPageCount` in wrong context
+- [x] `mielin-kernel`: `mielin-kernel/src/rt.rs:278` — add proper error type for task-not-found / invalid-page-count instead of reusing `TaskNotFound`/`InvalidPageCount` in wrong context
   - Priority: P2 | Scope: trivial | Hint: none
-- [ ] `mielin-mesh`: `mielin-mesh/wire/src/certs/ca.rs:388` — implement real CRL fetching in CA certificate validation
+- [x] `mielin-mesh`: `mielin-mesh/wire/src/certs/ca.rs:388` — implement real CRL fetching in CA certificate validation
   - Priority: P2 | Scope: medium | Hint: oxitls
-- [ ] `mielin-mesh`: `mielin-mesh/wire/src/certs/ca.rs:430` — parse name constraints extension in certificate validation
+- [x] `mielin-mesh`: `mielin-mesh/wire/src/certs/ca.rs:430` — parse name constraints extension in certificate validation
   - Priority: P2 | Scope: small | Hint: oxitls
-- [ ] `mielin-mesh`: `mielin-mesh/wire/src/certs/mtls.rs:174` — implement proper certificate chain validation with CA in mTLS
+- [x] `mielin-mesh`: `mielin-mesh/wire/src/certs/mtls.rs:174` — implement proper certificate chain validation with CA in mTLS
   - Priority: P2 | Scope: medium | Hint: oxitls
-- [ ] `mielin-tensor`: `mielin-tensor/src/quant.rs:150` — implement true per-channel quantization (currently falls back to per-tensor)
+- [x] `mielin-tensor`: `mielin-tensor/src/quant.rs:150` — implement true per-channel quantization (currently falls back to per-tensor)
   - Priority: P2 | Scope: small | Hint: none
+
+## Proposed follow-ups
+
+- [ ] Transitive `ring` removal: `ring 0.17.14` survives as a transitive dep via `rustls-webpki`. Blocked on upstream rustls/webpki adopting a pure-Rust CryptoProvider. Track and re-visit when rustls 0.24+ ships a ring-free path.
+- [ ] `hal-ci-all-architectures` (mielin-hal/TODO.md): COOLJAPAN policy forbids creating `.github/workflows/*.yml` (except pypi/npm). Rework as a local QEMU/cross-emulation `Makefile` target instead, or defer until policy allows.
+
+## Last updated: 2026-06-13

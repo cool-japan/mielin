@@ -18,8 +18,6 @@
 //! - **Per-tensor**: single scale/zero-point for entire tensor
 //! - **Per-channel**: separate scale/zero-point per output channel
 
-#![allow(dead_code)]
-
 extern crate alloc;
 
 use crate::tensor::Tensor;
@@ -85,6 +83,14 @@ impl QuantParams {
         }
     }
 
+    /// Create quantization parameters from a value range using the specified scheme
+    pub fn from_range(min_val: f32, max_val: f32, scheme: QuantScheme) -> Self {
+        match scheme {
+            QuantScheme::Symmetric => Self::symmetric(min_val, max_val),
+            QuantScheme::Asymmetric => Self::asymmetric(min_val, max_val),
+        }
+    }
+
     /// Quantize a single value
     pub fn quantize(&self, value: f32) -> i8 {
         let quant = roundf(value / self.scale) + self.zero_point as f32;
@@ -95,6 +101,15 @@ impl QuantParams {
     pub fn dequantize(&self, value: i8) -> f32 {
         (value as f32 - self.zero_point as f32) * self.scale
     }
+}
+
+/// Per-channel quantization parameters (one set per output channel along axis 0)
+#[derive(Debug, Clone)]
+pub struct PerChannelParams {
+    /// One QuantParams per channel (length == shape[0])
+    pub params: Vec<QuantParams>,
+    /// The axis along which channels are defined (always 0 for Conv2D/Linear weights)
+    pub axis: usize,
 }
 
 /// INT8 quantized tensor
@@ -108,6 +123,8 @@ pub struct QuantizedTensor {
     params: QuantParams,
     /// Granularity (per-tensor or per-channel)
     granularity: QuantGranularity,
+    /// Per-channel quantization parameters, populated when granularity is PerChannel
+    per_channel: Option<PerChannelParams>,
 }
 
 impl QuantizedTensor {
@@ -141,23 +158,83 @@ impl QuantizedTensor {
             shape: tensor.shape().to_vec(),
             params,
             granularity: QuantGranularity::PerTensor,
+            per_channel: None,
         }
     }
 
     /// Per-channel quantization (for weights in Conv2D/Linear layers)
     fn quantize_per_channel(tensor: &Tensor<f32>, scheme: QuantScheme) -> Self {
-        // For simplicity, use per-tensor for now
-        // TODO: Implement true per-channel quantization
-        Self::quantize_per_tensor(tensor, scheme)
+        let shape = tensor.shape().to_vec();
+        let data = tensor.data();
+
+        if shape.is_empty() || data.is_empty() {
+            return Self::quantize_per_tensor(tensor, scheme);
+        }
+
+        let num_channels = shape[0];
+        let channel_size: usize = if shape.len() > 1 {
+            shape[1..].iter().product()
+        } else {
+            1
+        };
+
+        let mut channel_params: Vec<QuantParams> = Vec::with_capacity(num_channels);
+        let mut quantized_data: Vec<i8> = Vec::with_capacity(data.len());
+
+        for c in 0..num_channels {
+            let start = c * channel_size;
+            let end = (start + channel_size).min(data.len());
+            let slice = &data[start..end];
+
+            let min_val = slice.iter().copied().fold(f32::INFINITY, f32::min);
+            let max_val = slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+            let params = QuantParams::from_range(min_val, max_val, scheme);
+
+            for &v in slice {
+                quantized_data.push(params.quantize(v));
+            }
+            channel_params.push(params);
+        }
+
+        let representative_params = channel_params.first().cloned().unwrap_or(QuantParams {
+            scale: 1.0,
+            zero_point: 0,
+            scheme,
+        });
+
+        Self {
+            data: quantized_data,
+            shape,
+            params: representative_params,
+            granularity: QuantGranularity::PerChannel,
+            per_channel: Some(PerChannelParams {
+                params: channel_params,
+                axis: 0,
+            }),
+        }
     }
 
     /// Dequantize back to floating-point tensor
     pub fn dequantize(&self) -> Tensor<f32> {
-        let dequantized_data: Vec<f32> = self
-            .data
-            .iter()
-            .map(|&val| self.params.dequantize(val))
-            .collect();
+        let dequantized_data: Vec<f32> = match &self.per_channel {
+            Some(pc) => {
+                let channel_size: usize = if self.shape.len() > 1 {
+                    self.shape[1..].iter().product()
+                } else {
+                    1
+                };
+                self.data
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &val)| {
+                        let channel = i / channel_size;
+                        let params = pc.params.get(channel).unwrap_or(&self.params);
+                        params.dequantize(val)
+                    })
+                    .collect()
+            }
+            None => self.data.iter().map(|&val| self.params.dequantize(val)).collect(),
+        };
 
         Tensor::from_vec(dequantized_data, self.shape.clone())
             .expect("dequantized data length matches self.shape")
@@ -176,6 +253,16 @@ impl QuantizedTensor {
     /// Get quantization parameters
     pub fn params(&self) -> &QuantParams {
         &self.params
+    }
+
+    /// Get per-channel quantization parameters, if applicable
+    pub fn per_channel_params(&self) -> Option<&PerChannelParams> {
+        self.per_channel.as_ref()
+    }
+
+    /// Get quantization granularity
+    pub fn granularity(&self) -> QuantGranularity {
+        self.granularity
     }
 
     /// Compute quantized matrix multiplication (INT8 x INT8 -> INT32 -> F32)
@@ -538,5 +625,61 @@ mod tests {
         let dequant = quant4.dequantize();
         assert_eq!(dequant.shape(), tensor.shape());
         assert_eq!(dequant.data().len(), 8);
+    }
+
+    #[test]
+    fn test_per_channel_quantization() {
+        // 4 channels (rows), 3 elements each — very different magnitude per channel
+        let data = alloc::vec![
+            0.1f32, 0.2, 0.3,           // channel 0: small positive
+            100.0, 200.0, 300.0,         // channel 1: large positive
+            -50.0, 0.0, 50.0,            // channel 2: signed range
+            0.001, 0.002, 0.003,         // channel 3: tiny values
+        ];
+        let tensor = Tensor::from_vec(data.clone(), alloc::vec![4, 3]).expect("valid tensor");
+
+        let qt_pc = QuantizedTensor::from_tensor(&tensor, QuantScheme::Asymmetric, QuantGranularity::PerChannel);
+        let qt_pt = QuantizedTensor::from_tensor(&tensor, QuantScheme::Asymmetric, QuantGranularity::PerTensor);
+
+        // per_channel field populated
+        assert!(qt_pc.per_channel_params().is_some());
+        let pc = qt_pc.per_channel_params().unwrap();
+        assert_eq!(pc.params.len(), 4);
+        assert_eq!(pc.axis, 0);
+
+        // per-channel dequantize is more accurate than per-tensor
+        let dq_pc = qt_pc.dequantize();
+        let dq_pt = qt_pt.dequantize();
+
+        let mse = |orig: &[f32], dq: &Tensor<f32>| -> f32 {
+            orig.iter()
+                .zip(dq.data().iter())
+                .map(|(o, d)| (o - d).powi(2))
+                .sum::<f32>()
+                / orig.len() as f32
+        };
+
+        let mse_pc = mse(&data, &dq_pc);
+        let mse_pt = mse(&data, &dq_pt);
+        assert!(
+            mse_pc < mse_pt,
+            "Per-channel MSE ({mse_pc}) should be < per-tensor MSE ({mse_pt})"
+        );
+    }
+
+    #[test]
+    fn test_per_channel_quant_symmetric() {
+        let data = alloc::vec![1.0f32, 2.0, 3.0, -100.0, -200.0, -300.0];
+        let tensor = Tensor::from_vec(data, alloc::vec![2, 3]).expect("valid tensor");
+        let qt = QuantizedTensor::from_tensor(&tensor, QuantScheme::Symmetric, QuantGranularity::PerChannel);
+        let pc = qt.per_channel_params().expect("should have per-channel params");
+        assert_eq!(pc.params.len(), 2);
+        // channel 0 (small range [1,3]) should have smaller scale than channel 1 (large range [-300,0])
+        assert!(
+            pc.params[0].scale < pc.params[1].scale,
+            "ch0 scale ({}) should be < ch1 scale ({})",
+            pc.params[0].scale,
+            pc.params[1].scale
+        );
     }
 }

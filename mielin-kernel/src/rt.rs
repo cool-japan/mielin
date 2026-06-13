@@ -275,7 +275,10 @@ impl PcpMutex {
         let task_priority = get_task_priority(task_id)?;
 
         if task_priority < self.ceiling {
-            return Err(KernelError::TaskNotFound { task_id }); // TODO: Add proper error type
+            return Err(KernelError::PriorityCeilingViolation {
+                task_id,
+                ceiling: self.ceiling,
+            });
         }
 
         // Spin until we can acquire
@@ -297,7 +300,7 @@ impl PcpMutex {
     pub fn unlock(&self, task_id: usize) -> Result<(), KernelError> {
         let owner = self.owner.load(Ordering::Acquire);
         if owner != task_id {
-            return Err(KernelError::TaskNotFound { task_id });
+            return Err(KernelError::NotMutexOwner { task_id });
         }
 
         self.owner.store(usize::MAX, Ordering::Release);
@@ -386,7 +389,7 @@ impl EdfScheduler {
     /// Returns error if total utilization exceeds 100% (not schedulable).
     pub fn add_task(&self, params: DeadlineParams) -> Result<(), KernelError> {
         if !params.is_valid() {
-            return Err(KernelError::InvalidPageCount); // TODO: Add proper error type
+            return Err(KernelError::InvalidDeadlineParams);
         }
 
         let mut tasks = self.tasks.lock();
@@ -399,7 +402,7 @@ impl EdfScheduler {
 
         // EDF schedulability test: U ≤ 1
         if new_util > 1.0 {
-            return Err(KernelError::InvalidPageCount); // TODO: Add proper error type
+            return Err(KernelError::NotSchedulable);
         }
 
         tasks.push(params);
@@ -565,5 +568,49 @@ mod tests {
         let tasks = scheduler.tasks.lock();
         let task = &tasks[0];
         assert_eq!(task.absolute_deadline_us, 1000);
+    }
+
+    fn setup_task_with_priority(priority: u8) -> usize {
+        crate::scheduler::init().unwrap();
+        crate::scheduler::spawn_task(priority).unwrap()
+    }
+
+    #[test]
+    fn test_rt_error_priority_ceiling_violation() {
+        let task_id = setup_task_with_priority(100);
+        let mutex = PcpMutex::new(200);
+        let err = mutex.lock(task_id).unwrap_err();
+        assert_eq!(
+            err,
+            KernelError::PriorityCeilingViolation { task_id, ceiling: 200 }
+        );
+    }
+
+    #[test]
+    fn test_rt_error_not_mutex_owner_on_unlock() {
+        crate::scheduler::init().unwrap();
+        let task_a = crate::scheduler::spawn_task(10).unwrap();
+        let task_b = crate::scheduler::spawn_task(10).unwrap();
+        let mutex = PcpMutex::new(0);
+        mutex.lock(task_a).unwrap();
+        let err = mutex.unlock(task_b).unwrap_err();
+        assert_eq!(err, KernelError::NotMutexOwner { task_id: task_b });
+        mutex.unlock(task_a).unwrap();
+    }
+
+    #[test]
+    fn test_rt_error_invalid_deadline_params() {
+        let sched = EdfScheduler::new(10);
+        let bad = DeadlineParams::new(0, 1000, 800, 500);
+        let err = sched.add_task(bad).unwrap_err();
+        assert_eq!(err, KernelError::InvalidDeadlineParams);
+    }
+
+    #[test]
+    fn test_rt_error_not_schedulable() {
+        let sched = EdfScheduler::new(10);
+        sched.add_task(DeadlineParams::new(0, 1000, 600, 1000)).unwrap();
+        let err = sched.add_task(DeadlineParams::new(1, 1000, 500, 1000)).unwrap_err();
+        assert_eq!(err, KernelError::NotSchedulable);
     }
 }

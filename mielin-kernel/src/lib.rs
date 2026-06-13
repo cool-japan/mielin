@@ -203,6 +203,22 @@ pub enum KernelError {
     SchedulerNotInitialized,
     /// Memory manager is not initialized
     MemoryNotInitialized,
+    /// Task tried to lock a PCP mutex but its priority is below the ceiling
+    PriorityCeilingViolation {
+        /// The task that attempted the lock
+        task_id: usize,
+        /// Priority ceiling of the mutex
+        ceiling: u8,
+    },
+    /// Task attempted to unlock a mutex it does not own
+    NotMutexOwner {
+        /// The task that attempted the unlock
+        task_id: usize,
+    },
+    /// EDF task parameters are invalid (e.g. wcet > deadline or deadline > period)
+    InvalidDeadlineParams,
+    /// Adding this task would push total CPU utilisation above 100%
+    NotSchedulable,
 }
 
 #[cfg(feature = "std")]
@@ -260,6 +276,19 @@ impl core::fmt::Display for KernelError {
             Self::TaskNotFound { task_id } => write!(f, "task not found: {}", task_id),
             Self::SchedulerNotInitialized => write!(f, "scheduler not initialized"),
             Self::MemoryNotInitialized => write!(f, "memory manager not initialized"),
+            Self::PriorityCeilingViolation { task_id, ceiling } => write!(
+                f,
+                "Task {} cannot acquire mutex: priority below ceiling {}",
+                task_id, ceiling
+            ),
+            Self::NotMutexOwner { task_id } => {
+                write!(f, "Task {} does not own this mutex", task_id)
+            }
+            Self::InvalidDeadlineParams => write!(f, "Invalid deadline parameters"),
+            Self::NotSchedulable => write!(
+                f,
+                "Task set is not schedulable: utilization would exceed 100%"
+            ),
         }
     }
 }

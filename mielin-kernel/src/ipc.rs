@@ -215,14 +215,46 @@ pub fn send_ipi(target_cpu: usize, ipi_type: IpiType) -> bool {
     let state = &IPI_STATES[target_cpu];
     state.set_pending(ipi_type);
 
-    // TODO: Platform-specific IPI delivery
-    // On x86_64: LAPIC ICR write
-    // On ARM: GICv3 SGI (Software Generated Interrupt)
-    // On RISC-V: SBI IPI call
-    #[cfg(target_arch = "x86_64")]
-    {
-        // LAPIC IPI would go here
-        // For now, this is a software-only implementation
+    // x86_64: kick the target CPU via a LAPIC fixed-delivery IPI.
+    #[cfg(all(target_arch = "x86_64", not(any(test, feature = "std"))))]
+    // SAFETY: LAPIC MMIO at 0xFEE00000 is mapped by the kernel before this
+    // code runs.  Write ordering is enforced by the volatile semantics.
+    unsafe {
+        let lapic_base: *mut u32 = 0xFEE0_0000usize as *mut u32;
+        let icr_high = lapic_base.add(0x310 / 4);
+        let icr_low = lapic_base.add(0x300 / 4);
+        core::ptr::write_volatile(icr_high, (target_cpu as u32) << 24);
+        core::ptr::write_volatile(icr_low, 0xFE_u32);
+    }
+
+    // aarch64: GICv3 SGI via ICC_SGI1R_EL1.
+    #[cfg(all(target_arch = "aarch64", not(any(test, feature = "std"))))]
+    // SAFETY: ICC_SGI1R_EL1 is a valid AArch64 system register available at EL1.
+    unsafe {
+        let target_list: u64 = 1u64 << (target_cpu as u64 & 0xf);
+        let sgi1r: u64 = target_list; // SGI ID 0, Aff3/2/1 = 0
+        core::arch::asm!(
+            "msr ICC_SGI1R_EL1, {}",
+            "isb",
+            in(reg) sgi1r,
+            options(nostack, preserves_flags)
+        );
+    }
+
+    // riscv64: SBI IPI extension (EID = 0x735049 "sPI", FID = 0).
+    #[cfg(all(target_arch = "riscv64", not(any(test, feature = "std"))))]
+    // SAFETY: the SBI ecall interface is defined by the RISC-V SBI spec.
+    unsafe {
+        let hart_mask: usize = 1usize << target_cpu;
+        let hart_mask_base: usize = 0;
+        core::arch::asm!(
+            "ecall",
+            inout("a0") hart_mask => _,
+            inout("a1") hart_mask_base => _,
+            in("a6") 0usize,
+            in("a7") 0x735049usize,
+            options(nostack)
+        );
     }
 
     true
@@ -1004,5 +1036,19 @@ mod tests {
         let msg = Message::memory_alloc(0, 1, 4096);
         assert_eq!(msg.msg_type, MessageType::MemoryAlloc);
         assert_eq!(msg.data[0], 4096);
+    }
+
+    #[test]
+    fn test_ipi_software_path() {
+        assert!(send_ipi(0, IpiType::Reschedule));
+        assert!(is_ipi_pending(IpiType::Reschedule));
+        assert!(handle_ipi(IpiType::Reschedule));
+        assert!(!is_ipi_pending(IpiType::Reschedule));
+    }
+
+    #[test]
+    fn test_ipi_invalid_cpu_returns_false() {
+        assert!(!send_ipi(MAX_CPUS, IpiType::Wakeup));
+        assert!(!send_ipi(usize::MAX, IpiType::Halt));
     }
 }

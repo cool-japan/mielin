@@ -577,10 +577,48 @@ impl AddressSpace {
     }
 }
 
+/// Recursively free intermediate page table frames.
+///
+/// At levels 0–2 every present entry points to a child page table that was
+/// allocated by `AddressSpace::map`. We walk each such entry, recurse into
+/// the child, and then free the child table's frame via `memory::free_page`.
+/// At level 3 entries point to caller-owned data pages — those are NOT freed.
+///
+/// # Safety
+///
+/// `phys` must be a valid physical address of a `PageTable` that was
+/// previously allocated by `memory::allocate_page`.  Aliasing rules are
+/// upheld because we only dereference the pointer while we hold exclusive
+/// access through `Drop`.
+unsafe fn free_table_recursive(phys: usize, level: usize) {
+    // Leaf level — entries are caller-owned data pages, not intermediate
+    // page-table frames; nothing to free here.
+    if level >= 3 {
+        return;
+    }
+
+    let table = &*(phys as *const PageTable);
+    for i in 0..ENTRIES_PER_TABLE {
+        // entry() always returns Some for indices 0..ENTRIES_PER_TABLE
+        if let Some(entry) = table.entry(i) {
+            if entry.is_present() {
+                let child_phys = entry.phys_addr();
+                // Recurse into the next level first …
+                free_table_recursive(child_phys, level + 1);
+                // … then free the child table's frame itself.
+                let _ = memory::free_page(child_phys);
+            }
+        }
+    }
+}
+
 impl Drop for AddressSpace {
     fn drop(&mut self) {
-        // Free all page tables (TODO: implement cleanup)
-        // This should recursively free all intermediate page tables
+        // Walk and free all intermediate page table frames, then the root.
+        unsafe {
+            free_table_recursive(self.root_table_phys, 0);
+        }
+        let _ = memory::free_page(self.root_table_phys);
         free_asid(self.asid);
     }
 }

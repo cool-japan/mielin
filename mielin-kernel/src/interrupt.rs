@@ -81,6 +81,13 @@
 use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use spin::Mutex;
 
+/// Timer frequency in Hz used by `cycles_to_ns`.
+///
+/// Initialised to 3 GHz as a reasonable default.  Call `calibrate_timer()` at
+/// boot to replace this with the hardware-reported value, or call
+/// `set_timer_freq_hz()` to supply a value obtained by other means.
+static TIMER_FREQ_HZ: AtomicU64 = AtomicU64::new(3_000_000_000);
+
 #[cfg(not(feature = "std"))]
 use crate::alloc::vec::Vec;
 #[cfg(feature = "std")]
@@ -719,32 +726,93 @@ pub fn get_irq_stats(irq: u8) -> Result<IrqStats, InterruptError> {
 
 /// Read CPU timestamp counter (TSC)
 ///
-/// This is architecture-specific and should be implemented per-platform.
-/// For now, returns a dummy value in non-x86 environments.
+/// Returns the current value of the hardware cycle / virtual counter:
+/// - x86_64 : RDTSC via the `_rdtsc` intrinsic
+/// - AArch64: `CNTVCT_EL0` (EL0-readable virtual counter)
+/// - RISC-V : `time` CSR (user-readable on standard profiles)
+/// - Other  : returns 0
 #[inline]
 fn read_tsc() -> u64 {
     #[cfg(target_arch = "x86_64")]
+    // SAFETY: RDTSC is a non-privileged instruction available on all x86_64 CPUs.
     unsafe {
         core::arch::x86_64::_rdtsc()
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(target_arch = "aarch64")]
+    // SAFETY: CNTVCT_EL0 is readable at EL0 on all ARMv8+ CPUs when
+    // CNTKCTL_EL1.EL0VCTEN is set (the kernel guarantees this at boot).
+    unsafe {
+        let cnt: u64;
+        core::arch::asm!("mrs {}, cntvct_el0", out(reg) cnt, options(nostack, preserves_flags));
+        cnt
+    }
+
+    #[cfg(target_arch = "riscv64")]
+    // SAFETY: The `time` CSR is user-readable on RISC-V profiles that expose
+    // the Zicntr extension.
+    unsafe {
+        let cnt: u64;
+        core::arch::asm!("csrr {}, time", out(reg) cnt, options(nostack));
+        cnt
+    }
+
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64"
+    )))]
     {
-        // TODO: Implement for ARM (CNTVCT_EL0) and RISC-V
-        0
+        0u64
     }
 }
 
-/// Convert CPU cycles to nanoseconds
-///
-/// Assumes a 3.0 GHz CPU for now. This should be calibrated at boot.
+/// Convert CPU cycles to nanoseconds using the calibrated timer frequency.
 #[inline]
 fn cycles_to_ns(cycles: u64) -> u64 {
-    const CPU_FREQ_GHZ: u64 = 3; // 3.0 GHz assumed
-    cycles / CPU_FREQ_GHZ
+    let freq = TIMER_FREQ_HZ.load(Ordering::Relaxed);
+    if freq == 0 {
+        return 0;
+    }
+    ((cycles as u128).saturating_mul(1_000_000_000_u128) / (freq as u128)) as u64
 }
 
-/// Disable interrupts and return previous state
+/// Calibrate the timer by reading the hardware-reported frequency.
+///
+/// On AArch64 reads `CNTFRQ_EL0`. On other architectures keeps the existing
+/// value unchanged.
+pub fn calibrate_timer() {
+    let freq: u64 = {
+        #[cfg(target_arch = "aarch64")]
+        // SAFETY: CNTFRQ_EL0 is readable at EL0 on all ARMv8+ CPUs.
+        unsafe {
+            let f: u64;
+            core::arch::asm!(
+                "mrs {}, cntfrq_el0",
+                out(reg) f,
+                options(nostack, preserves_flags)
+            );
+            if f > 0 {
+                f
+            } else {
+                TIMER_FREQ_HZ.load(Ordering::Relaxed)
+            }
+        }
+
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            TIMER_FREQ_HZ.load(Ordering::Relaxed)
+        }
+    };
+    TIMER_FREQ_HZ.store(freq, Ordering::Relaxed);
+}
+
+/// Override the timer frequency (Hz) used for cycle-to-nanosecond conversion.
+pub fn set_timer_freq_hz(freq: u64) {
+    TIMER_FREQ_HZ.store(freq, Ordering::Relaxed);
+}
+
+/// Disable interrupts and return previous state.
 ///
 /// # Returns
 ///
@@ -752,42 +820,64 @@ fn cycles_to_ns(cycles: u64) -> u64 {
 ///
 /// # Safety
 ///
-/// This is unsafe because it affects global interrupt state.
+/// This is unsafe because it modifies the CPU's global interrupt enable flag.
 /// Must be paired with `restore_interrupts()`.
 #[inline]
 pub unsafe fn disable_interrupts() -> bool {
+    // x86_64: read EFLAGS.IF, then CLI.
     #[cfg(all(target_arch = "x86_64", not(test)))]
     {
         let flags: u64;
-        core::arch::asm!("pushfq; pop {}", out(reg) flags);
-        let enabled = (flags & 0x200) != 0;
-        core::arch::asm!("cli");
-        enabled
+        core::arch::asm!("pushfq; pop {}", out(reg) flags, options(nostack));
+        let enabled = (flags & (1u64 << 9)) != 0;
+        core::arch::asm!("cli", options(nostack, preserves_flags));
+        return enabled;
     }
 
-    #[cfg(any(not(target_arch = "x86_64"), test))]
+    // aarch64: read DAIF.I, then DAIFSET.
+    #[cfg(all(target_arch = "aarch64", not(any(test, feature = "std"))))]
     {
-        // Privileged instruction cannot run in userspace/test; simulate disabled
+        let daif: u64;
+        core::arch::asm!("mrs {}, daif", out(reg) daif, options(nostack, preserves_flags));
+        core::arch::asm!("msr daifset, #2", options(nostack, preserves_flags));
+        (daif & (1u64 << 7)) == 0
+    }
+
+    // riscv64: read sstatus.SIE, then CSRCI.
+    #[cfg(all(target_arch = "riscv64", not(any(test, feature = "std"))))]
+    {
+        let sstatus: u64;
+        core::arch::asm!("csrr {}, sstatus", out(reg) sstatus, options(nostack));
+        core::arch::asm!("csrci sstatus, 2", options(nostack));
+        return (sstatus & 2) != 0;
+    }
+
+    // Fallback for test / std / other.
+    #[cfg(any(
+        test,
+        feature = "std",
+        not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64"))
+    ))]
+    {
         false
     }
 }
 
-/// Enable interrupts
+/// Enable interrupts.
 ///
 /// # Safety
 ///
-/// This is unsafe because it affects global interrupt state.
+/// This is unsafe because it modifies the CPU's global interrupt enable flag.
 #[inline]
 pub unsafe fn enable_interrupts() {
     #[cfg(target_arch = "x86_64")]
-    {
-        core::arch::asm!("sti");
-    }
+    core::arch::asm!("sti", options(nostack, preserves_flags));
 
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        // TODO: Implement for ARM and RISC-V
-    }
+    #[cfg(all(target_arch = "aarch64", not(any(test, feature = "std"))))]
+    core::arch::asm!("msr daifclr, #2", options(nostack, preserves_flags));
+
+    #[cfg(all(target_arch = "riscv64", not(any(test, feature = "std"))))]
+    core::arch::asm!("csrsi sstatus, 2", options(nostack));
 }
 
 /// Restore interrupt state
@@ -976,5 +1066,38 @@ mod tests {
 
         let processed = process_work_queue();
         assert_eq!(processed, 10);
+    }
+
+    #[test]
+    #[cfg(target_arch = "aarch64")]
+    fn test_read_tsc_monotonic() {
+        let t1 = read_tsc();
+        let t2 = read_tsc();
+        assert!(t2 >= t1, "CNTVCT_EL0 should be non-decreasing: t1={}, t2={}", t1, t2);
+    }
+
+    #[test]
+    fn test_calibrate_timer() {
+        calibrate_timer();
+        let freq = TIMER_FREQ_HZ.load(Ordering::Relaxed);
+        assert!(freq > 0, "TIMER_FREQ_HZ must be positive after calibration");
+    }
+
+    #[test]
+    fn test_set_timer_freq_hz() {
+        let original = TIMER_FREQ_HZ.load(Ordering::Relaxed);
+        set_timer_freq_hz(2_400_000_000);
+        assert_eq!(TIMER_FREQ_HZ.load(Ordering::Relaxed), 2_400_000_000);
+        set_timer_freq_hz(original);
+    }
+
+    #[test]
+    fn test_cycles_to_ns() {
+        set_timer_freq_hz(1_000_000_000);
+        assert_eq!(cycles_to_ns(0), 0);
+        assert_eq!(cycles_to_ns(1_000_000_000), 1_000_000_000);
+        set_timer_freq_hz(0);
+        assert_eq!(cycles_to_ns(12345), 0);
+        set_timer_freq_hz(3_000_000_000);
     }
 }

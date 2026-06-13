@@ -919,3 +919,70 @@ fn test_shared_memory_large_region() {
     let stats = get_stats();
     assert!(stats.total_shared_pages >= 16);
 }
+
+/// Verify that dropping an `AddressSpace` with no mappings frees the root
+/// page-table frame and releases the ASID.
+///
+/// Requires identity-mapped physical memory so that the physical address
+/// returned by `memory::allocate_page` is also a valid virtual address.
+#[test]
+#[ignore = "requires identity-mapped memory in kernel environment"]
+fn test_vmm_drop_frees_root_table() {
+    crate::memory::init().unwrap();
+    init().unwrap();
+
+    let summary_before = crate::memory::summary().expect("memory summary unavailable");
+    let freed_before = summary_before.stats.pages_freed;
+
+    {
+        let _addr_space = AddressSpace::new().unwrap();
+        // Drop happens here — root table frame must be freed.
+    }
+
+    let summary_after = crate::memory::summary().expect("memory summary unavailable");
+    let freed_after = summary_after.stats.pages_freed;
+
+    assert!(
+        freed_after > freed_before,
+        "expected pages_freed to increase after AddressSpace drop, before={} after={}",
+        freed_before,
+        freed_after
+    );
+}
+
+/// Verify that dropping an `AddressSpace` that has actual page-table
+/// mappings frees all intermediate page-table frames (not just the root).
+///
+/// Requires identity-mapped physical memory.
+#[test]
+#[ignore = "requires identity-mapped memory in kernel environment"]
+fn test_vmm_drop_frees_page_tables_mapped() {
+    crate::memory::init().unwrap();
+    init().unwrap();
+
+    let summary_before = crate::memory::summary().expect("memory summary unavailable");
+    let freed_before = summary_before.stats.pages_freed;
+
+    {
+        let mut addr_space = AddressSpace::new().unwrap();
+        // Map a single page so that at least one L1/L2/L3 intermediate frame
+        // is allocated in addition to the root.
+        let virt = 0x0001_0000usize;
+        let phys = 0x0001_0000usize; // identity-mapped in kernel env
+        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+        let _ = addr_space.map(virt, phys, flags);
+        // Drop triggers free_table_recursive + free_page on root.
+    }
+
+    let summary_after = crate::memory::summary().expect("memory summary unavailable");
+    let freed_after = summary_after.stats.pages_freed;
+
+    // At minimum the root frame and at least one intermediate frame must have
+    // been freed.
+    assert!(
+        freed_after >= freed_before + 2,
+        "expected at least 2 frames freed (root + intermediate), before={} after={}",
+        freed_before,
+        freed_after
+    );
+}
