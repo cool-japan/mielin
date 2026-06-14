@@ -52,7 +52,7 @@ pub fn format_error(error: &anyhow::Error) -> String {
         "Could not connect to the MielinOS daemon. \
          Make sure it's running with: mielinctl daemon"
             .to_string()
-    } else if error_str.contains("No such file") || error_str.contains("not found") {
+    } else if error_str.contains("No such file") {
         format!("File not found: {}", error_str)
     } else if error_str.contains("Permission denied") {
         "Permission denied. You may need elevated privileges to perform this operation.".to_string()

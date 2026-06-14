@@ -47,7 +47,7 @@
 //! Virtual memory management involves direct manipulation of page tables and
 //! CPU control registers. Care must be taken to maintain memory safety invariants.
 
-use alloc::collections::{BTreeMap, VecDeque};
+use alloc::collections::VecDeque;
 use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use spin::Mutex;
 

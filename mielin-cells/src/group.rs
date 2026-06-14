@@ -706,11 +706,9 @@ impl GroupCoordinator {
         if members.is_empty() {
             return true;
         }
-        members.iter().all(|m| {
-            agents
-                .get(&m.agent_id)
-                .map_or(false, |a| check_fn(a.state()))
-        })
+        members
+            .iter()
+            .all(|m| agents.get(&m.agent_id).is_some_and(|a| check_fn(a.state())))
     }
 }
 

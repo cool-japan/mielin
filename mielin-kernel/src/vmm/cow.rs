@@ -4,6 +4,8 @@
 //! between multiple address spaces as read-only. The first write triggers
 //! a page-fault that allocates a private copy for the faulting process.
 
+use alloc::collections::BTreeMap;
+
 use super::*;
 
 /// Page reference counter for COW (Copy-on-Write) tracking

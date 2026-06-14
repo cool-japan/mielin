@@ -8,6 +8,8 @@
 //! unmaps the region and, once the last reference is dropped, frees the
 //! physical pages.
 
+use alloc::collections::BTreeMap;
+
 use super::*;
 
 /// Shared memory region descriptor

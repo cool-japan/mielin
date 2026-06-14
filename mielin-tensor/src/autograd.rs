@@ -15,11 +15,9 @@
 //! - `GradFn`: Backward function for each operation
 //! - `Checkpoint`: Recomputation nodes for memory savings
 
-#![allow(dead_code)]
-
 extern crate alloc;
 
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::rc::{Rc, Weak};
 use alloc::vec::Vec;
 use core::cell::RefCell;
@@ -76,11 +74,16 @@ pub enum OpType {
 /// Gradient function that computes gradients for backward pass
 type GradFn = Rc<dyn Fn(&Tensor<f32>) -> Vec<Tensor<f32>>>;
 
+/// Tangent propagation function for forward-mode AD
+/// Returns (first_order_tangent, second_order_tangent)
+type TangentFn = Rc<dyn Fn() -> (Option<Tensor<f32>>, Option<Tensor<f32>>)>;
+
 /// Node in the computational graph
 struct GraphNode {
     /// Unique identifier
     id: NodeId,
     /// Operation type
+    #[allow(dead_code)]
     op: OpType,
     /// Input nodes (parents in the graph)
     inputs: Vec<Weak<RefCell<GraphNode>>>,
@@ -92,6 +95,12 @@ struct GraphNode {
     requires_grad: bool,
     /// Checkpoint flag for gradient checkpointing
     checkpoint: bool,
+    /// First-order tangent for forward-mode AD
+    tangent: Option<Tensor<f32>>,
+    /// Second-order tangent (hyper-dual) for forward-mode AD
+    tangent2: Option<Tensor<f32>>,
+    /// Tangent propagation function
+    tangent_fn: Option<TangentFn>,
 }
 
 impl GraphNode {
@@ -105,6 +114,9 @@ impl GraphNode {
             grad_fn: None,
             requires_grad,
             checkpoint: false,
+            tangent: None,
+            tangent2: None,
+            tangent_fn: None,
         }
     }
 
@@ -114,6 +126,7 @@ impl GraphNode {
         inputs: Vec<Weak<RefCell<GraphNode>>>,
         value: Tensor<f32>,
         grad_fn: Option<GradFn>,
+        tangent_fn: Option<TangentFn>,
     ) -> Self {
         Self {
             id: 0, // Will be set by graph
@@ -123,6 +136,9 @@ impl GraphNode {
             grad_fn,
             requires_grad: true,
             checkpoint: false,
+            tangent: None,
+            tangent2: None,
+            tangent_fn,
         }
     }
 }
@@ -179,6 +195,19 @@ impl Variable {
     /// It performs backward pass and returns the gradient as a new Variable.
     pub fn grad_and_detach(&self) -> Option<Variable> {
         self.grad().map(|g| Variable::new(g, false))
+    }
+
+    pub fn tangent(&self) -> Option<Tensor<f32>> {
+        self.node.borrow().tangent.clone()
+    }
+    pub fn tangent2(&self) -> Option<Tensor<f32>> {
+        self.node.borrow().tangent2.clone()
+    }
+    pub fn set_tangent(&self, t: Tensor<f32>) {
+        self.node.borrow_mut().tangent = Some(t);
+    }
+    pub fn set_tangent2(&self, t: Tensor<f32>) {
+        self.node.borrow_mut().tangent2 = Some(t);
     }
 
     /// Set whether this variable requires gradient
@@ -340,7 +369,7 @@ impl Variable {
     }
 
     /// Topological sort using DFS (recursive helper)
-    #[allow(clippy::only_used_in_recursion)]
+    #[allow(clippy::only_used_in_recursion, dead_code)]
     fn topological_sort(
         &self,
         node: &Rc<RefCell<GraphNode>>,
@@ -367,6 +396,66 @@ impl Variable {
         }
 
         topo_order.push(node.clone());
+    }
+}
+
+/// Get the first-order tangent from a weak reference
+fn get_tangent(w: &Weak<RefCell<GraphNode>>) -> Option<Tensor<f32>> {
+    w.upgrade().and_then(|rc| rc.borrow().tangent.clone())
+}
+
+/// Get the second-order tangent from a weak reference
+fn get_tangent2(w: &Weak<RefCell<GraphNode>>) -> Option<Tensor<f32>> {
+    w.upgrade().and_then(|rc| rc.borrow().tangent2.clone())
+}
+
+/// Get the shape from a weak reference
+#[allow(dead_code)]
+fn get_shape_from_weak(w: &Weak<RefCell<GraphNode>>) -> alloc::vec::Vec<usize> {
+    w.upgrade()
+        .map(|rc| rc.borrow().value.shape().to_vec())
+        .unwrap_or_default()
+}
+
+/// Return tangent or zeros of the given shape
+fn tangent_or_zero(t: Option<Tensor<f32>>, shape: &[usize]) -> Tensor<f32> {
+    t.unwrap_or_else(|| Tensor::zeros(shape.to_vec()))
+}
+
+/// Perform matrix multiplication of two tensors (2D@1D or 2D@2D)
+fn matmul_tensors(a: &Tensor<f32>, b: &Tensor<f32>) -> Tensor<f32> {
+    let a_shape = a.shape();
+    let b_shape = b.shape();
+    if a_shape.len() == 2 && b_shape.len() == 1 {
+        let m = a_shape[0];
+        let n = a_shape[1];
+        let mut c = alloc::vec![0.0f32; m];
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..m {
+            for j in 0..n {
+                c[i] += a.get(&[i, j]).copied().unwrap_or(0.0) * b.data()[j];
+            }
+        }
+        Tensor::vector(c)
+    } else if a_shape.len() == 2 && b_shape.len() == 2 {
+        let m = a_shape[0];
+        let n = a_shape[1];
+        let k = b_shape[1];
+        let mut c = alloc::vec![0.0f32; m * k];
+        for i in 0..m {
+            for j in 0..k {
+                for idx in 0..n {
+                    c[i * k + j] += a.get(&[i, idx]).copied().unwrap_or(0.0)
+                        * b.get(&[idx, j]).copied().unwrap_or(0.0);
+                }
+            }
+        }
+        Tensor::from_vec(c, alloc::vec![m, k]).expect("valid shape")
+    } else {
+        panic!(
+            "matmul_tensors: unsupported shapes {:?} @ {:?}",
+            a_shape, b_shape
+        );
     }
 }
 
@@ -422,52 +511,63 @@ impl ComputeGraph {
         Variable::from_node(Rc::new(RefCell::new(node)), self.gradients.clone())
     }
 
+    fn propagate_tangents(&self, root: &Variable) {
+        let mut visited = BTreeSet::new();
+        let mut topo_order: alloc::vec::Vec<Rc<RefCell<GraphNode>>> = alloc::vec::Vec::new();
+        let mut stack = alloc::vec![Rc::clone(&root.node)];
+        while let Some(node_rc) = stack.pop() {
+            let id = node_rc.borrow().id;
+            if visited.contains(&id) {
+                continue;
+            }
+            let inputs: alloc::vec::Vec<_> = node_rc
+                .borrow()
+                .inputs
+                .iter()
+                .filter_map(|w| w.upgrade())
+                .collect();
+            let all_visited = inputs.iter().all(|inp| visited.contains(&inp.borrow().id));
+            if all_visited {
+                visited.insert(id);
+                topo_order.push(Rc::clone(&node_rc));
+            } else {
+                stack.push(Rc::clone(&node_rc));
+                for inp in inputs {
+                    if !visited.contains(&inp.borrow().id) {
+                        stack.push(inp);
+                    }
+                }
+            }
+        }
+        for node_rc in &topo_order {
+            let tangent_fn = node_rc.borrow().tangent_fn.clone();
+            if let Some(f) = tangent_fn {
+                let (t1, t2) = f();
+                node_rc.borrow_mut().tangent = t1;
+                node_rc.borrow_mut().tangent2 = t2;
+            }
+        }
+    }
+
     /// Compute the Jacobian-vector product (JVP) for forward-mode AD
     ///
     /// Given function f: R^n -> R^m and tangent vector v in R^n,
     /// computes df/dx * v efficiently in forward mode.
     pub fn jvp(&self, f: &Variable, x: &Variable, v: &Tensor<f32>) -> Tensor<f32> {
-        // For now, use finite differences as a placeholder
-        // A full dual-numbers implementation would be more efficient
-        let eps = 1e-5;
-        let x_data = x.data();
-
-        // f(x + eps*v)
-        let mut x_plus = x_data.clone();
-        for (i, val) in x_plus.data_mut().iter_mut().enumerate() {
-            *val += eps * v.data()[i];
-        }
-        let _x_plus_var = self.variable(x_plus, false);
-
-        // Recompute f with x + eps*v (this is a simplified placeholder)
-        // In a real implementation, we'd need to replay the computation
-        let f_plus = f.data();
-
-        // (f(x + eps*v) - f(x)) / eps
-        let mut jvp = f_plus.clone();
-        for (i, val) in jvp.data_mut().iter_mut().enumerate() {
-            *val = (*val - f.data().data()[i]) / eps;
-        }
-
-        jvp
+        x.set_tangent(v.clone());
+        self.propagate_tangents(f);
+        f.tangent()
+            .unwrap_or_else(|| Tensor::zeros(f.data().shape().to_vec()))
     }
 
     /// Compute second derivative using backward-over-backward
     ///
     /// Given scalar function f: R -> R, computes d²f/dx²
     pub fn second_derivative(&self, f: &Variable, x: &Variable) -> Option<f32> {
-        // First backward pass to get df/dx
-        f.backward();
-        let first_grad = x.grad()?;
-
-        // Create a new graph for second derivative
-        let _graph2 = ComputeGraph::new();
-        let _x2 = _graph2.variable(x.data(), true);
-
-        // We need to recreate the computation to get gradients of gradients
-        // For now, return the first gradient as a placeholder
-        // A full implementation would require graph recording
-        Some(first_grad.data()[0])
+        x.set_tangent(Tensor::scalar(1.0));
+        x.set_tangent2(Tensor::scalar(0.0));
+        self.propagate_tangents(f);
+        f.tangent2().map(|t| t.data()[0])
     }
 
     /// Add two variables: z = x + y
@@ -485,11 +585,33 @@ impl ComputeGraph {
             alloc::vec![grad.clone(), grad.clone()]
         });
 
+        // Tangent function for forward-mode AD
+        let x_weak = Rc::downgrade(&x.node);
+        let y_weak = Rc::downgrade(&y.node);
+        let z_shape = z_data.shape().to_vec();
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let xd = get_tangent(&x_weak);
+            let yd = get_tangent(&y_weak);
+            let xd2 = get_tangent2(&x_weak);
+            let yd2 = get_tangent2(&y_weak);
+            let t1 = {
+                let a = tangent_or_zero(xd, &z_shape);
+                let b = tangent_or_zero(yd, &z_shape);
+                Some(a.add(&b))
+            };
+            let t2 = {
+                let a = tangent_or_zero(xd2, &z_shape);
+                let b = tangent_or_zero(yd2, &z_shape);
+                Some(a.add(&b))
+            };
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::Add,
             alloc::vec![Rc::downgrade(&x.node), Rc::downgrade(&y.node)],
             z_data,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -511,11 +633,32 @@ impl ComputeGraph {
             alloc::vec![grad.clone(), neg_grad]
         });
 
+        let x_weak = Rc::downgrade(&x.node);
+        let y_weak = Rc::downgrade(&y.node);
+        let z_shape = z_data.shape().to_vec();
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let xd = get_tangent(&x_weak);
+            let yd = get_tangent(&y_weak);
+            let xd2 = get_tangent2(&x_weak);
+            let yd2 = get_tangent2(&y_weak);
+            let t1 = {
+                let a = tangent_or_zero(xd, &z_shape);
+                let b = tangent_or_zero(yd, &z_shape);
+                Some(a.sub(&b))
+            };
+            let t2 = {
+                let a = tangent_or_zero(xd2, &z_shape);
+                let b = tangent_or_zero(yd2, &z_shape);
+                Some(a.sub(&b))
+            };
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::Sub,
             alloc::vec![Rc::downgrade(&x.node), Rc::downgrade(&y.node)],
             z_data,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -542,11 +685,41 @@ impl ComputeGraph {
             alloc::vec![grad_x, grad_y]
         });
 
+        let x_weak_t = Rc::downgrade(&x.node);
+        let y_weak_t = Rc::downgrade(&y.node);
+        let x_data_t = x_data.clone();
+        let y_data_t = y_data.clone();
+        let z_shape = z_data.shape().to_vec();
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let xd = get_tangent(&x_weak_t);
+            let yd = get_tangent(&y_weak_t);
+            let xd2 = get_tangent2(&x_weak_t);
+            let yd2 = get_tangent2(&y_weak_t);
+            let xd_z = tangent_or_zero(xd.clone(), &z_shape);
+            let yd_z = tangent_or_zero(yd.clone(), &z_shape);
+            let xd2_z = tangent_or_zero(xd2, &z_shape);
+            let yd2_z = tangent_or_zero(yd2, &z_shape);
+            // ż = ẋ*y + x*ẏ
+            let t1 = Some(xd_z.mul(&y_data_t).add(&x_data_t.mul(&yd_z)));
+            // z̈ = ẍ*y + 2*ẋ*ẏ + x*ÿ
+            let cross = xd
+                .as_ref()
+                .map(|a| a.mul(yd.as_ref().unwrap_or(&Tensor::zeros(z_shape.clone()))))
+                .unwrap_or_else(|| Tensor::zeros(z_shape.clone()));
+            let t2 = Some(
+                xd2_z
+                    .mul(&y_data_t)
+                    .add(&cross.scale(2.0))
+                    .add(&x_data_t.mul(&yd2_z)),
+            );
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::Mul,
             alloc::vec![Rc::downgrade(&x.node), Rc::downgrade(&y.node)],
             z_data,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -573,11 +746,26 @@ impl ComputeGraph {
             alloc::vec![grad_x]
         });
 
+        let x_weak = Rc::downgrade(&x.node);
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let xd = get_tangent(&x_weak);
+            let xd2 = get_tangent2(&x_weak);
+            let t1 = xd.map(|t| {
+                let s: f32 = t.data().iter().sum();
+                Tensor::scalar(s)
+            });
+            let t2 = xd2.map(|t| {
+                let s: f32 = t.data().iter().sum();
+                Tensor::scalar(s)
+            });
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::Sum,
             alloc::vec![Rc::downgrade(&x.node)],
             z_data,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -606,11 +794,27 @@ impl ComputeGraph {
             alloc::vec![grad_x]
         });
 
+        let x_weak = Rc::downgrade(&x.node);
+        let x_numel = x_data.data().len() as f32;
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let xd = get_tangent(&x_weak);
+            let xd2 = get_tangent2(&x_weak);
+            let t1 = xd.map(|t| {
+                let s: f32 = t.data().iter().sum::<f32>() / x_numel;
+                Tensor::scalar(s)
+            });
+            let t2 = xd2.map(|t| {
+                let s: f32 = t.data().iter().sum::<f32>() / x_numel;
+                Tensor::scalar(s)
+            });
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::Mean,
             alloc::vec![Rc::downgrade(&x.node)],
             z_data,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -635,6 +839,9 @@ impl ComputeGraph {
             .map(|&v| if v > 0.0 { 1.0 } else { 0.0 })
             .collect();
 
+        // Clone mask for tangent closure before moving into grad_fn
+        let mask_t = mask.clone();
+
         // Backward pass function
         let grad_fn: GradFn = Rc::new(move |grad: &Tensor<f32>| {
             let mut grad_x = grad.clone();
@@ -644,11 +851,34 @@ impl ComputeGraph {
             alloc::vec![grad_x]
         });
 
+        let x_weak = Rc::downgrade(&x.node);
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let xd = get_tangent(&x_weak);
+            let xd2 = get_tangent2(&x_weak);
+            let apply_mask = |t: Tensor<f32>| {
+                let mut r = t.clone();
+                for (i, v) in r.data_mut().iter_mut().enumerate() {
+                    *v *= mask_t[i];
+                }
+                r
+            };
+            let t1 = xd.map(apply_mask);
+            let apply_mask2 = |t: Tensor<f32>| {
+                let mut r = t.clone();
+                for (i, v) in r.data_mut().iter_mut().enumerate() {
+                    *v *= mask_t[i];
+                }
+                r
+            };
+            let t2 = xd2.map(apply_mask2);
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::ReLU,
             alloc::vec![Rc::downgrade(&x.node)],
             z_data,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -679,11 +909,47 @@ impl ComputeGraph {
             alloc::vec![grad_x]
         });
 
+        let x_weak = Rc::downgrade(&x.node);
+        let z_sig = z_data.clone();
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let xd = get_tangent(&x_weak);
+            let xd2 = get_tangent2(&x_weak);
+            let z_ref = &z_sig;
+            let t1 = xd.as_ref().map(|xdt| {
+                let mut r = xdt.clone();
+                for (i, v) in r.data_mut().iter_mut().enumerate() {
+                    let z = z_ref.data()[i];
+                    *v *= z * (1.0 - z);
+                }
+                r
+            });
+            let t2 = {
+                let xd_ref = xd.as_ref();
+                let xd2_ref = xd2.as_ref();
+                if xd_ref.is_none() && xd2_ref.is_none() {
+                    None
+                } else {
+                    let shape = z_ref.shape().to_vec();
+                    let xd_z = tangent_or_zero(xd.clone(), &shape);
+                    let xd2_z = tangent_or_zero(xd2.clone(), &shape);
+                    let mut r = Tensor::zeros(shape.clone());
+                    for (i, v) in r.data_mut().iter_mut().enumerate() {
+                        let z = z_ref.data()[i];
+                        let d1 = xd_z.data()[i];
+                        let d2 = xd2_z.data()[i];
+                        *v = d2 * z * (1.0 - z) + d1 * d1 * z * (1.0 - z) * (1.0 - 2.0 * z);
+                    }
+                    Some(r)
+                }
+            };
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::Sigmoid,
             alloc::vec![Rc::downgrade(&x.node)],
             z_data,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -714,11 +980,45 @@ impl ComputeGraph {
             alloc::vec![grad_x]
         });
 
+        let x_weak = Rc::downgrade(&x.node);
+        let z_tanh = z_data.clone();
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let xd = get_tangent(&x_weak);
+            let xd2 = get_tangent2(&x_weak);
+            let z_ref = &z_tanh;
+            let t1 = xd.as_ref().map(|xdt| {
+                let mut r = xdt.clone();
+                for (i, v) in r.data_mut().iter_mut().enumerate() {
+                    let z = z_ref.data()[i];
+                    *v *= 1.0 - z * z;
+                }
+                r
+            });
+            let t2 = {
+                if xd.is_none() && xd2.is_none() {
+                    None
+                } else {
+                    let shape = z_ref.shape().to_vec();
+                    let xd_z = tangent_or_zero(xd.clone(), &shape);
+                    let xd2_z = tangent_or_zero(xd2.clone(), &shape);
+                    let mut r = Tensor::zeros(shape.clone());
+                    for (i, v) in r.data_mut().iter_mut().enumerate() {
+                        let z = z_ref.data()[i];
+                        let d1 = xd_z.data()[i];
+                        let d2 = xd2_z.data()[i];
+                        *v = d2 * (1.0 - z * z) + d1 * d1 * (-2.0 * z * (1.0 - z * z));
+                    }
+                    Some(r)
+                }
+            };
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::Tanh,
             alloc::vec![Rc::downgrade(&x.node)],
             z_data,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -749,11 +1049,45 @@ impl ComputeGraph {
             alloc::vec![grad_x]
         });
 
+        let x_weak = Rc::downgrade(&x.node);
+        let x_data_t = x_data.clone();
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let xd = get_tangent(&x_weak);
+            let xd2 = get_tangent2(&x_weak);
+            let t1 = xd.as_ref().map(|xdt| {
+                let mut r = xdt.clone();
+                for (i, v) in r.data_mut().iter_mut().enumerate() {
+                    let x = x_data_t.data()[i];
+                    *v *= n * libm::powf(x, n - 1.0);
+                }
+                r
+            });
+            let t2 = {
+                if xd.is_none() && xd2.is_none() {
+                    None
+                } else {
+                    let shape = x_data_t.shape().to_vec();
+                    let xd_z = tangent_or_zero(xd.clone(), &shape);
+                    let xd2_z = tangent_or_zero(xd2.clone(), &shape);
+                    let mut r = Tensor::zeros(shape.clone());
+                    for (i, v) in r.data_mut().iter_mut().enumerate() {
+                        let x = x_data_t.data()[i];
+                        let d1 = xd_z.data()[i];
+                        let d2 = xd2_z.data()[i];
+                        *v = d2 * n * libm::powf(x, n - 1.0)
+                            + d1 * d1 * n * (n - 1.0) * libm::powf(x, n - 2.0);
+                    }
+                    Some(r)
+                }
+            };
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::Pow,
             alloc::vec![Rc::downgrade(&x.node)],
             z_data,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -783,11 +1117,44 @@ impl ComputeGraph {
             alloc::vec![grad_x]
         });
 
+        let x_weak = Rc::downgrade(&x.node);
+        let z_exp = z_data.clone();
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let xd = get_tangent(&x_weak);
+            let xd2 = get_tangent2(&x_weak);
+            let z_ref = &z_exp;
+            let t1 = xd.as_ref().map(|xdt| {
+                let mut r = xdt.clone();
+                for (i, v) in r.data_mut().iter_mut().enumerate() {
+                    *v *= z_ref.data()[i];
+                }
+                r
+            });
+            let t2 = {
+                if xd.is_none() && xd2.is_none() {
+                    None
+                } else {
+                    let shape = z_ref.shape().to_vec();
+                    let xd_z = tangent_or_zero(xd.clone(), &shape);
+                    let xd2_z = tangent_or_zero(xd2.clone(), &shape);
+                    let mut r = Tensor::zeros(shape);
+                    for (i, v) in r.data_mut().iter_mut().enumerate() {
+                        let z = z_ref.data()[i];
+                        let d1 = xd_z.data()[i];
+                        let d2 = xd2_z.data()[i];
+                        *v = (d2 + d1 * d1) * z;
+                    }
+                    Some(r)
+                }
+            };
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::Exp,
             alloc::vec![Rc::downgrade(&x.node)],
             z_data,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -817,11 +1184,45 @@ impl ComputeGraph {
             alloc::vec![grad_x]
         });
 
+        let x_weak = Rc::downgrade(&x.node);
+        let x_data_log = x_data.clone();
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let xd = get_tangent(&x_weak);
+            let xd2 = get_tangent2(&x_weak);
+            let t1 = xd.as_ref().map(|xdt| {
+                let mut r = xdt.clone();
+                for (i, v) in r.data_mut().iter_mut().enumerate() {
+                    let x = x_data_log.data()[i];
+                    *v /= x;
+                }
+                r
+            });
+            let t2 = {
+                if xd.is_none() && xd2.is_none() {
+                    None
+                } else {
+                    let shape = x_data_log.shape().to_vec();
+                    let xd_z = tangent_or_zero(xd.clone(), &shape);
+                    let xd2_z = tangent_or_zero(xd2.clone(), &shape);
+                    let inv_x: alloc::vec::Vec<f32> =
+                        x_data_log.data().iter().map(|&v| 1.0 / v).collect();
+                    let mut r = Tensor::zeros(shape);
+                    for (i, v) in r.data_mut().iter_mut().enumerate() {
+                        let d1 = xd_z.data()[i];
+                        let d2 = xd2_z.data()[i];
+                        *v = d2 * inv_x[i] - d1 * d1 * inv_x[i] * inv_x[i];
+                    }
+                    Some(r)
+                }
+            };
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::Log,
             alloc::vec![Rc::downgrade(&x.node)],
             z_data,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -990,11 +1391,55 @@ impl ComputeGraph {
             grads
         });
 
+        let a_weak_t = Rc::downgrade(&a.node);
+        let b_weak_t = Rc::downgrade(&b.node);
+        let a_data_t = a_data.clone();
+        let b_data_t = b_data.clone();
+        let c_shape = c_tensor.shape().to_vec();
+        let tangent_fn: Option<TangentFn> = Some(Rc::new(move || {
+            let ad = get_tangent(&a_weak_t);
+            let bd = get_tangent(&b_weak_t);
+            let ad2 = get_tangent2(&a_weak_t);
+            let bd2 = get_tangent2(&b_weak_t);
+            // ż = ẋ@y + x@ẏ
+            let t1 = {
+                let part_a = ad.as_ref().map(|t| matmul_tensors(t, &b_data_t));
+                let part_b = bd.as_ref().map(|t| matmul_tensors(&a_data_t, t));
+                match (part_a, part_b) {
+                    (Some(pa), Some(pb)) => Some(pa.add(&pb)),
+                    (Some(pa), None) => Some(pa),
+                    (None, Some(pb)) => Some(pb),
+                    (None, None) => None,
+                }
+            };
+            // z̈ = ẍ@y + 2*ẋ@ẏ + x@ÿ
+            let t2 = {
+                let part_a = ad2.as_ref().map(|t| matmul_tensors(t, &b_data_t));
+                let part_cross = ad
+                    .as_ref()
+                    .zip(bd.as_ref())
+                    .map(|(at, bt)| matmul_tensors(at, bt).scale(2.0));
+                let part_b = bd2.as_ref().map(|t| matmul_tensors(&a_data_t, t));
+                match (part_a, part_cross, part_b) {
+                    (None, None, None) => None,
+                    (a, b, c) => {
+                        let zero = Tensor::zeros(c_shape.clone());
+                        let s = a
+                            .unwrap_or_else(|| zero.clone())
+                            .add(&b.unwrap_or_else(|| zero.clone()))
+                            .add(&c.unwrap_or_else(|| zero.clone()));
+                        Some(s)
+                    }
+                }
+            };
+            (t1, t2)
+        }));
         let mut node = GraphNode::new_op(
             OpType::MatMul,
             alloc::vec![Rc::downgrade(&a.node), Rc::downgrade(&b.node)],
             c_tensor,
             Some(grad_fn),
+            tangent_fn,
         );
         node.id = self.next_id();
 
@@ -1484,30 +1929,181 @@ mod tests {
     }
 
     #[test]
-    fn test_jvp_placeholder() {
-        // Test the JVP placeholder implementation
+    fn test_jvp_correctness() {
         let graph = ComputeGraph::new();
         let x = graph.variable(Tensor::scalar(2.0), true);
-        let y = graph.pow(&x, 2.0); // y = x^2
-
+        let y = graph.pow(&x, 2.0);
         let v = Tensor::scalar(1.0);
         let jvp_result = graph.jvp(&y, &x, &v);
-
-        // JVP is a placeholder implementation that returns difference
-        // Just verify it returns a value (not necessarily correct)
-        // In a real implementation, this would use dual numbers
         assert_eq!(jvp_result.data().len(), 1);
+        let expected = 4.0_f32;
+        assert!(
+            (jvp_result.data()[0] - expected).abs() < 1e-5,
+            "JVP of x^2 at x=2, v=1 should be 4.0, got {}",
+            jvp_result.data()[0]
+        );
     }
 
     #[test]
-    fn test_second_derivative_placeholder() {
+    fn test_jvp_linear() {
+        let graph = ComputeGraph::new();
+        let x = graph.variable(Tensor::scalar(3.0), true);
+        let c = graph.variable(Tensor::scalar(1.0), false);
+        let y = graph.mul(&x, &c);
+        let v = Tensor::scalar(1.0);
+        let jvp_result = graph.jvp(&y, &x, &v);
+        assert!(
+            (jvp_result.data()[0] - 1.0).abs() < 1e-5,
+            "JVP of linear y=x*1 at v=1 should be 1.0, got {}",
+            jvp_result.data()[0]
+        );
+    }
+
+    #[test]
+    fn test_jvp_square() {
         let graph = ComputeGraph::new();
         let x = graph.variable(Tensor::scalar(2.0), true);
-        let y = graph.pow(&x, 2.0); // y = x^2, dy/dx = 2x = 4
+        let y = graph.pow(&x, 2.0);
+        let v = Tensor::scalar(1.0);
+        let result = graph.jvp(&y, &x, &v);
+        assert!((result.data()[0] - 4.0).abs() < 1e-5);
+    }
 
-        let second_deriv = graph.second_derivative(&y, &x);
-        assert!(second_deriv.is_some());
-        // This is a placeholder implementation, so just check it returns something
-        assert_eq!(second_deriv.unwrap(), 4.0); // First derivative value
+    #[test]
+    fn test_jvp_exp() {
+        let graph = ComputeGraph::new();
+        let x = graph.variable(Tensor::scalar(0.0), true);
+        let y = graph.exp(&x);
+        let v = Tensor::scalar(1.0);
+        let result = graph.jvp(&y, &x, &v);
+        assert!(
+            (result.data()[0] - 1.0).abs() < 1e-5,
+            "JVP of exp(x) at x=0, v=1 should be 1.0, got {}",
+            result.data()[0]
+        );
+    }
+
+    #[test]
+    fn test_jvp_log() {
+        let graph = ComputeGraph::new();
+        let x = graph.variable(Tensor::scalar(2.0), true);
+        let y = graph.log(&x);
+        let v = Tensor::scalar(1.0);
+        let result = graph.jvp(&y, &x, &v);
+        assert!(
+            (result.data()[0] - 0.5).abs() < 1e-5,
+            "JVP of log(x) at x=2, v=1 should be 0.5, got {}",
+            result.data()[0]
+        );
+    }
+
+    #[test]
+    fn test_jvp_chain() {
+        let graph = ComputeGraph::new();
+        let x = graph.variable(Tensor::scalar(1.0), true);
+        let x_sq = graph.pow(&x, 2.0);
+        let y = graph.exp(&x_sq);
+        let v = Tensor::scalar(1.0);
+        let result = graph.jvp(&y, &x, &v);
+        let expected = 2.0 * libm::expf(1.0);
+        assert!(
+            (result.data()[0] - expected).abs() < 1e-4,
+            "JVP of exp(x^2) at x=1, v=1 should be ~{}, got {}",
+            expected,
+            result.data()[0]
+        );
+    }
+
+    #[test]
+    fn test_jvp_matmul() {
+        let graph = ComputeGraph::new();
+        let a = graph.variable(
+            Tensor::from_vec(alloc::vec![1.0, 2.0, 3.0, 4.0], alloc::vec![2, 2]).unwrap(),
+            false,
+        );
+        let b = graph.variable(Tensor::vector(alloc::vec![1.0, 0.0]), true);
+        let y = graph.matmul(&a, &b);
+        let v = Tensor::vector(alloc::vec![1.0, 1.0]);
+        let result = graph.jvp(&y, &b, &v);
+        assert_eq!(result.data().len(), 2);
+        assert!(
+            (result.data()[0] - 3.0).abs() < 1e-5,
+            "got {}",
+            result.data()[0]
+        );
+        assert!(
+            (result.data()[1] - 7.0).abs() < 1e-5,
+            "got {}",
+            result.data()[1]
+        );
+    }
+
+    #[test]
+    fn test_jvp_finite_diff_crosscheck() {
+        let eps = 1e-4_f32;
+        let x_val = 1.5_f32;
+        let v_val = 1.0_f32;
+        let f = |xv: f32| {
+            let xsq = xv * xv;
+            1.0 / (1.0 + libm::expf(-xsq))
+        };
+        let fd_jvp = (f(x_val + eps * v_val) - f(x_val)) / eps;
+        let graph = ComputeGraph::new();
+        let x = graph.variable(Tensor::scalar(x_val), true);
+        let x_sq = graph.pow(&x, 2.0);
+        let y = graph.sigmoid(&x_sq);
+        let v = Tensor::scalar(v_val);
+        let ad_jvp = graph.jvp(&y, &x, &v).data()[0];
+        assert!(
+            (ad_jvp - fd_jvp).abs() < 1e-3,
+            "JVP {} vs finite diff {} differ by more than 1e-3",
+            ad_jvp,
+            fd_jvp
+        );
+    }
+
+    #[test]
+    fn test_second_derivative_square() {
+        let graph = ComputeGraph::new();
+        let x = graph.variable(Tensor::scalar(2.0), true);
+        let y = graph.pow(&x, 2.0);
+        let second = graph.second_derivative(&y, &x);
+        assert!(second.is_some());
+        let val = second.unwrap();
+        assert!(
+            (val - 2.0).abs() < 1e-5,
+            "d²(x²)/dx² should be 2.0, got {}",
+            val
+        );
+    }
+
+    #[test]
+    fn test_second_derivative_cube() {
+        let graph = ComputeGraph::new();
+        let x = graph.variable(Tensor::scalar(2.0), true);
+        let y = graph.pow(&x, 3.0);
+        let second = graph.second_derivative(&y, &x);
+        assert!(second.is_some());
+        let val = second.unwrap();
+        assert!(
+            (val - 12.0).abs() < 1e-4,
+            "d²(x³)/dx² at x=2 should be 12.0, got {}",
+            val
+        );
+    }
+
+    #[test]
+    fn test_second_derivative_exp() {
+        let graph = ComputeGraph::new();
+        let x = graph.variable(Tensor::scalar(0.0), true);
+        let y = graph.exp(&x);
+        let second = graph.second_derivative(&y, &x);
+        assert!(second.is_some());
+        let val = second.unwrap();
+        assert!(
+            (val - 1.0).abs() < 1e-5,
+            "d²(exp(x))/dx² at x=0 should be 1.0, got {}",
+            val
+        );
     }
 }

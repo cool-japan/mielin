@@ -162,21 +162,21 @@ For detailed feature descriptions, see individual crate README files and the pro
 
 ## Stubs to implement (round 2, added 2026-06-14 by /ultra)
 
-- [~] `mielin-tensor`: `mielin-tensor/src/autograd.rs:425` — true forward-mode JVP; currently returns all-zeros (perturbed input built then discarded, so numerator is f−f=0)
+- [x] `mielin-tensor`: `mielin-tensor/src/autograd.rs:425` — true forward-mode JVP; currently returns all-zeros (perturbed input built then discarded, so numerator is f−f=0)
   - Priority: P2 | Scope: hard | Hint: tangent propagation per-op alongside existing closure GradFn
-- [~] `mielin-tensor`: `mielin-tensor/src/autograd.rs:455` — correct second_derivative; currently returns first derivative as placeholder
+- [x] `mielin-tensor`: `mielin-tensor/src/autograd.rs:455` — correct second_derivative; currently returns first derivative as placeholder
   - Priority: P2 | Scope: hard | Hint: hyper-dual forward-over-forward pass
-- [~] `mielin-tensor`: `mielin-tensor/src/sparse.rs:193` — CSR to_dense row-pointer decode; currently copies the COO arm and produces wrong output
+- [x] `mielin-tensor`: `mielin-tensor/src/sparse.rs:193` — CSR to_dense row-pointer decode; currently copies the COO arm and produces wrong output
   - Priority: P2 | Scope: small | Hint: rows is a row-pointer array (len nrows+1), not raw row indices
-- [~] `mielin-tensor`: `mielin-tensor/src/formats/mod.rs:302` — native Mielin model format import/export; both arms return Err("not yet implemented")
+- [x] `mielin-tensor`: `mielin-tensor/src/formats/mod.rs:302` — native Mielin model format import/export; both arms return Err("not yet implemented")
   - Priority: P2 | Scope: medium | Hint: oxicode or extend serialize.rs "MIEL" hand-rolled format
-- [~] `mielin-kernel`: `mielin-kernel/src/work_stealing.rs:363` — yield_task re-enqueues with hardcoded priority 0; loses real task priority
+- [x] `mielin-kernel`: `mielin-kernel/src/work_stealing.rs:363` — yield_task re-enqueues with hardcoded priority 0; loses real task priority
   - Priority: P2 | Scope: small | Hint: add current_priority: AtomicU32 to WorkerState
-- [~] `mielin-kernel`: `mielin-kernel/src/vmm/mod.rs:799` — flush_tlb_range is single-core only; no IPI shootdown to remote CPUs; riscv64 flush_tlb_page is a no-op
+- [x] `mielin-kernel`: `mielin-kernel/src/vmm/mod.rs:799` — flush_tlb_range is single-core only; no IPI shootdown to remote CPUs; riscv64 flush_tlb_page is a no-op
   - Priority: P2 | Scope: hard | Hint: use IpiType::TlbFlush + CpuBarrier from ipc.rs built in run 1
-- [~] `mielin-cells`: `mielin-cells/src/group.rs:685` — transition_all runs closure on throwaway Agent::new(vec![]); all_in_state returns true unconditionally
+- [x] `mielin-cells`: `mielin-cells/src/group.rs:685` — transition_all runs closure on throwaway Agent::new(vec![]); all_in_state returns true unconditionally
   - Priority: P2 | Scope: medium | Hint: thread &mut HashMap<AgentId,Agent> from caller; no registry exists
-- [~] `mielin-wasm`: `mielin-wasm/src/runtime.rs:438` — Module::hash() returns 0 and size_bytes() returns 0 for all three Module impls
+- [x] `mielin-wasm`: `mielin-wasm/src/runtime.rs:438` — Module::hash() returns 0 and size_bytes() returns 0 for all three Module impls
   - Priority: P2 | Scope: trivial | Hint: serialize bytes + FNV-1a (already in cache.rs:37)
-- [~] `mielin-wasm`: `mielin-wasm/src/memory.rs:345` — MemorySnapshot::compress() prepends 12-byte header then raw data with no actual compression
+- [x] `mielin-wasm`: `mielin-wasm/src/memory.rs:345` — MemorySnapshot::compress() prepends 12-byte header then raw data with no actual compression
   - Priority: P2 | Scope: small | Hint: oxiarc-lz4 already in workspace deps; add .workspace=true to mielin-wasm Cargo.toml

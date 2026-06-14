@@ -913,6 +913,16 @@ impl CpuBarrier {
     }
 }
 
+/// Set an IPI as pending on a specific CPU (for testing/simulation purposes).
+///
+/// In production, IPIs are set pending by `send_ipi`.
+#[cfg(test)]
+pub fn set_pending(cpu_id: usize, ipi_type: IpiType) {
+    if cpu_id < MAX_CPUS {
+        IPI_STATES[cpu_id].set_pending(ipi_type);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1050,15 +1060,5 @@ mod tests {
     fn test_ipi_invalid_cpu_returns_false() {
         assert!(!send_ipi(MAX_CPUS, IpiType::Wakeup));
         assert!(!send_ipi(usize::MAX, IpiType::Halt));
-    }
-}
-
-/// Set an IPI as pending on a specific CPU (for testing/simulation purposes).
-///
-/// In production, IPIs are set pending by `send_ipi`.
-#[cfg(test)]
-pub fn set_pending(cpu_id: usize, ipi_type: IpiType) {
-    if cpu_id < MAX_CPUS {
-        IPI_STATES[cpu_id].set_pending(ipi_type);
     }
 }
