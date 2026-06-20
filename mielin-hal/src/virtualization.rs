@@ -255,31 +255,41 @@ pub(crate) fn read_file(path: &str) -> Option<Vec<u8>> {
     path_bytes.push(0);
 
     // Open file (syscall number 2 on x86_64, aarch64)
-    let fd: isize;
     #[cfg(target_arch = "x86_64")]
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            inlateout("rax") 2_usize => fd,
-            in("rdi") path_bytes.as_ptr(),
-            in("rsi") 0_usize, // O_RDONLY
-            in("rdx") 0_usize,
-            lateout("rcx") _,
-            lateout("r11") _,
-        );
-    }
+    let fd: isize = {
+        let out: isize;
+        unsafe {
+            core::arch::asm!(
+                "syscall",
+                inlateout("rax") 2_usize => out,
+                in("rdi") path_bytes.as_ptr(),
+                in("rsi") 0_usize, // O_RDONLY
+                in("rdx") 0_usize,
+                lateout("rcx") _,
+                lateout("r11") _,
+            );
+        }
+        out
+    };
 
     #[cfg(target_arch = "aarch64")]
-    unsafe {
-        core::arch::asm!(
-            "svc #0",
-            inlateout("x8") 56_usize => _, // openat syscall
-            in("x0") -100_isize, // AT_FDCWD
-            in("x1") path_bytes.as_ptr(),
-            in("x2") 0_usize, // O_RDONLY
-            inlateout("x0") 0_usize => fd,
-        );
-    }
+    let fd: isize = {
+        let out: isize;
+        unsafe {
+            core::arch::asm!(
+                "svc #0",
+                inlateout("x8") 56_usize => _, // openat syscall
+                in("x0") -100_isize, // AT_FDCWD
+                in("x1") path_bytes.as_ptr(),
+                in("x2") 0_usize, // O_RDONLY
+                inlateout("x0") 0_usize => out,
+            );
+        }
+        out
+    };
+
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    let fd: isize = -1;
 
     if fd < 0 {
         return None;
@@ -287,32 +297,41 @@ pub(crate) fn read_file(path: &str) -> Option<Vec<u8>> {
 
     // Read file contents (max 4096 bytes)
     let mut buffer = vec![0u8; 4096];
-    let bytes_read: isize;
-
     #[cfg(target_arch = "x86_64")]
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            inlateout("rax") 0_usize => bytes_read, // read syscall
-            in("rdi") fd,
-            in("rsi") buffer.as_mut_ptr(),
-            in("rdx") buffer.len(),
-            lateout("rcx") _,
-            lateout("r11") _,
-        );
-    }
+    let bytes_read: isize = {
+        let out: isize;
+        unsafe {
+            core::arch::asm!(
+                "syscall",
+                inlateout("rax") 0_usize => out, // read syscall
+                in("rdi") fd,
+                in("rsi") buffer.as_mut_ptr(),
+                in("rdx") buffer.len(),
+                lateout("rcx") _,
+                lateout("r11") _,
+            );
+        }
+        out
+    };
 
     #[cfg(target_arch = "aarch64")]
-    unsafe {
-        core::arch::asm!(
-            "svc #0",
-            inlateout("x8") 63_usize => _, // read syscall
-            in("x0") fd,
-            in("x1") buffer.as_mut_ptr(),
-            in("x2") buffer.len(),
-            inlateout("x0") 0_usize => bytes_read,
-        );
-    }
+    let bytes_read: isize = {
+        let out: isize;
+        unsafe {
+            core::arch::asm!(
+                "svc #0",
+                inlateout("x8") 63_usize => _, // read syscall
+                in("x0") fd,
+                in("x1") buffer.as_mut_ptr(),
+                in("x2") buffer.len(),
+                inlateout("x0") 0_usize => out,
+            );
+        }
+        out
+    };
+
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    let bytes_read: isize = -1;
 
     // Close file (syscall number 3)
     #[cfg(target_arch = "x86_64")]
@@ -355,35 +374,44 @@ pub(crate) fn file_exists(path: &str) -> bool {
     path_bytes.extend_from_slice(path.as_bytes());
     path_bytes.push(0);
 
-    let result: isize;
-
     // Use stat syscall to check existence
     #[cfg(target_arch = "x86_64")]
-    unsafe {
+    let result: isize = {
+        let out: isize;
         let mut stat_buf = [0u8; 144]; // sizeof(struct stat)
-        core::arch::asm!(
-            "syscall",
-            inlateout("rax") 4_usize => result, // stat syscall
-            in("rdi") path_bytes.as_ptr(),
-            in("rsi") stat_buf.as_mut_ptr(),
-            lateout("rcx") _,
-            lateout("r11") _,
-        );
-    }
+        unsafe {
+            core::arch::asm!(
+                "syscall",
+                inlateout("rax") 4_usize => out, // stat syscall
+                in("rdi") path_bytes.as_ptr(),
+                in("rsi") stat_buf.as_mut_ptr(),
+                lateout("rcx") _,
+                lateout("r11") _,
+            );
+        }
+        out
+    };
 
     #[cfg(target_arch = "aarch64")]
-    unsafe {
+    let result: isize = {
+        let out: isize;
         let mut stat_buf = [0u8; 144];
-        core::arch::asm!(
-            "svc #0",
-            inlateout("x8") 79_usize => _, // fstatat syscall
-            in("x0") -100_isize, // AT_FDCWD
-            in("x1") path_bytes.as_ptr(),
-            in("x2") stat_buf.as_mut_ptr(),
-            in("x3") 0_usize,
-            inlateout("x0") 0_usize => result,
-        );
-    }
+        unsafe {
+            core::arch::asm!(
+                "svc #0",
+                inlateout("x8") 79_usize => _, // fstatat syscall
+                in("x0") -100_isize, // AT_FDCWD
+                in("x1") path_bytes.as_ptr(),
+                in("x2") stat_buf.as_mut_ptr(),
+                in("x3") 0_usize,
+                inlateout("x0") 0_usize => out,
+            );
+        }
+        out
+    };
+
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    let result: isize = -1;
 
     result == 0
 }
@@ -456,6 +484,7 @@ fn detect_hypervisor(info: &mut VirtualizationInfo) -> Option<HypervisorType> {
 
     #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
     {
+        let _ = info;
         None
     }
 }

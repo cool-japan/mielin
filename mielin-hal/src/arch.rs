@@ -22,3 +22,11 @@ pub use powerpc::{
     AltiVecSupport, PowerPcCacheInfo, PowerPcCapabilities, PowerPcEndianness, PowerPcPlatform,
     PowerPcVariant,
 };
+
+// Historical 32-bit architectures — included unconditionally for compile-time
+// testing and cross-platform development.
+pub mod armv7;
+pub mod x86;
+
+pub use armv7::{Armv7Capabilities, detect_armv7_capabilities};
+pub use x86::{X86Capabilities, detect_x86_32_capabilities};

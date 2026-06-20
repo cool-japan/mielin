@@ -239,6 +239,12 @@ fn detect_capabilities(arch: &Architecture) -> HardwareCapabilities {
         Architecture::Xtensa => {
             caps |= HardwareCapabilities::FPU;
         }
+        Architecture::Arm32 => {
+            caps = crate::arch::armv7::detect_armv7_capabilities();
+        }
+        Architecture::X86 => {
+            caps = crate::arch::x86::detect_x86_32_capabilities();
+        }
     }
 
     caps

@@ -10,7 +10,7 @@
 ### Medium Priority
 - [x] Benchmark gossip convergence — convergence timing, fanout effect, consistent-hash lookup, quorum throughput; benchmarks in chaos_tests.rs
 - [x] Performance regression tests — 5 bench tests (100-node throughput, 1K-node ring, 200-node partition sweep, 500-node gossip) in large_cluster_tests.rs
-- [ ] Cross-platform networking tests
+- [x] Cross-platform networking tests
 - [x] Production features hardening — StaticPeerList (weighted selection, health tracking, prune), DnsSrvDiscovery (inject+cache, priority tiers), DiscoveryAggregator (multi-source dedup); 28 tests
 
 ### Low Priority

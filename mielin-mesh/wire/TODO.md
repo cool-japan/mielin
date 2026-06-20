@@ -12,7 +12,7 @@
 - [x] Custom protocol extensions — ProtocolHandler with extension registry, capability negotiation, EchoExtension, PingExtension, MetadataExtension; 58 tests in protocol.rs
 - [x] Advanced security features — CertPin (SHA-256/384/512), CertPinStore, CertChainVerifier, ConnectionHealthMonitor with heartbeat loop; 26 tests in advanced_tls.rs
 - [x] Production features hardening — AdaptiveBackoff (Fixed/Linear/Exponential/Fibonacci/Jitter), BackoffStats, record_success/failure; 12 tests in adaptive_backoff.rs
-- [ ] Cross-platform connectivity tests
+- [x] Cross-platform connectivity tests
 
 ### Low Priority
 - [ ] Support for alternative TLS libraries
@@ -23,7 +23,7 @@
 - [ ] Performance tuning documentation
 - [ ] Troubleshooting guide
 - [ ] Video tutorials for wire protocol
-- [ ] Examples for common use cases
+- [x] Examples for common use cases
 
 ## Completed Features (v0.1.0-rc.1)
 

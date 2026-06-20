@@ -381,6 +381,14 @@ async fn demo_hal_integration() -> Result<()> {
             info!("  Family: Xtensa (ESP32)");
             info!("  Potential SIMD: Proprietary DSP");
         }
+        Architecture::Arm32 => {
+            info!("  Family: ARMv7 (32-bit)");
+            info!("  Potential SIMD: NEON (optional)");
+        }
+        Architecture::X86 => {
+            info!("  Family: x86 (32-bit)");
+            info!("  Potential SIMD: SSE, SSE2");
+        }
     }
     info!("");
 

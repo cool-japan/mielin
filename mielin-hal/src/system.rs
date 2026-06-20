@@ -100,6 +100,12 @@ fn detect_total_memory() -> usize {
         detect_memory_linux()
     }
 
+    #[cfg(all(target_os = "linux", target_arch = "arm"))]
+    {
+        // ARM 32-bit Linux: /proc/meminfo is still available but no inline asm syscall path
+        detect_memory_linux()
+    }
+
     #[cfg(target_os = "macos")]
     {
         detect_memory_macos()
@@ -216,6 +222,7 @@ fn detect_memory_linux() -> usize {
     // sysinfo struct contains totalram, freeram, etc.
     // Since we're no_std, we do a raw syscall
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     #[repr(C)]
     struct SysInfo {
         uptime: isize,
@@ -234,28 +241,27 @@ fn detect_memory_linux() -> usize {
         _padding: [u8; 256], // Padding to ensure struct size
     }
 
-    let mut info = SysInfo {
-        uptime: 0,
-        loads: [0; 3],
-        totalram: 0,
-        freeram: 0,
-        sharedram: 0,
-        bufferram: 0,
-        totalswap: 0,
-        freeswap: 0,
-        procs: 0,
-        pad: 0,
-        totalhigh: 0,
-        freehigh: 0,
-        mem_unit: 0,
-        _padding: [0; 256],
-    };
-
-    unsafe {
-        // sysinfo syscall number is 99 on x86_64
-        #[cfg(target_arch = "x86_64")]
-        {
-            let ret: isize;
+    // sysinfo syscall number is 99 on x86_64
+    #[cfg(target_arch = "x86_64")]
+    {
+        let mut info = SysInfo {
+            uptime: 0,
+            loads: [0; 3],
+            totalram: 0,
+            freeram: 0,
+            sharedram: 0,
+            bufferram: 0,
+            totalswap: 0,
+            freeswap: 0,
+            procs: 0,
+            pad: 0,
+            totalhigh: 0,
+            freehigh: 0,
+            mem_unit: 0,
+            _padding: [0; 256],
+        };
+        let ret: isize;
+        unsafe {
             core::arch::asm!(
                 "syscall",
                 in("rax") 99_usize, // __NR_sysinfo
@@ -265,14 +271,32 @@ fn detect_memory_linux() -> usize {
                 out("r11") _,
                 options(nostack)
             );
-            if ret == 0 {
-                return info.totalram * info.mem_unit as usize;
-            }
         }
+        if ret == 0 {
+            return info.totalram * info.mem_unit as usize;
+        }
+    }
 
-        #[cfg(target_arch = "aarch64")]
-        {
-            let ret: isize;
+    #[cfg(target_arch = "aarch64")]
+    {
+        let mut info = SysInfo {
+            uptime: 0,
+            loads: [0; 3],
+            totalram: 0,
+            freeram: 0,
+            sharedram: 0,
+            bufferram: 0,
+            totalswap: 0,
+            freeswap: 0,
+            procs: 0,
+            pad: 0,
+            totalhigh: 0,
+            freehigh: 0,
+            mem_unit: 0,
+            _padding: [0; 256],
+        };
+        let ret: isize;
+        unsafe {
             core::arch::asm!(
                 "svc #0",
                 in("x8") 179_usize, // __NR_sysinfo on aarch64
@@ -280,9 +304,9 @@ fn detect_memory_linux() -> usize {
                 lateout("x0") ret,
                 options(nostack)
             );
-            if ret == 0 {
-                return info.totalram * info.mem_unit as usize;
-            }
+        }
+        if ret == 0 {
+            return info.totalram * info.mem_unit as usize;
         }
     }
 

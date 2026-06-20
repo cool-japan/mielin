@@ -43,6 +43,18 @@ fn quic_provider() -> Arc<rustls::crypto::CryptoProvider> {
     Arc::new(oxiquic_crypto::quic_crypto_provider())
 }
 
+/// Return an IPv4 wildcard `SocketAddr` (`0.0.0.0:0`) without `.unwrap()`.
+fn ipv4_wildcard() -> SocketAddr {
+    use std::net::{Ipv4Addr, SocketAddrV4};
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
+}
+
+/// Return an IPv6 wildcard `SocketAddr` (`[::]:0`) without `.unwrap()`.
+fn ipv6_wildcard() -> SocketAddr {
+    use std::net::{Ipv6Addr, SocketAddrV6};
+    SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))
+}
+
 /// QUIC transport for MielinMesh
 pub struct QuicTransport {
     /// Server endpoint — Some on the server side; None for client-only.
@@ -107,6 +119,33 @@ impl QuicTransport {
             .parse()
             .expect("static IPv4 wildcard addr must parse");
         let client = ClientEndpoint::bind(wildcard, client_cfg, mesh_transport_config())
+            .await
+            .map_err(|e| {
+                WireError::TransportError(format!("Failed to create client endpoint: {e}"))
+            })?;
+
+        Ok(Self {
+            server: None,
+            client: Some(client),
+            connections: Arc::new(RwLock::new(ConnectionPool::new())),
+            cert_manager: None,
+        })
+    }
+
+    /// Create a client-only QUIC transport whose socket family matches `server_addr`.
+    ///
+    /// Unlike [`Self::new_client`], which always binds `0.0.0.0:0` (IPv4 wildcard),
+    /// this constructor binds `[::]:0` when `server_addr` is IPv6 and `0.0.0.0:0`
+    /// otherwise.  On macOS, an IPv6 wildcard socket cannot reach `127.0.0.1`, so
+    /// this function must be used when connecting to IPv6 peers.
+    pub async fn new_client_for(server_addr: SocketAddr) -> Result<Self, WireError> {
+        let client_cfg = Self::build_client_config()?;
+        let bind_addr: SocketAddr = if server_addr.is_ipv6() {
+            ipv6_wildcard()
+        } else {
+            ipv4_wildcard()
+        };
+        let client = ClientEndpoint::bind(bind_addr, client_cfg, mesh_transport_config())
             .await
             .map_err(|e| {
                 WireError::TransportError(format!("Failed to create client endpoint: {e}"))

@@ -76,7 +76,7 @@ compression and cryptography must use Pure Rust crates (COOLJAPAN `oxiarc-*` /
     packages; `cargo tree -p mielin-mesh-wire` shows no `zstd-sys` / `lz4-sys` /
     `lz4_flex` (only `oxiarc-zstd` / `oxiarc-lz4`).
 
-- [ ] **`ring` → Pure Rust crypto (DEEP, security-sensitive).**
+- [x] **`ring` → Pure Rust crypto (DEEP, security-sensitive).**
   - Scope: `ring = "0.17.14"` (`Cargo.toml`, `[workspace.dependencies]`) is pulled
     in unconditionally by `mielin-cells`, `mielin-mesh/core`, and `mielin-mesh/wire`
     (~39 call sites). `ring` bundles C and per-architecture assembly, so it violates
@@ -106,6 +106,7 @@ compression and cryptography must use Pure Rust crates (COOLJAPAN `oxiarc-*` /
     step, in this order: digests → RNG → AEAD → signatures → ECDH → `rustls`
     `CryptoProvider`. Keep wire-format compatibility for any persisted or
     network-exchanged crypto material (signatures, key shares, ciphertext framing).
+  - Migration complete (2026-06-20): all ~39 direct call sites ported to oxicrypto-*/oxiquic-crypto. A non-compiled ring lock entry remains via rustls-webpki (feature-gated optional dep); removal awaits upstream rustls/webpki ring-free path (see line 158 above).
 
 ## Completed Features (v0.1.0)
 

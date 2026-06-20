@@ -15,7 +15,7 @@
 
 ### Low Priority
 - [x] Support for exotic architectures (MIPS, PowerPC) — MipsPlatform (MSA, DSP, CP0 detect, endianness), PowerPcPlatform (AltiVec/VSX, POWER8-10, PVR-based detect); 16 tests in arch/mips.rs + arch/powerpc.rs
-- [ ] Historical compatibility (ARMv7, x86)
+- [x] Historical compatibility (ARMv7, x86) — Armv7Capabilities (NEON/VFPv3/VFPv4/THUMB2/IDIV/FPU via target_feature), X86Capabilities (SSE/SSE2/SSE3/SSSE3/SSE4.1/SSE4.2/AVX/AVX2/FMA/AES-NI via CPUID); cross-compiles for armv7-unknown-linux-gnueabihf and i686-unknown-linux-gnu
 - [ ] Video tutorials for HAL usage
 
 ## Completed Features (v0.1.0-rc.1)

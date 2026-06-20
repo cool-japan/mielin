@@ -287,6 +287,10 @@ pub enum Architecture {
     CortexM,
     LoongArch64,
     Xtensa,
+    /// ARMv7-A application processor (Cortex-A series, Linux userspace).
+    Arm32,
+    /// 32-bit x86 (IA-32 / i686) processor.
+    X86,
 }
 
 impl fmt::Display for Architecture {
@@ -299,6 +303,8 @@ impl fmt::Display for Architecture {
             Architecture::CortexM => write!(f, "cortex-m"),
             Architecture::LoongArch64 => write!(f, "loongarch64"),
             Architecture::Xtensa => write!(f, "xtensa"),
+            Architecture::Arm32 => write!(f, "armv7"),
+            Architecture::X86 => write!(f, "x86"),
         }
     }
 }
@@ -315,11 +321,27 @@ pub fn detect_architecture() -> Architecture {
 
     #[cfg(all(target_arch = "arm", target_os = "none"))]
     return Architecture::ArmCortexM;
+
+    #[cfg(all(target_arch = "arm", not(target_os = "none")))]
+    return Architecture::Arm32;
+
+    #[cfg(target_arch = "x86")]
+    return Architecture::X86;
+
+    #[cfg(not(any(
+        target_arch = "aarch64",
+        target_arch = "riscv64",
+        target_arch = "x86_64",
+        target_arch = "arm",
+        target_arch = "x86",
+    )))]
+    return Architecture::X86_64;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
 
     #[test]
     fn test_architecture_detection() {
@@ -330,6 +352,16 @@ mod tests {
                 | Architecture::RiscV64
                 | Architecture::X86_64
                 | Architecture::ArmCortexM
+                | Architecture::Arm32
+                | Architecture::X86
         ));
+    }
+
+    #[test]
+    fn test_architecture_display() {
+        assert_eq!(Architecture::AArch64.to_string(), "aarch64");
+        assert_eq!(Architecture::X86_64.to_string(), "x86_64");
+        assert_eq!(Architecture::Arm32.to_string(), "armv7");
+        assert_eq!(Architecture::X86.to_string(), "x86");
     }
 }

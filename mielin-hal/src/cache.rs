@@ -158,11 +158,17 @@ impl CacheTopology {
             detect_arm()
         }
 
+        #[cfg(target_arch = "x86")]
+        {
+            detect_x86_32()
+        }
+
         #[cfg(not(any(
             target_arch = "x86_64",
             target_arch = "aarch64",
             target_arch = "riscv64",
-            target_arch = "arm"
+            target_arch = "arm",
+            target_arch = "x86",
         )))]
         {
             Self::default_topology()
@@ -432,6 +438,65 @@ fn detect_arm() -> CacheTopology {
     // Most Cortex-M don't have L2/L3
     topology.l2 = CacheInfo::unknown();
     topology.l3 = CacheInfo::unknown();
+
+    topology
+}
+
+#[cfg(target_arch = "x86")]
+fn detect_x86_32() -> CacheTopology {
+    use core::arch::x86::{__cpuid, __cpuid_count};
+
+    let mut topology = CacheTopology::default_topology();
+
+    unsafe {
+        let max_basic = __cpuid(0).eax;
+        if max_basic >= 4 {
+            for idx in 0..8_u32 {
+                let result = __cpuid_count(4, idx);
+
+                let cache_type = result.eax & 0x1F;
+                if cache_type == 0 {
+                    break; // No more caches
+                }
+
+                let level = ((result.eax >> 5) & 0x7) as u8;
+                let line_size = ((result.ebx & 0xFFF) + 1) as usize;
+                let partitions = (((result.ebx >> 12) & 0x3FF) + 1) as usize;
+                let ways = (((result.ebx >> 22) & 0x3FF) + 1) as usize;
+                let sets = (result.ecx + 1) as usize;
+                let size = line_size * partitions * ways * sets;
+                let shared_by = (((result.eax >> 14) & 0xFFF) + 1) as u8;
+
+                let info = CacheInfo {
+                    level,
+                    cache_type: cache_type as u8,
+                    size,
+                    line_size,
+                    associativity: ways as u8,
+                    sets,
+                    shared: shared_by > 1,
+                    shared_by,
+                };
+
+                match (level, cache_type) {
+                    (1, 1) => topology.l1_data = info,        // L1 Data
+                    (1, 2) => topology.l1_instruction = info, // L1 Instruction
+                    (1, 3) => {
+                        // L1 Unified
+                        topology.l1_data = info;
+                        topology.l1_instruction = info;
+                    }
+                    (2, _) => topology.l2 = info,
+                    (3, _) => topology.l3 = info,
+                    _ => {}
+                }
+            }
+
+            if topology.l1_data.line_size > 0 {
+                topology.default_line_size = topology.l1_data.line_size;
+            }
+        }
+    }
 
     topology
 }
