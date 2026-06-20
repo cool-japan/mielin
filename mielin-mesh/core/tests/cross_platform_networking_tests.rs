@@ -8,9 +8,7 @@
 //! - Group 2: Synchronous crate-type address round-trips (StaticPeer, AgentLocation, etc.)
 //! - Group 3: Async loopback / mDNS lifecycle tests
 
-use mielin_mesh_core::{
-    AgentLocation, DnsSrvConfig, Node, NodeRole, ServiceEndpoint, StaticPeer,
-};
+use mielin_mesh_core::{AgentLocation, DnsSrvConfig, Node, NodeRole, ServiceEndpoint, StaticPeer};
 use std::net::{Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 
@@ -39,9 +37,7 @@ fn parse_ipv6_loopback_socketaddr() {
 /// Verify that `Display` to `parse` round-trips are identity for both IPv4 and IPv6.
 #[test]
 fn socketaddr_display_roundtrip_v4_v6() {
-    let v4: SocketAddr = "127.0.0.1:9000"
-        .parse()
-        .expect("valid IPv4 socket address");
+    let v4: SocketAddr = "127.0.0.1:9000".parse().expect("valid IPv4 socket address");
     let v4_rt: SocketAddr = v4
         .to_string()
         .parse()
@@ -79,12 +75,13 @@ fn ephemeral_port_zero_is_zero_before_bind() {
 fn static_peer_accepts_ipv4_address() {
     let node = Node::new(NodeRole::Edge);
     let node_id = *node.id();
-    let ipv4_addr: SocketAddr = "127.0.0.1:7001"
-        .parse()
-        .expect("valid IPv4 socket address");
+    let ipv4_addr: SocketAddr = "127.0.0.1:7001".parse().expect("valid IPv4 socket address");
 
     let peer = StaticPeer::new(node_id, ipv4_addr);
-    assert_eq!(peer.address, ipv4_addr, "StaticPeer must preserve IPv4 address");
+    assert_eq!(
+        peer.address, ipv4_addr,
+        "StaticPeer must preserve IPv4 address"
+    );
 }
 
 /// `StaticPeer` stores and retrieves an IPv6 address without corruption.
@@ -92,12 +89,13 @@ fn static_peer_accepts_ipv4_address() {
 fn static_peer_accepts_ipv6_address() {
     let node = Node::new(NodeRole::Edge);
     let node_id = *node.id();
-    let ipv6_addr: SocketAddr = "[::1]:7002"
-        .parse()
-        .expect("valid IPv6 socket address");
+    let ipv6_addr: SocketAddr = "[::1]:7002".parse().expect("valid IPv6 socket address");
 
     let peer = StaticPeer::new(node_id, ipv6_addr);
-    assert_eq!(peer.address, ipv6_addr, "StaticPeer must preserve IPv6 address");
+    assert_eq!(
+        peer.address, ipv6_addr,
+        "StaticPeer must preserve IPv6 address"
+    );
 }
 
 /// `AgentLocation` stores and retrieves an IPv6 address correctly.
@@ -106,9 +104,7 @@ fn agent_location_stores_and_retrieves_ipv6() {
     let node = Node::new(NodeRole::Core);
     let node_id = *node.id();
     let agent_id: [u8; 16] = [0xde, 0xad, 0xbe, 0xef, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
-    let ipv6_addr: SocketAddr = "[::1]:9001"
-        .parse()
-        .expect("valid IPv6 socket address");
+    let ipv6_addr: SocketAddr = "[::1]:9001".parse().expect("valid IPv6 socket address");
 
     let location = AgentLocation::new(agent_id, node_id, ipv6_addr);
     assert_eq!(
@@ -120,16 +116,17 @@ fn agent_location_stores_and_retrieves_ipv6() {
 /// `ServiceEndpoint` preserves both the IPv6 address and the TLS flag after `.with_tls()`.
 #[test]
 fn service_endpoint_preserves_ipv6_and_tls_flag() {
-    let ipv6_addr: SocketAddr = "[::1]:8443"
-        .parse()
-        .expect("valid IPv6 socket address");
+    let ipv6_addr: SocketAddr = "[::1]:8443".parse().expect("valid IPv6 socket address");
 
     let endpoint = ServiceEndpoint::new(ipv6_addr, "tcp".to_string()).with_tls();
     assert_eq!(
         endpoint.address, ipv6_addr,
         "ServiceEndpoint must preserve IPv6 address"
     );
-    assert!(endpoint.tls, "ServiceEndpoint::with_tls() must set tls = true");
+    assert!(
+        endpoint.tls,
+        "ServiceEndpoint::with_tls() must set tls = true"
+    );
 }
 
 /// `DnsSrvConfig::with_resolver` stores an IPv6 resolver address in `resolver_addr`.
@@ -138,9 +135,7 @@ fn service_endpoint_preserves_ipv6_and_tls_flag() {
 /// `with_resolver(addr: SocketAddr) -> Self` is a builder that sets that field.
 #[test]
 fn dns_srv_config_stores_ipv6_resolver() {
-    let resolver_addr: SocketAddr = "[::1]:53"
-        .parse()
-        .expect("valid IPv6 DNS resolver address");
+    let resolver_addr: SocketAddr = "[::1]:53".parse().expect("valid IPv6 DNS resolver address");
 
     let config = DnsSrvConfig::new("_mesh._tcp", "local.").with_resolver(resolver_addr);
 
@@ -167,9 +162,7 @@ async fn mesh_service_binds_ephemeral_loopback_v4() -> Result<(), Box<dyn std::e
     use mielin_mesh_core::{MeshConfig, MeshService};
 
     let node = Arc::new(Node::new(NodeRole::Edge));
-    let bind_address: SocketAddr = "127.0.0.1:0"
-        .parse()
-        .expect("valid ephemeral IPv4 address");
+    let bind_address: SocketAddr = "127.0.0.1:0".parse().expect("valid ephemeral IPv4 address");
 
     let config = MeshConfig {
         bind_address,
@@ -197,9 +190,7 @@ async fn discovery_service_mdns_start_stop_loopback() -> Result<(), Box<dyn std:
     use mielin_mesh_core::DiscoveryService;
 
     let node = Arc::new(Node::new(NodeRole::Edge));
-    let bind_addr: SocketAddr = "127.0.0.1:0"
-        .parse()
-        .expect("valid ephemeral IPv4 address");
+    let bind_addr: SocketAddr = "127.0.0.1:0".parse().expect("valid ephemeral IPv4 address");
 
     let mut svc = DiscoveryService::new(Arc::clone(&node), bind_addr)
         .map_err(|e| format!("DiscoveryService::new failed: {e:?}"))?;

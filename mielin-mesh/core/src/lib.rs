@@ -82,7 +82,9 @@ pub use partition::{
     PartitionInfo, PartitionState, QuorumDecision,
 };
 pub use recovery::{ConnectionRecovery, DegradationManager, RecoveryError, StateReconciler};
-pub use registry::{AgentId, AgentLocation, AgentRegistry, QueryOptions, RegistryShard, ShardedRegistry};
+pub use registry::{
+    AgentId, AgentLocation, AgentRegistry, QueryOptions, RegistryShard, ShardedRegistry,
+};
 pub use security::{
     AclEffect, AclPolicy, AclResource, AclRule, AclSubject, CertificateData, EncryptedMessage,
     GossipEncryption, GossipKey, IdentityVerifier, KeyAlgorithm, KeyExchange, KeyExchangeState,

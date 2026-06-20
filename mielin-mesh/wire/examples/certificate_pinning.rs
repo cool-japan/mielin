@@ -46,7 +46,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(
         "Pins for 'example-node': count={}, first_identifier={}",
         pins.len(),
-        pins.first().map(|p| p.identifier.as_str()).unwrap_or("(none)")
+        pins.first()
+            .map(|p| p.identifier.as_str())
+            .unwrap_or("(none)")
     );
 
     // Verify against an empty cert slice — pins exist but no cert bytes to match

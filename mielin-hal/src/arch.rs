@@ -28,5 +28,5 @@ pub use powerpc::{
 pub mod armv7;
 pub mod x86;
 
-pub use armv7::{Armv7Capabilities, detect_armv7_capabilities};
-pub use x86::{X86Capabilities, detect_x86_32_capabilities};
+pub use armv7::{detect_armv7_capabilities, Armv7Capabilities};
+pub use x86::{detect_x86_32_capabilities, X86Capabilities};

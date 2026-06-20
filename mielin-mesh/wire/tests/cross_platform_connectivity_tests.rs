@@ -12,7 +12,9 @@ use tokio::time::timeout;
 async fn ipv4_loopback_handshake_and_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     timeout(Duration::from_secs(5), async {
         let server_addr: SocketAddr = "127.0.0.1:0".parse().expect("addr must parse");
-        let server = QuicTransport::new(server_addr).await.expect("server creation");
+        let server = QuicTransport::new(server_addr)
+            .await
+            .expect("server creation");
         let local_addr = server.local_addr().expect("local_addr");
 
         let server_task = tokio::spawn(async move {
@@ -118,7 +120,9 @@ async fn ipv4_concurrent_connections() -> Result<(), Box<dyn std::error::Error>>
 async fn graceful_close_marks_connection_closed() -> Result<(), Box<dyn std::error::Error>> {
     timeout(Duration::from_secs(5), async {
         let server_addr: SocketAddr = "127.0.0.1:0".parse().expect("addr must parse");
-        let server = QuicTransport::new(server_addr).await.expect("server creation");
+        let server = QuicTransport::new(server_addr)
+            .await
+            .expect("server creation");
         let local_addr = server.local_addr().expect("local_addr");
 
         let _server_task = tokio::spawn(async move {
@@ -148,8 +152,7 @@ async fn graceful_close_marks_connection_closed() -> Result<(), Box<dyn std::err
 async fn connect_to_nonexistent_port_returns_error() -> Result<(), Box<dyn std::error::Error>> {
     // Bind a TCP listener to get a free port, then immediately drop it so nothing listens there.
     let port = {
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
         listener
             .local_addr()
             .expect("temp listener local_addr")
@@ -174,13 +177,10 @@ async fn connect_to_nonexistent_port_returns_error() -> Result<(), Box<dyn std::
 async fn cert_manager_roundtrip_loopback() -> Result<(), Box<dyn std::error::Error>> {
     timeout(Duration::from_secs(5), async {
         let server_addr: SocketAddr = "127.0.0.1:0".parse().expect("addr must parse");
-        let server = QuicTransport::new_with_certs(
-            server_addr,
-            "test-node",
-            Arc::new(CertManager::new()),
-        )
-        .await
-        .expect("server with certs");
+        let server =
+            QuicTransport::new_with_certs(server_addr, "test-node", Arc::new(CertManager::new()))
+                .await
+                .expect("server with certs");
         let local_addr = server.local_addr().expect("local_addr");
 
         let server_task = tokio::spawn(async move {
@@ -211,7 +211,9 @@ async fn cert_manager_roundtrip_loopback() -> Result<(), Box<dyn std::error::Err
 async fn ipv6_loopback_handshake_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     timeout(Duration::from_secs(5), async {
         let server_addr: SocketAddr = "[::1]:0".parse().expect("IPv6 addr must parse");
-        let server = QuicTransport::new(server_addr).await.expect("server creation");
+        let server = QuicTransport::new(server_addr)
+            .await
+            .expect("server creation");
         let local_addr = server.local_addr().expect("local_addr");
 
         let server_task = tokio::spawn(async move {
@@ -242,7 +244,9 @@ async fn ipv6_loopback_handshake_roundtrip() -> Result<(), Box<dyn std::error::E
 async fn connect_with_retry_succeeds() -> Result<(), Box<dyn std::error::Error>> {
     timeout(Duration::from_secs(10), async {
         let server_addr: SocketAddr = "127.0.0.1:0".parse().expect("addr must parse");
-        let server = QuicTransport::new(server_addr).await.expect("server creation");
+        let server = QuicTransport::new(server_addr)
+            .await
+            .expect("server creation");
         let local_addr = server.local_addr().expect("local_addr");
 
         let server_task = tokio::spawn(async move {
