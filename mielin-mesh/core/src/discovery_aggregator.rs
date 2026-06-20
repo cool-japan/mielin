@@ -169,18 +169,21 @@ impl DiscoveryAggregator {
                 Err(_) => vec![],
             };
             for record in &records {
-                // Build a SocketAddr from the SRV hostname; since this is an
-                // abstraction layer we store port only and use 0.0.0.0 as a
-                // placeholder IPv4 address. A real implementation would resolve
-                // the A/AAAA record for `record.target`.
-                let addr: SocketAddr =
-                    format!("0.0.0.0:{}", record.port)
-                        .parse()
-                        .unwrap_or_else(|_| {
-                            "0.0.0.0:0"
-                                .parse()
-                                .expect("invariant: fallback addr literal is valid")
-                        });
+                // Resolve the SRV target hostname to a SocketAddr via the
+                // system DNS resolver. Skip this record if resolution fails —
+                // an unresolvable peer cannot be contacted anyway.
+                let addr: SocketAddr = match resolve_host_addr(&record.target, record.port).await {
+                    Ok(a) => a,
+                    Err(e) => {
+                        tracing::warn!(
+                            host = %record.target,
+                            port = record.port,
+                            error = %e,
+                            "DNS resolution failed for SRV record; skipping peer"
+                        );
+                        continue;
+                    }
+                };
 
                 // Synthesise a deterministic NodeId from the SRV target string
                 // (sha-flavoured UUID v5 semantics via uuid's Uuid::new_v5).
@@ -248,6 +251,26 @@ impl Default for DiscoveryAggregator {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ---------------------------------------------------------------------------
+// DNS helpers
+// ---------------------------------------------------------------------------
+
+/// Resolve `target` (a hostname or IP literal) to a [`SocketAddr`] using the
+/// system DNS resolver via [`tokio::net::lookup_host`].
+///
+/// The first address returned by the resolver is used; both A (IPv4) and AAAA
+/// (IPv6) records are accepted. Returns [`std::io::Error`] if resolution fails
+/// or the resolver returns no addresses.
+async fn resolve_host_addr(target: &str, port: u16) -> Result<SocketAddr, std::io::Error> {
+    let mut addrs = tokio::net::lookup_host(format!("{target}:{port}")).await?;
+    addrs.next().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("DNS lookup for '{target}' returned no addresses"),
+        )
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -347,6 +370,34 @@ mod tests {
         let best = agg.best_peer().await;
         assert!(best.is_some());
         assert_eq!(best.unwrap().source, DiscoverySource::Static);
+    }
+
+    // 29. resolve_host_addr resolves localhost to a valid, non-unspecified address
+    #[tokio::test]
+    async fn resolve_localhost() {
+        let result = super::resolve_host_addr("localhost", 8080).await;
+        assert!(result.is_ok(), "localhost should resolve successfully");
+        let addr = result.expect("localhost resolution must succeed");
+        assert!(
+            !addr.ip().is_unspecified(),
+            "resolved address must not be 0.0.0.0 or ::"
+        );
+        assert_eq!(
+            addr.port(),
+            8080,
+            "port must be preserved through resolution"
+        );
+    }
+
+    // 30. resolve_host_addr returns Err for an unresolvable hostname
+    #[tokio::test]
+    async fn resolve_unresolvable_returns_error() {
+        let result =
+            super::resolve_host_addr("this.hostname.definitely.does.not.exist.invalid", 9999).await;
+        assert!(
+            result.is_err(),
+            "resolution of a bogus hostname must return Err, not a valid SocketAddr"
+        );
     }
 
     // 28. stats.static_discoveries increments across multiple collect calls

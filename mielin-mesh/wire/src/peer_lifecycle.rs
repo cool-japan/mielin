@@ -321,7 +321,7 @@ impl PeerLifecycleManager {
 
             // Schedule removal if auto-removal is enabled
             if config.auto_remove_dead_peers {
-                let _discovery = discovery.clone(); // Reserved for future use
+                let discovery = discovery.clone();
                 let event_tx = event_tx.clone();
                 let removal_delay = config.removal_delay;
 
@@ -329,7 +329,7 @@ impl PeerLifecycleManager {
                     tokio::time::sleep(removal_delay).await;
 
                     // Remove from discovery
-                    // TODO: In real implementation, would call discovery.remove_peer()
+                    discovery.remove_peer(&node_id).await;
 
                     let event = PeerLifecycleEvent::Removed {
                         node_id,

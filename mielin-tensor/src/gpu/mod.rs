@@ -6,8 +6,10 @@
 #![allow(unused)]
 
 use crate::error::{TensorError, TensorResult};
+use crate::ops::TensorOps;
 use crate::tensor::Tensor;
 use alloc::vec::Vec;
+use mielin_hal::capabilities::HardwareCapabilities;
 
 #[cfg(feature = "cuda")]
 pub mod cuda;
@@ -294,8 +296,12 @@ impl GpuOps for Tensor<f32> {
     fn gpu_matmul(&self, other: &Self, ctx: &mut GpuContext) -> TensorResult<Self> {
         match ctx.backend() {
             GpuBackend::None => {
-                // CPU fallback
-                Ok(self.mul(other))
+                // CPU fallback - use proper matrix multiplication via TensorOps
+                TensorOps::new(HardwareCapabilities::NONE)
+                    .matmul(self, other)
+                    .ok_or_else(|| {
+                        TensorError::other("Matrix multiplication failed: incompatible shapes")
+                    })
             }
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => cuda::CudaTensor::matmul(self, other, ctx),
@@ -428,7 +434,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "CPU matmul fallback not yet implemented - requires proper matrix multiplication"]
     fn test_gpu_matmul_cpu_fallback() {
         let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]).unwrap();
         let b = Tensor::from_vec(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]).unwrap();
@@ -438,5 +443,33 @@ mod tests {
         // [1,2] * [5,6] = [19, 22]
         // [3,4]   [7,8]   [43, 50]
         assert_eq!(result.data(), &[19.0, 22.0, 43.0, 50.0]);
+    }
+
+    #[test]
+    fn test_gpu_matmul_non_square_cpu_fallback() {
+        // (2x3) * (3x2) => (2x2)
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]).unwrap();
+        let b = Tensor::from_vec(vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0], vec![3, 2]).unwrap();
+        let mut ctx = GpuContext::new().unwrap();
+
+        let result = a.gpu_matmul(&b, &mut ctx).unwrap();
+        assert_eq!(result.shape(), &[2, 2]);
+        // Row 0: [1*7+2*9+3*11, 1*8+2*10+3*12] = [58, 64]
+        // Row 1: [4*7+5*9+6*11, 4*8+5*10+6*12] = [139, 154]
+        assert_eq!(result.data(), &[58.0, 64.0, 139.0, 154.0]);
+    }
+
+    #[test]
+    fn test_gpu_matmul_incompatible_shapes_returns_error() {
+        // (2x3) * (2x2) is incompatible — inner dims 3 != 2
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]).unwrap();
+        let b = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]).unwrap();
+        let mut ctx = GpuContext::new().unwrap();
+
+        let result = a.gpu_matmul(&b, &mut ctx);
+        assert!(
+            result.is_err(),
+            "Expected Err for incompatible matmul shapes, got Ok"
+        );
     }
 }

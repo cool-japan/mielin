@@ -352,6 +352,19 @@ impl DiscoveryService {
         self.peers.read().await.get(node_id).cloned()
     }
 
+    /// Remove a peer by node ID.
+    ///
+    /// Returns `true` if the peer was present and removed, `false` if it was not found.
+    /// This operation is idempotent: removing a non-existent peer is a no-op and never panics.
+    pub async fn remove_peer(&self, node_id: &[u8; 16]) -> bool {
+        let mut peers = self.peers.write().await;
+        let removed = peers.remove(node_id).is_some();
+        if removed {
+            debug!("Removed peer from discovery");
+        }
+        removed
+    }
+
     /// Get all discovered peers
     pub async fn get_all_peers(&self) -> Vec<DiscoveredPeer> {
         self.peers.read().await.values().cloned().collect()
@@ -941,5 +954,49 @@ mod tests {
     fn test_discovery_method_equality() {
         assert_eq!(DiscoveryMethod::Mdns, DiscoveryMethod::Mdns);
         assert_ne!(DiscoveryMethod::Mdns, DiscoveryMethod::Bootstrap);
+    }
+
+    #[tokio::test]
+    async fn test_remove_peer_present() {
+        let config = DiscoveryConfig::new();
+        let service = DiscoveryService::new(config, [1u8; 16], vec![]);
+
+        let addr: SocketAddr = "127.0.0.1:8000".parse().unwrap();
+        let peer = DiscoveredPeer::new(
+            [2u8; 16],
+            addr,
+            NodeRole::Edge,
+            vec![],
+            DiscoveryMethod::Mdns,
+        );
+
+        service.add_peer(peer).await.unwrap();
+
+        // Verify peer is present before removal
+        assert!(service.get_peer(&[2u8; 16]).await.is_some());
+
+        // Remove the peer — should return true (was present)
+        let was_present = service.remove_peer(&[2u8; 16]).await;
+        assert!(was_present);
+
+        // Peer must no longer be reachable via get_peer
+        assert!(service.get_peer(&[2u8; 16]).await.is_none());
+
+        let stats = service.stats().await;
+        assert_eq!(stats.total_peers, 0);
+    }
+
+    #[tokio::test]
+    async fn test_remove_peer_absent_is_noop() {
+        let config = DiscoveryConfig::new();
+        let service = DiscoveryService::new(config, [1u8; 16], vec![]);
+
+        // Remove a peer that was never added — must not panic, must return false
+        let was_present = service.remove_peer(&[42u8; 16]).await;
+        assert!(!was_present);
+
+        // Service remains fully functional
+        let stats = service.stats().await;
+        assert_eq!(stats.total_peers, 0);
     }
 }

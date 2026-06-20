@@ -7,8 +7,10 @@
 
 use crate::error::{ErrorCategory, TensorError, TensorResult};
 use crate::gpu::{GpuBackend, GpuContext, GpuDevice, GpuTensor};
+use crate::ops::TensorOps;
 use crate::tensor::Tensor;
 use alloc::vec::Vec;
+use mielin_hal::capabilities::HardwareCapabilities;
 
 /// Metal device wrapper
 pub struct MetalDevice;
@@ -108,17 +110,15 @@ impl MetalTensor {
             ));
         }
 
-        let m = a.shape()[0];
-        let n = a.shape()[1];
-        let p = b.shape()[1];
-
-        if n != b.shape()[0] {
+        if a.shape()[1] != b.shape()[0] {
             return Err(TensorError::other("Inner dimensions must match"));
         }
 
         // Stub: Real implementation would use MPSMatrixMultiplication
-        // For now, fall back to CPU
-        Ok(a.mul(b))
+        // Fall back to SIMD-dispatched CPU matmul
+        TensorOps::new(HardwareCapabilities::NONE)
+            .matmul(a, b)
+            .ok_or_else(|| TensorError::other("Metal matmul CPU fallback failed"))
     }
 
     /// Element-wise addition on GPU

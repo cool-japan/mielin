@@ -23,6 +23,7 @@ wasm3-engine = []
 [dependencies]
 wasmtime.workspace = true
 wasmtime-wasi = { workspace = true, optional = true }
+wasmparser = { version = "0.252", default-features = false, features = ["std"] }
 anyhow.workspace = true
 thiserror.workspace = true
 rand.workspace = true

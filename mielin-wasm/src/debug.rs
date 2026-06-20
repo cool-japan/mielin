@@ -707,14 +707,30 @@ impl BreakpointInjector {
         }
     }
 
-    /// Add breakpoints at function entries
+    /// Add breakpoints at the entry of the specified function indices.
+    ///
+    /// Parses `self.original_wasm` with `wasmparser` to locate each function
+    /// body's byte offset, then calls [`add_breakpoint_at_offset`] for every
+    /// index listed in `function_indices`.  Returns an error if the stored
+    /// bytes are not valid WebAssembly.
     pub fn add_breakpoints_at_functions(&mut self, function_indices: &[u32]) -> Result<()> {
-        // Parse WASM to find function code sections
-        // This is simplified - real implementation would use wasmparser
-        for &_func_idx in function_indices {
-            // In practice, we'd parse the code section and find function starts
-            // For now, this is a placeholder
+        let mut code_func_idx: u32 = 0;
+        let mut offsets_to_add: Vec<usize> = Vec::new();
+
+        for payload in wasmparser::Parser::new(0).parse_all(&self.original_wasm) {
+            let payload = payload.map_err(|e| anyhow!("Failed to parse WASM module: {}", e))?;
+            if let wasmparser::Payload::CodeSectionEntry(body) = payload {
+                if function_indices.contains(&code_func_idx) {
+                    offsets_to_add.push(body.range().start);
+                }
+                code_func_idx += 1;
+            }
         }
+
+        for offset in offsets_to_add {
+            self.add_breakpoint_at_offset(offset);
+        }
+
         Ok(())
     }
 
@@ -1504,11 +1520,40 @@ mod tests {
 
     #[test]
     fn test_breakpoint_injector_function_breakpoints() {
+        // All-zero bytes are not valid WASM; the parser must return an error.
         let wasm = vec![0x00; 100];
         let mut injector = BreakpointInjector::new(wasm);
-
-        // This is a simplified test - real implementation would parse WASM
         let result = injector.add_breakpoints_at_functions(&[0, 1, 2]);
-        assert!(result.is_ok());
+        assert!(result.is_err(), "Expected error for invalid WASM bytes");
+    }
+
+    #[test]
+    fn test_add_breakpoints_at_functions_two_funcs() {
+        // Build a minimal 2-function WASM module from WAT source.
+        let wasm_bytes = wat::parse_str(
+            r#"(module
+                (func (result i32) i32.const 1)
+                (func (result i32) i32.const 2))"#,
+        )
+        .expect("WAT compilation failed");
+
+        let mut injector = BreakpointInjector::new(wasm_bytes);
+        injector
+            .add_breakpoints_at_functions(&[0, 1])
+            .expect("Failed to add breakpoints at functions 0 and 1");
+
+        let offsets = injector.breakpoint_offsets();
+        assert_eq!(offsets.len(), 2, "Expected exactly 2 breakpoint offsets");
+        assert!(offsets[0] > 0, "First function offset should be non-zero");
+        assert!(offsets[1] > 0, "Second function offset should be non-zero");
+        assert_ne!(offsets[0], offsets[1], "Function offsets must be distinct");
+    }
+
+    #[test]
+    fn test_add_breakpoints_malformed_returns_error() {
+        // Malformed / non-WASM bytes must yield an Err result.
+        let mut injector = BreakpointInjector::new(b"not wasm".to_vec());
+        let result = injector.add_breakpoints_at_functions(&[0]);
+        assert!(result.is_err(), "Expected error for malformed WASM input");
     }
 }
