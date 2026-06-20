@@ -911,6 +911,9 @@ mod tests {
         assert_eq!(selected.len(), 3);
     }
 
+    // LoadBalancer::select with Random strategy calls rand::rng() -> ChaCha20 NEON on aarch64.
+    // Miri cannot emulate llvm.aarch64.neon.tbl1.v16i8. Not UB — hardware SIMD.
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_random_load_balancer() {
         let registry = Arc::new(ServiceRegistry::new());

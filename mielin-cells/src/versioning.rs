@@ -906,6 +906,9 @@ mod tests {
         assert!(registry.can_migrate(&v1_1_0, &v2_0_0).unwrap());
     }
 
+    // ABTestDeployment::assign_agent calls rand::rng() -> ChaCha20 NEON on aarch64.
+    // Miri cannot emulate llvm.aarch64.neon.tbl1.v16i8. Not UB — hardware SIMD.
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_ab_test_assignment() {
         let mut deployment = ABTestDeployment {

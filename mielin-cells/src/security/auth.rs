@@ -380,6 +380,12 @@ mod tests {
     use super::*;
     use crate::security::identity::AgentIdentity;
 
+    // All tests below call AuthToken::create or AuthChallenge::create (or both), which
+    // internally call rand::rng(). On aarch64 macOS, rand's ThreadRng uses the ChaCha20
+    // NEON backend (chacha20-0.10.0 crate), which invokes llvm.aarch64.neon.tbl1.v16i8 —
+    // an intrinsic Miri cannot emulate. This is not undefined behavior; it is a SIMD
+    // hardware operation unavailable in the Miri interpreter environment.
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_auth_token_creation() {
         let identity = AgentIdentity::generate();
@@ -396,6 +402,7 @@ mod tests {
         assert!(!token.is_expired());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_auth_token_expiration() {
         let identity = AgentIdentity::generate();
@@ -406,6 +413,7 @@ mod tests {
         assert!(token.is_expired());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_auth_token_verify_with_identity() {
         let identity = AgentIdentity::generate();
@@ -419,6 +427,7 @@ mod tests {
         assert!(valid);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_auth_challenge_creation() {
         let challenge = AuthChallenge::create(60).expect("Failed to create challenge");
@@ -426,6 +435,7 @@ mod tests {
         assert!(challenge.is_valid());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_auth_response_creation() {
         let challenge = AuthChallenge::create(60).expect("Failed to create challenge");
@@ -437,6 +447,7 @@ mod tests {
         assert_eq!(response.agent_id, identity.agent_id());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_auth_response_verify() {
         let challenge = AuthChallenge::create(60).expect("Failed to create challenge");
@@ -452,6 +463,7 @@ mod tests {
         assert!(valid);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_authenticator_challenge_response_flow() {
         let mut authenticator = Authenticator::new();
@@ -479,6 +491,7 @@ mod tests {
         assert_eq!(authenticator.active_sessions(), 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_authenticator_verify_token() {
         let mut authenticator = Authenticator::new();
@@ -499,6 +512,7 @@ mod tests {
         assert!(valid);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_authenticator_revoke_session() {
         let mut authenticator = Authenticator::new();
@@ -520,11 +534,12 @@ mod tests {
         assert_eq!(authenticator.active_sessions(), 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_authenticator_cleanup_expired() {
         let mut authenticator = Authenticator::new();
 
-        // Create an expired challenge
+        // Create an expired challenge (AuthChallenge::create -> rand::rng -> NEON)
         let mut challenge = AuthChallenge::create(1).expect("Failed");
         challenge.validity_secs = 0;
         authenticator

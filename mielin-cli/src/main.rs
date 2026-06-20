@@ -245,9 +245,14 @@ fn handle_version_command(format: OutputFormat) {
         version: env!("CARGO_PKG_VERSION").to_string(),
         git_commit: option_env!("GIT_COMMIT").unwrap_or("unknown").to_string(),
         build_date: chrono::Utc::now().format("%Y-%m-%d").to_string(),
-        rust_version: env!("CARGO_PKG_RUST_VERSION")
-            .parse::<String>()
-            .unwrap_or_else(|_| "unknown".to_string()),
+        rust_version: {
+            let rv = env!("CARGO_PKG_RUST_VERSION");
+            if rv.is_empty() {
+                "unknown".to_string()
+            } else {
+                rv.to_string()
+            }
+        },
         target: std::env::consts::ARCH.to_string(),
     };
 

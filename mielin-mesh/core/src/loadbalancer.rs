@@ -707,6 +707,9 @@ mod tests {
         assert_eq!(stats.total_connections, 1);
     }
 
+    // random_select calls rand::rng() -> ChaCha20 NEON backend on aarch64.
+    // Miri cannot emulate llvm.aarch64.neon.tbl1.v16i8. Not UB — hardware SIMD.
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_random_selection() {
         let pool = ServicePool::new("test-service", LoadBalancingAlgorithm::Random);

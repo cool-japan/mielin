@@ -116,6 +116,10 @@ impl RemoteDebugger {
 mod tests {
     use super::*;
 
+    // This test uses rand::rng() which internally calls ChaCha20's NEON SIMD backend
+    // on aarch64. Miri cannot emulate NEON intrinsics (llvm.aarch64.neon.tbl1.v16i8),
+    // so we skip it under Miri. This is not a UB issue — the SIMD is in rand's RNG backend.
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_remote_debugger() {
         let config = DebuggerConfig::default();

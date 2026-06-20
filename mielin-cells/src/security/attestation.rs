@@ -332,6 +332,7 @@ mod tests {
     use super::*;
     use crate::security::identity::AgentIdentity;
 
+    // test_capability_implies uses no RNG — safe to run under Miri.
     #[test]
     fn test_capability_implies() {
         let admin = Capability::Admin;
@@ -342,6 +343,12 @@ mod tests {
         assert!(network.implies(&network));
     }
 
+    // All remaining tests call CapabilityAttestation::create, which uses rand::rng()
+    // internally (line 95-97: rng.fill(&mut attestation_id)). On aarch64 macOS, rand's
+    // ThreadRng selects the ChaCha20 NEON backend (chacha20-0.10.0), triggering
+    // llvm.aarch64.neon.tbl1.v16i8 — an intrinsic Miri cannot emulate.
+    // This is not undefined behavior; it is hardware SIMD unavailable under Miri.
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_capability_attestation_creation() {
         let agent_id = [1u8; 16];
@@ -362,6 +369,7 @@ mod tests {
         assert!(attestation.is_valid());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_capability_attestation_verify() {
         let agent_id = [1u8; 16];
@@ -384,6 +392,7 @@ mod tests {
         assert!(valid);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_capability_attestation_has_capability() {
         let agent_id = [1u8; 16];
@@ -404,6 +413,7 @@ mod tests {
         assert!(!attestation.has_capability(&Capability::FileSystem));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_capability_attestation_revoke() {
         let agent_id = [1u8; 16];
@@ -423,6 +433,7 @@ mod tests {
         assert!(!attestation.is_valid());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_attestation_validator() {
         let mut validator = AttestationValidator::new();
@@ -449,6 +460,7 @@ mod tests {
         assert!(!validator.has_capability(&agent_id, &Capability::FileSystem));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_attestation_validator_untrusted_issuer() {
         let mut validator = AttestationValidator::new();
@@ -468,6 +480,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_attestation_validator_revoke() {
         let mut validator = AttestationValidator::new();
@@ -494,6 +507,7 @@ mod tests {
         assert!(!validator.has_capability(&agent_id, &Capability::Network));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_attestation_validator_cleanup() {
         let mut validator = AttestationValidator::new();
@@ -528,6 +542,7 @@ mod tests {
         assert_eq!(validator.attestations.len(), 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_capability_admin_implies_all() {
         let agent_id = [1u8; 16];

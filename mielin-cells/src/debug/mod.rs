@@ -135,6 +135,10 @@ impl DebugContext {
 mod tests {
     use super::*;
 
+    // All four tests call DebugContext::new which uses rand::rng() -> ChaCha20 NEON backend
+    // on aarch64. Miri cannot emulate llvm.aarch64.neon.tbl1.v16i8 on macOS.
+    // Not UB — hardware SIMD unavailable under Miri interpreter.
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_debug_context_creation() {
         let agent_id = [1u8; 16];
@@ -146,6 +150,7 @@ mod tests {
         assert!(context.watches.is_empty());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_debug_context_enable_disable() {
         let agent_id = [1u8; 16];
@@ -158,6 +163,7 @@ mod tests {
         assert!(!context.enabled);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_debug_context_breakpoints() {
         let agent_id = [1u8; 16];
@@ -171,6 +177,7 @@ mod tests {
         assert_eq!(context.breakpoints.len(), 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_debug_context_watches() {
         let agent_id = [1u8; 16];
