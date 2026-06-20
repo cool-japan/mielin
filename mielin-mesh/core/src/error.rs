@@ -499,6 +499,7 @@ mod tests {
         assert!(!policy.should_retry(&security_err, 0));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_circuit_breaker_closed_to_open() {
         let config = CircuitBreakerConfig {
@@ -524,6 +525,7 @@ mod tests {
         assert!(!cb.allow_request().await);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_circuit_breaker_open_to_half_open() {
         let config = CircuitBreakerConfig {
@@ -547,6 +549,7 @@ mod tests {
         assert_eq!(cb.state().await, CircuitState::HalfOpen);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_circuit_breaker_half_open_to_closed() {
         let config = CircuitBreakerConfig {
@@ -573,6 +576,7 @@ mod tests {
         assert_eq!(cb.state().await, CircuitState::Closed);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_retry_executor_success() {
         let policy = RetryPolicy::default();
@@ -586,6 +590,7 @@ mod tests {
         assert_eq!(result.unwrap(), 42);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_retry_executor_eventual_success() {
         let policy = RetryPolicy::default();
@@ -620,6 +625,7 @@ mod tests {
         assert_eq!(*attempts.lock().await, 2);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_retry_executor_max_attempts() {
         let policy = RetryPolicy {

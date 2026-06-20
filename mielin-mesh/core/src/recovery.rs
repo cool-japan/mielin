@@ -725,6 +725,7 @@ mod tests {
         assert!(!state.in_progress);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_connection_recovery_start() {
         let recovery = ConnectionRecovery::new(RetryConfig::default());
@@ -738,6 +739,7 @@ mod tests {
         assert!(recovering.contains(&node_id));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_connection_recovery_success() {
         let recovery = ConnectionRecovery::new(RetryConfig::default());
@@ -749,6 +751,7 @@ mod tests {
         assert!(!recovery.is_recovering(node_id).await);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_connection_recovery_max_retries() {
         let config = RetryConfig {
@@ -775,6 +778,7 @@ mod tests {
         assert!(matches!(result, Err(RecoveryError::MaxRetriesExceeded(3))));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_connection_recovery_cancel() {
         let recovery = ConnectionRecovery::new(RetryConfig::default());
@@ -787,6 +791,7 @@ mod tests {
         assert!(!recovery.is_recovering(node_id).await);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_degradation_manager_not_degraded() {
         let manager = DegradationManager::new(DegradationThresholds::default());
@@ -795,6 +800,7 @@ mod tests {
         assert!(manager.degradation_reason().await.is_none());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_degradation_manager_enter_exit() {
         let manager = DegradationManager::new(DegradationThresholds::default());
@@ -811,6 +817,7 @@ mod tests {
         assert!(manager.degradation_reason().await.is_none());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_degradation_evaluate_low_visibility() {
         let thresholds = DegradationThresholds {
@@ -829,6 +836,7 @@ mod tests {
         assert!(!manager.is_degraded().await);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_degradation_evaluate_high_failures() {
         let thresholds = DegradationThresholds {
@@ -843,6 +851,7 @@ mod tests {
         assert!(manager.is_degraded().await);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_degradation_evaluate_high_latency() {
         let thresholds = DegradationThresholds {
@@ -857,6 +866,7 @@ mod tests {
         assert!(manager.is_degraded().await);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_state_reconciler() {
         let reconciler = StateReconciler::new();
@@ -871,6 +881,7 @@ mod tests {
         assert!(reconciler.time_since_last().await.is_some());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_retry_executor_success() {
         let executor = RetryExecutor::new(RetryConfig::default());
@@ -887,6 +898,7 @@ mod tests {
         assert_eq!(call_count, 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_retry_executor_eventual_success() {
         let executor = RetryExecutor::new(RetryConfig {

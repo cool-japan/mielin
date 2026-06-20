@@ -352,6 +352,7 @@ mod tests {
     use super::*;
     use crate::NodeRole;
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_mesh_service_creation() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -360,6 +361,7 @@ mod tests {
         assert!(service.is_ok());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_mesh_service_lifecycle() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -383,6 +385,7 @@ mod tests {
         assert!(!service.is_started().await);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_mesh_service_registry_integration() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -414,6 +417,7 @@ mod tests {
         assert_eq!(count, 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_mesh_service_gossip_integration() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -438,6 +442,7 @@ mod tests {
         assert_eq!(members.len(), 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_mesh_service_migration_integration() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -469,6 +474,7 @@ mod tests {
         assert_eq!(stats.successful_migrations, 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_mesh_service_full_integration() {
         let node = Arc::new(Node::new(NodeRole::Core));

@@ -603,6 +603,7 @@ mod tests {
         assert_eq!(stats.success_rate(), 2.0 / 3.0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_service_pool_round_robin() {
         let pool = ServicePool::new("test-service", LoadBalancingAlgorithm::RoundRobin);
@@ -620,6 +621,7 @@ mod tests {
         assert_ne!(ep2.endpoint.address.port(), ep3.endpoint.address.port());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_service_pool_least_connections() {
         let pool = ServicePool::new("test-service", LoadBalancingAlgorithm::LeastConnections);
@@ -638,6 +640,7 @@ mod tests {
         assert!(ep2.get_active_connections() <= ep1.get_active_connections());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_weighted_round_robin() {
         let pool = ServicePool::new("test-service", LoadBalancingAlgorithm::WeightedRoundRobin);
@@ -665,6 +668,7 @@ mod tests {
         assert!(count_8081 > count_8080);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_load_balancer() {
         let lb = LoadBalancer::new(LoadBalancingAlgorithm::RoundRobin);
@@ -681,6 +685,7 @@ mod tests {
         assert!(endpoint.is_healthy());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_no_healthy_endpoints_fallback() {
         let pool = ServicePool::new("test-service", LoadBalancingAlgorithm::RoundRobin);
@@ -691,6 +696,7 @@ mod tests {
         assert!(endpoint.is_ok());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_pool_stats() {
         let pool = ServicePool::new("test-service", LoadBalancingAlgorithm::RoundRobin);
@@ -709,6 +715,7 @@ mod tests {
 
     // random_select calls rand::rng() -> ChaCha20 NEON backend on aarch64.
     // Miri cannot emulate llvm.aarch64.neon.tbl1.v16i8. Not UB — hardware SIMD.
+    #[cfg_attr(miri, ignore)]
     #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_random_selection() {
@@ -729,6 +736,7 @@ mod tests {
         assert!(selected.len() > 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_least_response_time() {
         let pool = ServicePool::new("test-service", LoadBalancingAlgorithm::LeastResponseTime);
@@ -748,6 +756,7 @@ mod tests {
         assert_eq!(ep.endpoint.address.port(), 8081);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_mark_unhealthy() {
         let pool = ServicePool::new("test-service", LoadBalancingAlgorithm::RoundRobin);
@@ -760,6 +769,7 @@ mod tests {
         assert_eq!(endpoints[0].consecutive_failures.load(Ordering::Relaxed), 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_mark_healthy() {
         let pool = ServicePool::new("test-service", LoadBalancingAlgorithm::RoundRobin);

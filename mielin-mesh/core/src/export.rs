@@ -539,12 +539,14 @@ mod tests {
     use super::*;
     use crate::NodeId;
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_prometheus_exporter_creation() {
         let exporter = PrometheusExporter::new("test");
         assert_eq!(exporter.prefix, "test");
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_prometheus_export_basic() {
         let node_id = NodeId::new_v4();
@@ -563,6 +565,7 @@ mod tests {
         assert!(output.contains("mielin_dht_gets_total"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_prometheus_without_help() {
         let node_id = NodeId::new_v4();
@@ -574,6 +577,7 @@ mod tests {
         assert!(!output.contains("# HELP"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_prometheus_without_type() {
         let node_id = NodeId::new_v4();
@@ -585,6 +589,7 @@ mod tests {
         assert!(!output.contains("# TYPE"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_json_exporter_basic() {
         let node_id = NodeId::new_v4();
@@ -599,6 +604,7 @@ mod tests {
         assert!(output.contains("\"timestamp_ms\":"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_json_exporter_without_timestamps() {
         let node_id = NodeId::new_v4();
@@ -610,6 +616,7 @@ mod tests {
         assert!(!output.contains("timestamp_ms"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_json_exporter_pretty() {
         let node_id = NodeId::new_v4();
@@ -654,6 +661,7 @@ mod tests {
         assert_eq!(metrics.success_rate, 0.0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_prometheus_peer_metrics() {
         let local_id = NodeId::new_v4();
@@ -673,6 +681,7 @@ mod tests {
         assert!(output.matches("node=").count() > 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_prometheus_exporter_labels() {
         let node_id = NodeId::new_v4();

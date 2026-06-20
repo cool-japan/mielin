@@ -617,6 +617,7 @@ mod tests {
         assert!(metrics.error_message.is_none());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_migration_coordinator_creation() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -628,6 +629,7 @@ mod tests {
         assert_eq!(stats.total_migrations, 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_precopy_migration() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -650,6 +652,7 @@ mod tests {
         assert_eq!(stats.failed_migrations, 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_postcopy_migration() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -674,6 +677,7 @@ mod tests {
         assert_eq!(m.strategy, MigrationStrategy::PostCopy);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_hybrid_migration() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -698,6 +702,7 @@ mod tests {
         assert!(m.precopy_iterations > 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_migration_history() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -724,6 +729,7 @@ mod tests {
         assert_eq!(stats.successful_migrations, 3);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_migration_phases() {
         let agent_id = [1u8; 16];

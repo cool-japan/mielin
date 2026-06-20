@@ -448,6 +448,7 @@ mod tests {
     }
 
     // 1. Empty list on construction
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_list_new() {
         let list = StaticPeerList::new(make_node());
@@ -457,6 +458,7 @@ mod tests {
     }
 
     // 2. Add and retrieve a peer
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_add_get() {
         let list = StaticPeerList::new(make_node());
@@ -469,6 +471,7 @@ mod tests {
     }
 
     // 3. Mark a peer as reachable
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_mark_reachable() {
         let list = StaticPeerList::new(make_node());
@@ -483,6 +486,7 @@ mod tests {
     }
 
     // 4. Mark a peer as unreachable
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_mark_unreachable() {
         let list = StaticPeerList::new(make_node());
@@ -497,6 +501,7 @@ mod tests {
     }
 
     // 5. Disabled peer not in healthy_peers
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_disable() {
         let list = StaticPeerList::new(make_node());
@@ -509,6 +514,7 @@ mod tests {
     }
 
     // 6. Tag filtering
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_tags_filter() {
         let list = StaticPeerList::new(make_node());
@@ -529,6 +535,7 @@ mod tests {
     }
 
     // 7. Select peer (basic — seed produces a peer)
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_select_weighted() {
         let list = StaticPeerList::new(make_node());
@@ -539,6 +546,7 @@ mod tests {
     }
 
     // 8. Prune removes high-failure peers
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_prune() {
         let list = StaticPeerList::new(make_node()).with_max_failures(2);
@@ -555,6 +563,7 @@ mod tests {
     }
 
     // 9. load_from_config adds all peers
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_load_config() {
         let list = StaticPeerList::new(make_node());
@@ -564,6 +573,7 @@ mod tests {
     }
 
     // 10. Stats reflect health updates
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_stats_track() {
         let list = StaticPeerList::new(make_node());
@@ -590,6 +600,7 @@ mod tests {
     }
 
     // 11. Enable/disable cycle
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_enable_disable_cycle() {
         let list = StaticPeerList::new(make_node());
@@ -606,6 +617,7 @@ mod tests {
     }
 
     // 12. Higher-weight peers selected more often over many trials
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_static_peer_weighted_selection_bias() {
         let list = StaticPeerList::new(make_node());

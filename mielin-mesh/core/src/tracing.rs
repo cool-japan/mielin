@@ -1418,6 +1418,7 @@ mod tests {
         assert!(trace.root_span.is_ended());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_trace_collector() {
         let collector = TraceCollector::default_collector();
@@ -1511,6 +1512,7 @@ mod tests {
         assert!(matches!(b, AttributeValue::Bool(true)));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_collector_stats() {
         let collector = TraceCollector::default_collector();

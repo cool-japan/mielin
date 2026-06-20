@@ -1077,6 +1077,7 @@ pub struct TenantManagerStats {
 mod tests {
     use super::*;
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_tenant_creation() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1094,6 +1095,7 @@ mod tests {
         assert!(!tenant.is_active().await);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_tenant_activation() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1116,6 +1118,7 @@ mod tests {
         assert!(tenant.is_active().await);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_duplicate_tenant() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1142,6 +1145,7 @@ mod tests {
         ));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_namespace_creation() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1166,6 +1170,7 @@ mod tests {
         assert_eq!(namespace.config.tenant_id, tenant_id);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_namespace_quota_exceeded() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1196,6 +1201,7 @@ mod tests {
         ));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_agent_registration() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1226,6 +1232,7 @@ mod tests {
         assert!(namespace.contains_agent(&agent_id).await);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_agent_quota_exceeded() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1262,6 +1269,7 @@ mod tests {
         ));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_strict_routing_policy() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1312,6 +1320,7 @@ mod tests {
             .unwrap());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_permission_based_routing() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1374,6 +1383,7 @@ mod tests {
             .unwrap());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_audit_log() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1392,6 +1402,7 @@ mod tests {
         assert!(!entries.is_empty());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_namespace_deletion() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1420,6 +1431,7 @@ mod tests {
         assert!(manager.get_namespace(&namespace_id).await.is_none());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_resource_quota_presets() {
         let small = ResourceQuota::small();
@@ -1434,6 +1446,7 @@ mod tests {
         assert_eq!(unlimited.max_agents, usize::MAX);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_tenant_manager_stats() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1460,6 +1473,7 @@ mod tests {
         assert_eq!(stats.total_namespaces, 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_namespace_only_routing() {
         let manager = TenantManager::new(AuditConfig::default());
@@ -1502,6 +1516,7 @@ mod tests {
             .unwrap());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_agent_unregistration() {
         let manager = TenantManager::new(AuditConfig::default());

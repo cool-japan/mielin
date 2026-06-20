@@ -532,6 +532,7 @@ impl Default for ServiceDiscovery {
 mod tests {
     use super::*;
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_service_registration() {
         let discovery = ServiceDiscovery::new();
@@ -550,6 +551,7 @@ mod tests {
         assert_eq!(discovery.count().await, 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_service_deregistration() {
         let discovery = ServiceDiscovery::new();
@@ -567,6 +569,7 @@ mod tests {
         assert_eq!(discovery.count().await, 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_service_query_by_name() {
         let discovery = ServiceDiscovery::new();
@@ -584,6 +587,7 @@ mod tests {
         assert_eq!(results[0].name, "test-service");
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_service_query_by_tags() {
         let discovery = ServiceDiscovery::new();
@@ -608,6 +612,7 @@ mod tests {
         assert_eq!(results.len(), 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_service_health_update() {
         let discovery = ServiceDiscovery::new();
@@ -629,6 +634,7 @@ mod tests {
         assert_eq!(service.health, ServiceHealth::Unhealthy);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_service_events() {
         let discovery = ServiceDiscovery::new();

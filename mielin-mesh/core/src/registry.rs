@@ -1092,6 +1092,7 @@ mod tests {
     use super::*;
     use crate::{dht::PeerInfo, NodeRole};
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_agent_location_creation() {
         let agent_id = [1u8; 16];
@@ -1106,6 +1107,7 @@ mod tests {
         assert!(!location.is_expired());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_registry_creation() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -1116,6 +1118,7 @@ mod tests {
         assert_eq!(registry.total_agent_count().await, 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_register_agent() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -1134,6 +1137,7 @@ mod tests {
         assert_eq!(location.address, address);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_deregister_agent() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -1152,6 +1156,7 @@ mod tests {
         assert!(registry.query_agent(agent_id).await.is_err());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_update_agent_location() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -1175,6 +1180,7 @@ mod tests {
         assert_eq!(location.node_id, new_node_id);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_query_nonexistent_agent() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -1188,6 +1194,7 @@ mod tests {
         assert!(matches!(result, Err(RegistryError::AgentNotFound(_))));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_agent_metadata() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -1207,6 +1214,7 @@ mod tests {
         assert_eq!(location.metadata.get("type"), Some(&"worker".to_string()));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_get_local_agents() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -1224,6 +1232,7 @@ mod tests {
         assert_eq!(agents.len(), 2);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_registry_message_handling() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -1243,6 +1252,7 @@ mod tests {
         assert_eq!(registry.total_agent_count().await, 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_responsible_nodes() {
         let node = Arc::new(Node::new(NodeRole::Core));
@@ -1310,12 +1320,14 @@ mod tests {
         assert!(shard.is_empty());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_sharded_registry_creation() {
         let registry = ShardedRegistry::new(ShardConfig::default());
         assert_eq!(registry.total_count().await, 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_sharded_registry_operations() {
         let registry = ShardedRegistry::new(ShardConfig::default());
@@ -1335,6 +1347,7 @@ mod tests {
         assert_eq!(registry.total_count().await, 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_sharded_registry_distribution() {
         let registry = ShardedRegistry::new(ShardConfig::default());

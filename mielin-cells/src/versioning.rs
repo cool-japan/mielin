@@ -977,6 +977,8 @@ mod tests {
         assert!(deployment.should_abort());
     }
 
+    // tokio::test creates an I/O runtime that calls kqueue() on macOS — unsupported by Miri.
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_rolling_update_immediate() {
         let registry = Arc::new(VersionRegistry::new());
@@ -1018,6 +1020,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_rolling_update_batched() {
         let registry = Arc::new(VersionRegistry::new());

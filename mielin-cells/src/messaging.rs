@@ -467,10 +467,16 @@ pub enum MessagingError {
     AgentNotFound(AgentId),
 }
 
+// NOTE: All tests in this module use #[tokio::test] which creates a tokio runtime.
+// Tokio's runtime initialization calls mio's Poll::new → kqueue() syscall on macOS,
+// which Miri cannot emulate (kqueue is a macOS-specific kernel event notification API).
+// This is not undefined behavior — it is an OS-level I/O mechanism unavailable in Miri.
+// All tests are annotated with #[cfg_attr(miri, ignore)] accordingly.
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_message_creation() {
         let from = Uuid::new_v4();
@@ -484,6 +490,7 @@ mod tests {
         assert!(!msg.is_expired());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_broadcast_message() {
         let from = Uuid::new_v4();
@@ -495,6 +502,7 @@ mod tests {
         assert_eq!(msg.topic, Some(topic));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_message_priority() {
         let from = Uuid::new_v4();
@@ -504,6 +512,7 @@ mod tests {
         assert_eq!(msg.priority, Priority::Critical);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_message_expiry() {
         let from = Uuid::new_v4();
@@ -515,6 +524,7 @@ mod tests {
         assert!(msg.is_expired());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_message_response() {
         let from = Uuid::new_v4();
@@ -528,6 +538,7 @@ mod tests {
         assert!(response.is_response);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_message_bus_register() {
         let bus = MessageBus::new();
@@ -537,6 +548,7 @@ mod tests {
         assert_eq!(bus.agent_count().await, 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_message_bus_unregister() {
         let bus = MessageBus::new();
@@ -547,6 +559,7 @@ mod tests {
         assert_eq!(bus.agent_count().await, 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_send_message() {
         let bus = MessageBus::new();
@@ -566,6 +579,7 @@ mod tests {
         assert_eq!(received.unwrap().payload, b"hello".to_vec());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_pubsub() {
         let bus = MessageBus::new();
@@ -593,6 +607,7 @@ mod tests {
         assert!(recv2.is_some());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_request_response() {
         let bus = Arc::new(MessageBus::new());
@@ -621,6 +636,7 @@ mod tests {
         assert_eq!(response.unwrap().payload, b"pong".to_vec());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_offline_queue() {
         let bus = MessageBus::new();
@@ -643,6 +659,7 @@ mod tests {
         assert_eq!(received.unwrap().payload, b"queued".to_vec());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_topic_subscription() {
         let bus = MessageBus::new();
@@ -659,6 +676,7 @@ mod tests {
         assert!(subs.is_empty());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_duplicate_detection() {
         let bus = MessageBus::new();
@@ -679,6 +697,7 @@ mod tests {
         assert!(matches!(result, Err(MessagingError::DuplicateMessage(_))));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_expired_message_rejected() {
         let bus = MessageBus::new();

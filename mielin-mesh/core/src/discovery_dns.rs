@@ -419,6 +419,7 @@ mod tests {
     }
 
     // 14. inject_records followed by lookup returns injected records
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_dns_inject_records() {
         let svc = DnsSrvDiscovery::new(basic_config());
@@ -430,6 +431,7 @@ mod tests {
     }
 
     // 15. Second lookup after inject is a cache hit
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_dns_cache_hit() {
         let svc = DnsSrvDiscovery::new(basic_config());
@@ -442,6 +444,7 @@ mod tests {
     }
 
     // 16. sorted_peers returns lower priority first
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_dns_sorted_by_priority() {
         let svc = DnsSrvDiscovery::new(basic_config());
@@ -458,6 +461,7 @@ mod tests {
     }
 
     // 17. select_peer returns a valid record
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_dns_select_peer_from_records() {
         let svc = DnsSrvDiscovery::new(basic_config());
@@ -471,6 +475,7 @@ mod tests {
     }
 
     // 18. is_cache_valid returns true after inject
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_dns_is_cache_valid() {
         let svc = DnsSrvDiscovery::new(basic_config());
@@ -481,6 +486,7 @@ mod tests {
     }
 
     // 19. lookup increments total_lookups
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_dns_stats_lookup_counts() {
         let svc = DnsSrvDiscovery::new(basic_config());
@@ -493,6 +499,7 @@ mod tests {
     }
 
     // 20. No records available yields NoRecords error
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_dns_no_records_error() {
         let svc = DnsSrvDiscovery::new(basic_config());
@@ -505,6 +512,7 @@ mod tests {
     }
 
     // 21. Weighted selection with equal-priority records follows weights
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_dns_weighted_selection() {
         let svc = DnsSrvDiscovery::new(basic_config());

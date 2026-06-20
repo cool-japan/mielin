@@ -682,6 +682,7 @@ mod tests {
         assert!((info.partition_ratio() - 0.3).abs() < 0.001);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_partition_detector_creation() {
         let node = Arc::new(Node::new(NodeRole::Relay));
@@ -693,6 +694,7 @@ mod tests {
         assert_eq!(detector.known_count().await, 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_mark_node_visible() {
         let node = Arc::new(Node::new(NodeRole::Relay));
@@ -705,6 +707,7 @@ mod tests {
         assert_eq!(detector.known_count().await, 2);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_mark_node_invisible() {
         let node = Arc::new(Node::new(NodeRole::Relay));
@@ -846,6 +849,7 @@ mod tests {
         assert_eq!(no, 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_add_and_remove_known_node() {
         let node = Arc::new(Node::new(NodeRole::Relay));
@@ -861,6 +865,7 @@ mod tests {
         assert_eq!(detector.known_count().await, 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_get_partition_info() {
         let node = Arc::new(Node::new(NodeRole::Relay));
@@ -870,6 +875,7 @@ mod tests {
         assert!(detector.get_partition_info().await.is_none());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_clear_history() {
         let node = Arc::new(Node::new(NodeRole::Relay));

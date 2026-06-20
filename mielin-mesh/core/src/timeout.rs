@@ -545,6 +545,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_timeout_manager_policy_registration() {
         let manager = TimeoutManager::new();
@@ -558,6 +559,7 @@ mod tests {
         assert_eq!(timeout, Duration::from_secs(5));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_timeout_manager_execution() {
         let manager = TimeoutManager::new();
@@ -580,6 +582,7 @@ mod tests {
         assert_eq!(result.unwrap(), 42);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_timeout_manager_timeout_error() {
         let manager = TimeoutManager::new();
@@ -605,6 +608,7 @@ mod tests {
         ));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_latency_tracking() {
         let manager = TimeoutManager::new();
@@ -632,6 +636,7 @@ mod tests {
         assert_eq!(tracker.get_latencies().len(), 2);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_adaptive_timeout_with_history() {
         let manager = TimeoutManager::new();
@@ -664,6 +669,7 @@ mod tests {
         assert!(timeout <= Duration::from_secs(10));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_get_stats() {
         let manager = TimeoutManager::new();
@@ -688,6 +694,7 @@ mod tests {
             .contains_key(&TimeoutOperation::Connect));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_cleanup_stale_history() {
         let manager = TimeoutManager::new();

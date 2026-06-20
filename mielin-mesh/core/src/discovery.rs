@@ -353,6 +353,7 @@ mod tests {
         assert!(!peer.is_expired());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_discovery_service_creation() {
         let node = Arc::new(Node::new(NodeRole::Relay));
@@ -362,6 +363,7 @@ mod tests {
         assert!(discovery.is_ok());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_bootstrap_nodes() {
         let node = Arc::new(Node::new(NodeRole::Relay));
@@ -385,6 +387,7 @@ mod tests {
         assert_eq!(discovery.bootstrap_nodes.len(), 2);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_peer_cache() {
         let node = Arc::new(Node::new(NodeRole::Relay));

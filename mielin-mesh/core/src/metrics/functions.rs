@@ -59,6 +59,7 @@ mod tests {
         let stats = hist.stats();
         assert_eq!(stats.percentile(50.0), 0);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_rate_tracker() {
         let tracker = RateTracker::new(0.5);
@@ -68,6 +69,7 @@ mod tests {
         tracker.update().await;
         let _rate = tracker.rate();
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_node_metrics() {
         let node_id = NodeId::new_v4();
@@ -112,6 +114,7 @@ mod tests {
         assert_eq!(metrics.lookup_success_rate(), 0.0);
         assert_eq!(metrics.cache_hit_rate(), 0.0);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_metrics_registry() {
         let node_id = NodeId::new_v4();
@@ -127,6 +130,7 @@ mod tests {
         assert_eq!(summary.gossip.heartbeats_sent, 1);
         assert_eq!(summary.dht.gets, 1);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_peer_metrics() {
         let local_id = NodeId::new_v4();
@@ -137,6 +141,7 @@ mod tests {
         let peer2 = registry.peer(peer_id).await;
         assert_eq!(peer2.messages_sent.get(), 1);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_metrics_reset() {
         let node_id = NodeId::new_v4();
@@ -149,6 +154,7 @@ mod tests {
         assert_eq!(registry.gossip().heartbeats_sent.get(), 0);
         assert_eq!(registry.dht().gets.get(), 0);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_uptime() {
         let node_id = NodeId::new_v4();
@@ -169,6 +175,7 @@ mod tests {
         assert!(!hist.buckets.is_empty());
         assert!(hist.buckets.iter().all(|&b| b > 0));
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_cleanup_stale_peers() {
         let local_id = NodeId::new_v4();
@@ -225,6 +232,7 @@ mod tests {
         assert_eq!(state.state, ConnectionState::Disconnected);
         assert_eq!(state.failure_count, 1);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_peer_connection_metrics_creation() {
         let metrics = PeerConnectionMetrics::new();
@@ -232,6 +240,7 @@ mod tests {
         assert_eq!(metrics.connections_established.get(), 0);
         assert_eq!(metrics.connected_peers.get(), 0);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_peer_connection_metrics_connect_flow() {
         let metrics = PeerConnectionMetrics::new();
@@ -246,6 +255,7 @@ mod tests {
         let state = metrics.peer_state(&peer_id).await.unwrap();
         assert_eq!(state.state, ConnectionState::Connected);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_peer_connection_metrics_disconnect() {
         let metrics = PeerConnectionMetrics::new();
@@ -256,6 +266,7 @@ mod tests {
         assert_eq!(metrics.disconnections.get(), 1);
         assert_eq!(metrics.connected_peers.get(), 0);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_peer_connection_metrics_failure() {
         let metrics = PeerConnectionMetrics::new();
@@ -267,6 +278,7 @@ mod tests {
         let state = metrics.peer_state(&peer_id).await.unwrap();
         assert_eq!(state.failure_count, 1);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_peer_connection_metrics_reconnect() {
         let metrics = PeerConnectionMetrics::new();
@@ -280,6 +292,7 @@ mod tests {
         assert_eq!(metrics.reconnections_succeeded.get(), 1);
         assert_eq!(metrics.connected_peers.get(), 1);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_peer_connection_metrics_connected_peers() {
         let metrics = PeerConnectionMetrics::new();
@@ -311,6 +324,7 @@ mod tests {
         assert_eq!(format!("{}", MessageType::DhtLookup), "dht_lookup");
         assert_eq!(format!("{}", MessageType::MigrationData), "migration_data");
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_throughput_metrics_creation() {
         let metrics = ThroughputMetrics::new();
@@ -318,6 +332,7 @@ mod tests {
         assert_eq!(metrics.total_messages_sent.get(), 0);
         assert_eq!(metrics.bandwidth_limit(), 0);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_throughput_metrics_record_send() {
         let metrics = ThroughputMetrics::new();
@@ -333,6 +348,7 @@ mod tests {
         assert_eq!(heartbeat.sent_count, 2);
         assert_eq!(heartbeat.bytes_sent, 200);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_throughput_metrics_record_receive() {
         let metrics = ThroughputMetrics::new();
@@ -346,12 +362,14 @@ mod tests {
         assert_eq!(state_sync.received_count, 1);
         assert_eq!(state_sync.bytes_received, 1000);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_throughput_metrics_bandwidth_limit() {
         let metrics = ThroughputMetrics::new();
         metrics.set_bandwidth_limit(1_000_000);
         assert_eq!(metrics.bandwidth_limit(), 1_000_000);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_throughput_metrics_summary() {
         let metrics = ThroughputMetrics::new();
@@ -383,6 +401,7 @@ mod tests {
         assert_eq!(metrics.postcopy_count.get(), 1);
         assert_eq!(metrics.hybrid_count.get(), 1);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_migration_success_metrics_record_complete() {
         let metrics = MigrationSuccessMetrics::new();
@@ -404,6 +423,7 @@ mod tests {
         assert_eq!(metrics.active_migrations.get(), 0);
         assert_eq!(metrics.success_rate(), 1.0);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_migration_success_metrics_record_failed() {
         let metrics = MigrationSuccessMetrics::new();
@@ -432,6 +452,7 @@ mod tests {
         assert_eq!(metrics.cancelled_migrations.get(), 1);
         assert_eq!(metrics.active_migrations.get(), 0);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_migration_success_metrics_recent_results() {
         let metrics = MigrationSuccessMetrics::new();
@@ -471,6 +492,7 @@ mod tests {
         assert_eq!(format!("{}", OperationType::GossipRound), "gossip_round");
         assert_eq!(format!("{}", OperationType::AgentLookup), "agent_lookup");
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_operation_latency_metrics_creation() {
         let metrics = OperationLatencyMetrics::new();
@@ -478,6 +500,7 @@ mod tests {
         assert_eq!(metrics.sla_violations.get(), 0);
         assert_eq!(metrics.sla_compliance_rate(), 1.0);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_operation_latency_metrics_record() {
         let metrics = OperationLatencyMetrics::new();
@@ -500,6 +523,7 @@ mod tests {
         assert_eq!(dht_put_stats.success_count, 0);
         assert_eq!(dht_put_stats.failure_count, 1);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_operation_latency_metrics_sla() {
         let metrics = OperationLatencyMetrics::new();
@@ -520,6 +544,7 @@ mod tests {
         let elapsed_ms = timer.elapsed_ms();
         assert!(elapsed_ms >= 10);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_operation_latency_summary() {
         let metrics = OperationLatencyMetrics::new();
@@ -531,6 +556,7 @@ mod tests {
         assert_eq!(summary.total_operations, 2);
         assert_eq!(summary.per_operation.len(), 2);
     }
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_operation_latency_no_stats_for_unknown() {
         let metrics = OperationLatencyMetrics::new();

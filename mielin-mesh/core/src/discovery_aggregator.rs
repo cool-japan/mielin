@@ -321,6 +321,7 @@ mod tests {
     }
 
     // 25. collect_peers returns peers from the static backend
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_aggregator_collect_from_static() {
         let list = Arc::new(StaticPeerList::new(make_node()));
@@ -334,6 +335,7 @@ mod tests {
     }
 
     // 26. Same NodeId from static + DNS appears only once
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_aggregator_dedup() {
         // Build a static peer with a deterministic UUID (same as what DNS
@@ -360,6 +362,7 @@ mod tests {
     }
 
     // 27. best_peer returns the highest-priority peer from static list
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_aggregator_best_peer_static() {
         let list = Arc::new(StaticPeerList::new(make_node()));
@@ -373,6 +376,7 @@ mod tests {
     }
 
     // 29. resolve_host_addr resolves localhost to a valid, non-unspecified address
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn resolve_localhost() {
         let result = super::resolve_host_addr("localhost", 8080).await;
@@ -390,6 +394,7 @@ mod tests {
     }
 
     // 30. resolve_host_addr returns Err for an unresolvable hostname
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn resolve_unresolvable_returns_error() {
         let result =
@@ -401,6 +406,7 @@ mod tests {
     }
 
     // 28. stats.static_discoveries increments across multiple collect calls
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_aggregator_stats_track_sources() {
         let list = Arc::new(StaticPeerList::new(make_node()));

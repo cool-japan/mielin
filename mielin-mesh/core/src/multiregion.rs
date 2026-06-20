@@ -672,6 +672,7 @@ mod tests {
         assert_eq!(region.load_percentage(), 50.0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_region_topology() {
         let topology = RegionTopology::new();
@@ -689,6 +690,7 @@ mod tests {
         assert_eq!(retrieved.unwrap().name, "US East");
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_region_health_update() {
         let topology = RegionTopology::new();
@@ -706,6 +708,7 @@ mod tests {
         assert_eq!(updated.health, RegionHealth::Degraded);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_latency_tracking() {
         let topology = RegionTopology::new();
@@ -732,6 +735,7 @@ mod tests {
         assert_eq!(retrieved, Some(latency));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_find_closest_region() {
         let topology = RegionTopology::new();
@@ -763,6 +767,7 @@ mod tests {
         assert_eq!(closest.id, RegionId::new("r2"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_replication_manager() {
         let topology = Arc::new(RegionTopology::new());
@@ -801,6 +806,7 @@ mod tests {
         assert!(replicas.len() >= 2);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_failover_coordinator() {
         let topology = Arc::new(RegionTopology::new());
@@ -841,6 +847,7 @@ mod tests {
         assert_eq!(target, RegionId::new("r2"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_region_selection() {
         let topology = RegionTopology::new();
@@ -866,6 +873,7 @@ mod tests {
         assert_eq!(selected.id, RegionId::new("r2"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_preferred_region_selection() {
         let topology = RegionTopology::new();

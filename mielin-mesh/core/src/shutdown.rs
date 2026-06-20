@@ -403,6 +403,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_coordinator_creation() {
         let coordinator = ShutdownCoordinator::new();
@@ -413,6 +414,7 @@ mod tests {
         assert!(!stats.is_shutting_down);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_component_registration() {
         let coordinator = ShutdownCoordinator::new();
@@ -424,6 +426,7 @@ mod tests {
         assert_eq!(stats.registered_components, 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_graceful_shutdown_success() {
         let coordinator = ShutdownCoordinator::new();
@@ -442,6 +445,7 @@ mod tests {
         assert!(comp2.was_shutdown());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_shutdown_priority_ordering() {
         let coordinator = ShutdownCoordinator::new();
@@ -465,6 +469,7 @@ mod tests {
         assert!(low.was_shutdown());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_shutdown_with_component_failure() {
         let coordinator = ShutdownCoordinator::new();
@@ -487,6 +492,7 @@ mod tests {
         assert_eq!(stats.failed_components.len(), 1);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_immediate_shutdown() {
         let coordinator = ShutdownCoordinator::new();
@@ -500,6 +506,7 @@ mod tests {
         assert!(comp.was_shutdown());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_shutdown_already_in_progress() {
         let coordinator = Arc::new(ShutdownCoordinator::new());
@@ -528,6 +535,7 @@ mod tests {
         handle.await.unwrap().unwrap();
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_shutdown_signal_broadcast() {
         let coordinator = ShutdownCoordinator::new();
