@@ -533,6 +533,7 @@ fn main() {
         assert_eq!(engine.scripts.len(), 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_create_template() {
         let engine = ScriptEngine::new().unwrap();

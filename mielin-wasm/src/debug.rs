@@ -710,7 +710,7 @@ impl BreakpointInjector {
     /// Add breakpoints at the entry of the specified function indices.
     ///
     /// Parses `self.original_wasm` with `wasmparser` to locate each function
-    /// body's byte offset, then calls [`add_breakpoint_at_offset`] for every
+    /// body's byte offset, then calls [`Self::add_breakpoint_at_offset`] for every
     /// index listed in `function_indices`.  Returns an error if the stored
     /// bytes are not valid WebAssembly.
     pub fn add_breakpoints_at_functions(&mut self, function_indices: &[u32]) -> Result<()> {

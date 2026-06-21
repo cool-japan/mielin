@@ -8,16 +8,16 @@
 //!
 //! | Feature  | CPUID leaf / bit                  | Era              |
 //! |----------|-----------------------------------|------------------|
-//! | SSE      | 1.EDX[25]                         | Pentium III 1999 |
-//! | SSE2     | 1.EDX[26]                         | Pentium 4   2001 |
-//! | SSE3     | 1.ECX[0]                          | Prescott    2004 |
-//! | SSSE3    | 1.ECX[9]                          | Core 2      2007 |
-//! | SSE4.1   | 1.ECX[19]                         | Penryn      2007 |
-//! | SSE4.2   | 1.ECX[20]                         | Nehalem     2008 |
-//! | AVX      | 1.ECX[28]                         | Sandy Bridge 2011|
-//! | AVX2     | 7.EBX[5]  (sub-leaf 0)            | Haswell      2013|
-//! | FMA      | 1.ECX[12]                         | Haswell      2013|
-//! | AES-NI   | 1.ECX[25]                         | Westmere     2010|
+//! | SSE      | 1.EDX\[25\]                       | Pentium III 1999 |
+//! | SSE2     | 1.EDX\[26\]                       | Pentium 4   2001 |
+//! | SSE3     | 1.ECX\[0\]                        | Prescott    2004 |
+//! | SSSE3    | 1.ECX\[9\]                        | Core 2      2007 |
+//! | SSE4.1   | 1.ECX\[19\]                       | Penryn      2007 |
+//! | SSE4.2   | 1.ECX\[20\]                       | Nehalem     2008 |
+//! | AVX      | 1.ECX\[28\]                       | Sandy Bridge 2011|
+//! | AVX2     | 7.EBX\[5\]  (sub-leaf 0)          | Haswell      2013|
+//! | FMA      | 1.ECX\[12\]                       | Haswell      2013|
+//! | AES-NI   | 1.ECX\[25\]                       | Westmere     2010|
 //!
 //! ## Detection Strategy
 //!

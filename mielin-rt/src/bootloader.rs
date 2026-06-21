@@ -1048,7 +1048,7 @@ impl<F: FlashRegion> Bootloader<F> {
     /// 4. If any step fails, mark the partition bad and retry (up to 5 rounds).
     ///
     /// Returns the [`AppImageEntry`] for the chosen partition.  The caller is
-    /// responsible for the actual jump (see [`jump_to_application`]).
+    /// responsible for the actual jump (see `jump_to_application` on ARM targets).
     pub fn run_boot_cycle(&mut self, scratch: &mut [u8]) -> Result<AppImageEntry, BootloaderError> {
         const MAX_ROUNDS: usize = 5;
 

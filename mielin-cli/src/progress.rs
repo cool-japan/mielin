@@ -163,12 +163,14 @@ where
 mod tests {
     use super::*;
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_spinner_creation() {
         let spinner = Spinner::new("Testing");
         assert!(!spinner.running.load(Ordering::SeqCst));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_progress_bar() {
         let mut bar = ProgressBar::new("Testing", 100);
@@ -188,6 +190,7 @@ mod tests {
         assert_eq!(bar.current, 100);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_with_spinner() {
         let result = with_spinner("Processing", async {

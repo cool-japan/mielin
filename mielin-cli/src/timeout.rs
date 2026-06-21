@@ -30,6 +30,7 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_timeout_succeeds() {
         let result = with_timeout(
@@ -45,6 +46,7 @@ mod tests {
         assert_eq!(result.unwrap(), 42);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_timeout_fails() {
         let result = with_timeout(

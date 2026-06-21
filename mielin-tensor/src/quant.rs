@@ -106,7 +106,7 @@ impl QuantParams {
 /// Per-channel quantization parameters (one set per output channel along axis 0)
 #[derive(Debug, Clone)]
 pub struct PerChannelParams {
-    /// One QuantParams per channel (length == shape[0])
+    /// One QuantParams per channel (length == shape\[0\])
     pub params: Vec<QuantParams>,
     /// The axis along which channels are defined (always 0 for Conv2D/Linear weights)
     pub axis: usize,

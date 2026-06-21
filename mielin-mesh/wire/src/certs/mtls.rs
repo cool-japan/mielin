@@ -393,7 +393,7 @@ pub struct MtlsContext {
 impl MtlsContext {
     /// Create a new mTLS context with an empty trust anchor store.
     ///
-    /// Call [`with_trust_anchor`] to add trusted CA certificates, or set
+    /// Call [`Self::with_trust_anchor`] to add trusted CA certificates, or set
     /// `allow_self_signed` in the config to bypass chain validation entirely.
     pub fn new(config: MtlsConfig, certificate: Certificate) -> Self {
         Self {

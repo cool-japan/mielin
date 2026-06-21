@@ -18,7 +18,10 @@ fn test_complete_backup_recovery_workflow() {
             incremental_frequency: Duration::from_secs(3600),
         },
         storage: mielin_cells::dr::backup::BackupStorage::Local {
-            path: "/tmp/test-backups".to_string(),
+            path: std::env::temp_dir()
+                .join("test-backups")
+                .to_string_lossy()
+                .into_owned(),
         },
         enable_compression: true,
         enable_encryption: false,
@@ -96,7 +99,10 @@ fn test_backup_with_compression_and_encryption() {
     let config = BackupConfig {
         strategy: BackupStrategy::FullOnly,
         storage: mielin_cells::dr::backup::BackupStorage::Local {
-            path: "/tmp/encrypted-backups".to_string(),
+            path: std::env::temp_dir()
+                .join("encrypted-backups")
+                .to_string_lossy()
+                .into_owned(),
         },
         enable_compression: true,
         enable_encryption: true,
@@ -154,7 +160,10 @@ fn test_differential_backup_strategy() {
             differential_frequency: Duration::from_secs(1800),
         },
         storage: mielin_cells::dr::backup::BackupStorage::Local {
-            path: "/tmp/differential-backups".to_string(),
+            path: std::env::temp_dir()
+                .join("differential-backups")
+                .to_string_lossy()
+                .into_owned(),
         },
         enable_compression: false,
         enable_encryption: false,

@@ -522,6 +522,7 @@ mod tests {
         assert_eq!(manager.plugins.len(), 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_plugin_load_from_invalid_dir() {
         let temp_dir = env::temp_dir().join("test_invalid_plugin");

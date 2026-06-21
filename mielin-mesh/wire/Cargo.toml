@@ -30,14 +30,14 @@ hex.workspace = true
 serde_json.workspace = true
 
 # WebSocket support
-tokio-tungstenite = "0.29"
+tokio-tungstenite.workspace = true
 futures.workspace = true
 
 # ACME / Let's Encrypt integration (in-house RFC 8555 client — instant-acme removed)
-base64 = "0.22"
-x509-parser = "0.18.1"
-oxihttp-client = { version = "0.1.3", features = ["tls"] }
-p256 = { version = "0.14.0-rc.11", default-features = false, features = ["ecdsa", "alloc"] }
+base64.workspace = true
+x509-parser.workspace = true
+oxihttp-client = { workspace = true, features = ["tls"] }
+p256.workspace = true
 oxicrypto-sig.workspace = true
 oxicrypto-hash.workspace = true
 oxicrypto-rand.workspace = true
@@ -45,7 +45,7 @@ oxicrypto-kex.workspace = true
 oxicrypto-kdf.workspace = true
 oxicrypto-core.workspace = true
 ml-kem.workspace = true
-rustls-pemfile = "2.2"
+rustls-pemfile.workspace = true
 postcard.workspace = true
 
 mielin-mesh-core.workspace = true

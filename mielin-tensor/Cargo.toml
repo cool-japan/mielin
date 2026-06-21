@@ -14,8 +14,8 @@ mielin-kernel.workspace = true
 libm.workspace = true
 
 # Parallel execution
-rayon = { version = "1.11", optional = true }
-num_cpus = { version = "1.17", optional = true }
+rayon = { workspace = true, optional = true }
+num_cpus = { workspace = true, optional = true }
 
 [dev-dependencies]
 rstest.workspace = true

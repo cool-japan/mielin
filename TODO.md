@@ -1,9 +1,9 @@
-# MielinOS TODO — v0.1.0 (2026-05-01)
+# MielinOS TODO — v0.1.0 (2026-06-21)
 
 ## Pending Tasks
 
 ### High Priority - Release Critical
-- [x] All tests passing (100% pass rate) — 3617 tests, 0 failures
+- [x] All tests passing (100% pass rate) — 4,565 tests, 0 failures
 - [x] Zero compiler warnings — clippy clean with -D warnings
 - [x] Documentation updated — documentation fields added to all subcrates, README.md updated
 - [x] CHANGELOG.md updated
@@ -14,7 +14,7 @@
 - [ ] Heterogeneous cluster testing
 - [x] Resilience testing — fault injection framework (FaultInjector) + 15 fault tests + 10 chaos/partition tests
 - [ ] Integration tests on real hardware
-- [x] Improve test coverage for edge cases (>90% coverage) — 4000+ tests, fault injection, chaos, cross-version migration, large cluster simulation
+- [x] Improve test coverage for edge cases (>90% coverage) — 4,565 tests, fault injection, chaos, cross-version migration, large cluster simulation
 
 ### Medium Priority - Documentation
 - [ ] Network protocol specification (RFC-style)
@@ -127,7 +127,7 @@ MielinOS v0.1.0 "Oligodendrocyte" is a complete distributed agent mesh operating
 - ✅ Agent migration across heterogeneous hardware
 - ✅ Hardware-accelerated ML inference (CUDA, Metal, NPU)
 - ✅ QUIC-based secure communication
-- ✅ Comprehensive test suite (3255+ tests passing)
+- ✅ Comprehensive test suite (4,565 tests passing)
 - ✅ Zero warnings policy
 - ✅ Production-ready documentation
 
@@ -159,7 +159,7 @@ For detailed feature descriptions, see individual crate README files and the pro
 - [ ] Transitive `ring` removal: `ring 0.17.14` survives as a transitive dep via `rustls-webpki`. Blocked on upstream rustls/webpki adopting a pure-Rust CryptoProvider. Track and re-visit when rustls 0.24+ ships a ring-free path.
 - [ ] `hal-ci-all-architectures` (mielin-hal/TODO.md): COOLJAPAN policy forbids creating `.github/workflows/*.yml` (except pypi/npm). Rework as a local QEMU/cross-emulation `Makefile` target instead, or defer until policy allows.
 
-## Last updated: 2026-06-14
+## Last updated: 2026-06-21
 
 ## Stubs to implement (round 2, added 2026-06-14 by /ultra)
 

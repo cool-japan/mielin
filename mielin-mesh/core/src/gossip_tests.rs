@@ -39,6 +39,7 @@ fn test_failure_timeout_detection() {
     assert!(member.should_declare_dead());
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_gossip_state_creation() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -49,6 +50,7 @@ async fn test_gossip_state_creation() {
     assert_eq!(members[0].node_id, *node.id());
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_add_member() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -61,6 +63,7 @@ async fn test_add_member() {
     assert_eq!(members.len(), 2);
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_heartbeat_handling() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -77,6 +80,7 @@ async fn test_heartbeat_handling() {
     assert!(peer_member.is_alive());
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_state_updates() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -94,6 +98,7 @@ async fn test_state_updates() {
     assert_eq!(retrieved, Some(value));
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_sync_request_response() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -116,6 +121,7 @@ async fn test_sync_request_response() {
     }
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_member_stats() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -171,6 +177,7 @@ fn test_zone_member_with_role() {
     assert_eq!(member.role, GossipRole::SuperPeer);
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_gossip_creation() {
     let node_id = NodeId::new_v4();
@@ -182,6 +189,7 @@ async fn test_hierarchical_gossip_creation() {
     assert_eq!(gossip.role().await, GossipRole::Regular);
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_add_member() {
     let node_id = NodeId::new_v4();
@@ -196,6 +204,7 @@ async fn test_hierarchical_add_member() {
     assert_eq!(members.len(), 2);
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_role_change() {
     let node_id = NodeId::new_v4();
@@ -209,6 +218,7 @@ async fn test_hierarchical_role_change() {
     assert_eq!(gossip.role().await, GossipRole::ZoneLeader);
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_intra_zone_message() {
     let node_id = NodeId::new_v4();
@@ -228,6 +238,7 @@ async fn test_hierarchical_intra_zone_message() {
     assert!(responses.is_empty());
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_zone_announce() {
     let node_id = NodeId::new_v4();
@@ -246,6 +257,7 @@ async fn test_hierarchical_zone_announce() {
     assert!(members.iter().any(|m| m.node_id == peer_id));
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_election() {
     let node_id = NodeId::new_v4();
@@ -276,6 +288,7 @@ async fn test_hierarchical_election() {
     }
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_vote() {
     let node_id = NodeId::new_v4();
@@ -307,6 +320,7 @@ async fn test_hierarchical_vote() {
     }
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_vote_only_once_per_term() {
     let node_id = NodeId::new_v4();
@@ -337,6 +351,7 @@ async fn test_hierarchical_vote_only_once_per_term() {
     }
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_zone_stats() {
     let node_id = NodeId::new_v4();
@@ -355,6 +370,7 @@ async fn test_hierarchical_zone_stats() {
     assert_eq!(stats.unwrap().member_count, 6);
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_total_member_count() {
     let node_id = NodeId::new_v4();
@@ -378,6 +394,7 @@ async fn test_hierarchical_total_member_count() {
     assert!(total >= 2);
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_message_queue() {
     let node_id = NodeId::new_v4();
@@ -414,6 +431,7 @@ fn test_hierarchical_config_default() {
     assert_eq!(config.max_inter_zone_ttl, 4);
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_hierarchical_remove_member() {
     let node_id = NodeId::new_v4();
@@ -449,6 +467,7 @@ fn test_gossip_config_default_values() {
 }
 
 /// A custom config is stored verbatim and readable from `GossipState::config()`.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_gossip_state_with_custom_config() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -466,6 +485,7 @@ async fn test_gossip_state_with_custom_config() {
 }
 
 /// `GossipState::new` (legacy call-site) must still compile and use defaults.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_gossip_config_backward_compat() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -478,6 +498,7 @@ async fn test_gossip_config_backward_compat() {
 }
 
 /// Custom fanout is preserved in the config.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_gossip_config_custom_fanout() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -494,6 +515,7 @@ async fn test_gossip_config_custom_fanout() {
 // ============================================================================
 
 /// Adding a member records a `Joined` event in history.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_history_records_join_event() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -515,6 +537,7 @@ async fn test_history_records_join_event() {
 }
 
 /// Removing a member records a `Left` event in history.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_history_records_leave_event() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -537,6 +560,7 @@ async fn test_history_records_leave_event() {
 }
 
 /// Changing a member's status records a `StatusChanged` event.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_history_records_status_change() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -569,6 +593,7 @@ async fn test_history_records_status_change() {
 }
 
 /// `history_for` returns only events for the requested node.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_history_for_specific_node() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -589,6 +614,7 @@ async fn test_history_for_specific_node() {
 }
 
 /// `history_since` filters out events that pre-date the given timestamp.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_history_since_filters_by_time() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -615,6 +641,7 @@ async fn test_history_since_filters_by_time() {
 }
 
 /// History never grows past `max_history`.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_history_bounded_capacity() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -640,6 +667,7 @@ async fn test_history_bounded_capacity() {
 }
 
 /// After overflow the oldest events are evicted first.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_history_oldest_evicted() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -669,6 +697,7 @@ async fn test_history_oldest_evicted() {
 }
 
 /// `history_count` matches the number of events inserted (up to max_history).
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_history_count() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -700,6 +729,7 @@ fn test_history_capacity_returns_max() {
 }
 
 /// A freshly created `GossipState` has an empty history.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_history_empty_initially() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -712,6 +742,7 @@ async fn test_history_empty_initially() {
 // ============================================================================
 
 /// With 3 voters splitting 2 different candidates, no promotion yet.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_election_no_majority_no_promotion() {
     let node_id = NodeId::new_v4();
@@ -744,6 +775,7 @@ async fn test_election_no_majority_no_promotion() {
 
 /// With 3 out of 3 members voting for the same candidate, they are promoted.
 /// Zone: self + peer1 + winner_candidate = 3 members → majority = 2
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_election_majority_promotes_winner() {
     let node_id = NodeId::new_v4();
@@ -782,6 +814,7 @@ async fn test_election_majority_promotes_winner() {
 }
 
 /// Votes for different terms do not mix.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_election_respects_term() {
     let node_id = NodeId::new_v4();
@@ -813,6 +846,7 @@ async fn test_election_respects_term() {
 }
 
 /// `start_election` increments the term counter.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_election_start_increments_term() {
     let node_id = NodeId::new_v4();
@@ -831,6 +865,7 @@ async fn test_election_start_increments_term() {
 }
 
 /// `get_election_state` returns the current term and winner.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_election_state_query() {
     let node_id = NodeId::new_v4();
@@ -850,6 +885,7 @@ async fn test_election_state_query() {
 }
 
 /// After a majority election, the winner appears in `current_super_peers()`.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_current_super_peers_after_election() {
     let node_id = NodeId::new_v4();

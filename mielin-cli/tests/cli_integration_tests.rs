@@ -4,12 +4,46 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
-use serial_test::serial;
 
 /// Helper function to create a command for the mielinctl binary
 #[allow(deprecated)]
 fn mielinctl() -> Command {
     Command::cargo_bin("mielinctl").expect("Failed to find mielinctl binary")
+}
+
+/// Creates a temporary directory for test isolation and returns both the dir and a
+/// helper that creates `mielinctl` subprocesses with HOME/XDG_CONFIG_HOME redirected
+/// to that temp dir, preventing shared-config conflicts under parallel test execution.
+struct IsolatedEnv {
+    home: std::path::PathBuf,
+}
+
+impl IsolatedEnv {
+    fn new() -> Self {
+        use std::time::SystemTime;
+        let suffix = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("time drift")
+            .subsec_nanos();
+        let pid = std::process::id();
+        let home = std::env::temp_dir().join(format!("mielin-test-{}-{}", pid, suffix));
+        std::fs::create_dir_all(&home).expect("create isolated home dir");
+        IsolatedEnv { home }
+    }
+
+    /// Create a mielinctl Command with HOME and XDG_CONFIG_HOME set to the isolated dir
+    fn cmd(&self) -> Command {
+        let mut cmd = mielinctl();
+        cmd.env("HOME", &self.home);
+        cmd.env("XDG_CONFIG_HOME", self.home.join(".config"));
+        cmd
+    }
+}
+
+impl Drop for IsolatedEnv {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.home);
+    }
 }
 
 #[test]
@@ -611,18 +645,11 @@ fn test_remote_info_not_found() {
 }
 
 #[test]
-#[serial(remote_config)]
 fn test_remote_add_remove() {
-    use std::time::SystemTime;
+    let node_id = format!("test-node-{}", std::process::id());
+    let env = IsolatedEnv::new();
 
-    // Use timestamp to ensure unique ID for each test run
-    let timestamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_micros();
-    let node_id = format!("test-node-{}", timestamp);
-
-    let mut cmd = mielinctl();
+    let mut cmd = env.cmd();
     cmd.arg("remote")
         .arg("add")
         .arg("--id")
@@ -636,24 +663,17 @@ fn test_remote_add_remove() {
     cmd.assert().success();
 
     // Remove the node
-    let mut cmd = mielinctl();
+    let mut cmd = env.cmd();
     cmd.arg("remote").arg("remove").arg(&node_id).arg("-y");
     cmd.assert().success();
 }
 
 #[test]
-#[serial(remote_config)]
 fn test_remote_add_with_tags() {
-    use std::time::SystemTime;
+    let node_id = format!("test-node-tags-{}", std::process::id());
+    let env = IsolatedEnv::new();
 
-    // Use timestamp to ensure unique ID for each test run
-    let timestamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_micros();
-    let node_id = format!("test-node-tags-{}", timestamp);
-
-    let mut cmd = mielinctl();
+    let mut cmd = env.cmd();
     cmd.arg("remote")
         .arg("add")
         .arg("--id")
@@ -669,7 +689,7 @@ fn test_remote_add_with_tags() {
     cmd.assert().success();
 
     // Clean up
-    let mut cmd = mielinctl();
+    let mut cmd = env.cmd();
     cmd.arg("remote").arg("remove").arg(&node_id).arg("-y");
     cmd.assert().success();
 }

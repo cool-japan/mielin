@@ -151,13 +151,26 @@ impl PriorityDeques {
         self.total_len.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Pop the highest-priority task available in this worker's deques.
+    /// Pop (steal) the highest-priority task from this worker's deques.
+    ///
+    /// Uses `steal()` (the thief/top side) so this method is safe to call from
+    /// any thread, not only the push-owner.  This is correct for the scheduler
+    /// because `spawn_task` and `schedule` may be called from different threads.
     fn pop_highest(&self) -> Option<TaskEntry> {
         // Scan from highest to lowest priority.
         for p in (0..NUM_PRIORITY_BUCKETS).rev() {
-            if let Some(entry) = self.buckets[p].pop() {
-                self.total_len.fetch_sub(1, Ordering::Relaxed);
-                return Some(entry);
+            loop {
+                match self.buckets[p].steal() {
+                    Steal::Success(e) => {
+                        self.total_len.fetch_sub(1, Ordering::Relaxed);
+                        return Some(e);
+                    }
+                    Steal::Retry => {
+                        // Concurrent contention; retry the same bucket.
+                        core::hint::spin_loop();
+                    }
+                    Steal::Empty => break,
+                }
             }
         }
         None
@@ -803,11 +816,11 @@ mod tests {
                 loop {
                     match s.schedule(c) {
                         Some(_) => {
-                            con.fetch_add(1, Ordering::Relaxed);
+                            con.fetch_add(1, Ordering::AcqRel);
                         }
                         None => {
                             // Producers finished and scheduler is empty.
-                            if done.load(Ordering::Acquire) && con.load(Ordering::Relaxed) >= TOTAL
+                            if done.load(Ordering::Acquire) && con.load(Ordering::Acquire) >= TOTAL
                             {
                                 break;
                             }

@@ -157,6 +157,7 @@ fn dns_srv_config_stores_ipv6_resolver() {
 /// registration on loopback can behave differently across platforms (macOS
 /// vs Linux firewall rules). Construction alone exercises the path that matters
 /// for cross-platform compatibility: address family selection and config wiring.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn mesh_service_binds_ephemeral_loopback_v4() -> Result<(), Box<dyn std::error::Error>> {
     use mielin_mesh_core::{MeshConfig, MeshService};
@@ -185,6 +186,7 @@ async fn mesh_service_binds_ephemeral_loopback_v4() -> Result<(), Box<dyn std::e
 ///
 /// `DiscoveryError` is not re-exported from the crate's public API; therefore
 /// the return type uses `Box<dyn std::error::Error>` to remain compatible.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn discovery_service_mdns_start_stop_loopback() -> Result<(), Box<dyn std::error::Error>> {
     use mielin_mesh_core::DiscoveryService;
@@ -206,6 +208,7 @@ async fn discovery_service_mdns_start_stop_loopback() -> Result<(), Box<dyn std:
 
 /// Two `DiscoveryService` instances with ephemeral ports on loopback do not
 /// collide and can each be started and stopped independently.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn two_discovery_services_different_ports_no_collision(
 ) -> Result<(), Box<dyn std::error::Error>> {

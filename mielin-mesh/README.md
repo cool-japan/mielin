@@ -8,7 +8,7 @@ P2P networking stack for MielinOS, enabling autonomous agent migration across he
 
 MielinMesh provides Layer 3 of the MielinOS architecture—a fully decentralized, self-healing mesh network that enables agents to discover nodes, communicate, and migrate seamlessly across the computational fabric.
 
-**Current Status:** v0.1.0-rc.1 "Oligodendrocyte" (Released 2026-01-18)
+**Current Status:** v0.1.0 "Oligodendrocyte" (Released 2026-06-21)
 
 ## Features
 
@@ -426,7 +426,7 @@ impl Message {
 - ✅ Wire protocol message types
 - ✅ Binary serialization
 
-### Phase 2 (v0.2 "Oligodendrocyte") - Q1-Q2 2026
+### Phase 2 (v0.2 "Oligodendrocyte") - 2026-06-21
 - [ ] Real QUIC transport (Quinn library)
 - [ ] mDNS local discovery
 - [ ] Peer exchange protocol
@@ -585,4 +585,4 @@ Licensed under:
 
 **MielinMesh** - The synaptic network enabling autonomous agents to discover and traverse the computational nervous system 🧠⚡
 
-**Current Version:** v0.1.0-rc.1 "Oligodendrocyte" | Released 2026-01-18
+**Current Version:** v0.1.0 "Oligodendrocyte" | Released 2026-06-21

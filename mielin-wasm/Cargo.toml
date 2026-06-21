@@ -23,7 +23,7 @@ wasm3-engine = []
 [dependencies]
 wasmtime.workspace = true
 wasmtime-wasi = { workspace = true, optional = true }
-wasmparser = { version = "0.252", default-features = false, features = ["std"] }
+wasmparser.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 rand.workspace = true
@@ -37,7 +37,7 @@ mielin-tensor.workspace = true
 rstest.workspace = true
 wat.workspace = true
 tokio.workspace = true
-tempfile = "3.27"
+tempfile.workspace = true
 criterion.workspace = true
 
 [[bench]]

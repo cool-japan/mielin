@@ -22,7 +22,7 @@ thiserror.workspace = true
 tracing.workspace = true
 
 # DHT and routing
-lru = "0.16.3"
+lru = "0.16.4"
 
 # Node discovery
 mdns-sd = "0.18.2"

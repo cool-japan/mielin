@@ -362,6 +362,7 @@ fn dead_member(node_id: NodeId, incarnation: u64) -> MemberInfo {
 // ============================================================================
 
 /// Kill 1 of 5 nodes; remaining 4 must see it as Dead.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_single_node_kill() {
     let mut engine = ChaosEngine::new(5, 0xAABBCCDD_11223344);
@@ -398,6 +399,7 @@ async fn chaos_single_node_kill() {
 }
 
 /// Kill 2 of 7 nodes; majority (5) survives with quorum.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_minority_failure() {
     let node_count = 7usize;
@@ -459,6 +461,7 @@ async fn chaos_minority_failure() {
 }
 
 /// Kill 4 of 7 nodes; remaining 3 cannot form quorum.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_majority_failure() {
     let node_count = 7usize;
@@ -483,6 +486,7 @@ async fn chaos_majority_failure() {
 }
 
 /// Kill a node, then recover it, verifying it rejoins the membership as Alive.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_node_kill_and_recover() {
     let mut engine = ChaosEngine::new(4, 0x1234_5678_ABCD_EF01);
@@ -504,6 +508,7 @@ async fn chaos_node_kill_and_recover() {
 }
 
 /// Kill and recover the same node 10 times in rapid succession.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_rapid_kill_recover() {
     let mut engine = ChaosEngine::new(5, 0xDEAD_BEEF_0000_0001);
@@ -532,6 +537,7 @@ async fn chaos_rapid_kill_recover() {
 }
 
 /// Kill all nodes one by one; the last survivor has no peers alive.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_all_nodes_killed_sequentially() {
     let node_count = 5usize;
@@ -558,6 +564,7 @@ async fn chaos_all_nodes_killed_sequentially() {
 
 /// Reduce cluster to 1 node; that node must report has_quorum() == false
 /// because there are known peers it cannot reach.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_last_node_standing() {
     let node_count = 5usize;
@@ -580,6 +587,7 @@ async fn chaos_last_node_standing() {
 }
 
 /// Kill 3 nodes simultaneously; membership event count should be consistent.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_simultaneous_kills() {
     let node_count = 6usize;
@@ -639,6 +647,7 @@ async fn chaos_simultaneous_kills() {
 // ============================================================================
 
 /// 10 nodes split 5/5 — neither half has quorum.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn partition_50_50_split() {
     let node_count = 10usize;
@@ -665,6 +674,7 @@ async fn partition_50_50_split() {
 }
 
 /// 7 nodes split 4/3 — majority (4) has quorum, minority (3) does not.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn partition_majority_minority_split() {
     let node_count = 7usize;
@@ -690,6 +700,7 @@ async fn partition_majority_minority_split() {
 }
 
 /// Create partition, heal it, verify full membership restored.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn partition_heal_recovers_full_view() {
     let mut engine = ChaosEngine::new(6, 0xFEED_FACE_0000_0003);
@@ -721,6 +732,7 @@ async fn partition_heal_recovers_full_view() {
 }
 
 /// Isolate 1 node from N-1 nodes; isolated node loses quorum.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn partition_island_one_node() {
     let node_count = 7usize;
@@ -746,6 +758,7 @@ async fn partition_island_one_node() {
 }
 
 /// Leader ends up in minority partition; majority elects a new one.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn partition_with_leader_on_minority_side() {
     use mielin_mesh_core::partition::PartitionInfo;
@@ -793,6 +806,7 @@ async fn partition_with_leader_on_minority_side() {
 }
 
 /// Cascading splits: partition, then split each half again.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn partition_cascading_splits() {
     let node_count = 8usize;
@@ -815,6 +829,7 @@ async fn partition_cascading_splits() {
 }
 
 /// Measure that partition detection (quorum check) reflects connectivity loss instantly.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn partition_detection_latency() {
     let node_count = 6usize;
@@ -855,6 +870,7 @@ async fn partition_detection_latency() {
 }
 
 /// Create two different partitions sequentially, then heal each one.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn partition_multiple_overlapping() {
     let mut engine = ChaosEngine::new(9, 0x0000_1111_2222_3333);
@@ -895,6 +911,7 @@ async fn partition_multiple_overlapping() {
 // ============================================================================
 
 /// Random kill/recover of ~20% of nodes for 50 cycles; verify membership consistency.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_random_flap_50_cycles() {
     let node_count = 10usize;
@@ -931,6 +948,7 @@ async fn chaos_random_flap_50_cycles() {
 }
 
 /// Rolling restart: restart nodes one at a time while cluster serves requests.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_rolling_restart() {
     let node_count = 5usize;
@@ -964,6 +982,7 @@ async fn chaos_rolling_restart() {
 }
 
 /// Simulate high-latency gossip by injecting a stale-timestamped Suspect update.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_network_delay_high_latency() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -1009,6 +1028,7 @@ async fn chaos_network_delay_high_latency() {
 }
 
 /// Two isolated partitions both try to elect a leader; neither can because no quorum.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_split_brain_detection() {
     let node_count = 6usize;
@@ -1043,6 +1063,7 @@ async fn chaos_split_brain_detection() {
 }
 
 /// Kill 40% of nodes; remaining 60% eventually converge on a consistent membership.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_membership_convergence_after_mass_failure() {
     let node_count = 10usize;
@@ -1112,6 +1133,7 @@ async fn chaos_membership_convergence_after_mass_failure() {
 }
 
 /// Consistent hash ring key->node assignment should be stable across node kills.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_consistent_hash_ring_stability() {
     let node_count = 10usize;
@@ -1166,6 +1188,7 @@ async fn chaos_consistent_hash_ring_stability() {
 }
 
 /// Killing and recovering a node should increment its incarnation number.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_incarnation_number_increment() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -1247,6 +1270,7 @@ async fn chaos_incarnation_number_increment() {
 // ============================================================================
 
 /// Measure rounds until all 10 nodes agree on membership.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_gossip_convergence_10_nodes() {
     let node_count = 10usize;
@@ -1305,6 +1329,7 @@ async fn bench_gossip_convergence_10_nodes() {
 }
 
 /// Measure rounds until 50 nodes converge; assert O(log N) behaviour.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_gossip_convergence_50_nodes() {
     let node_count = 50usize;
@@ -1366,6 +1391,7 @@ async fn bench_gossip_convergence_50_nodes() {
 }
 
 /// Compare convergence speed at fanout 3 vs 5 vs 7.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_gossip_fanout_effect() {
     async fn measure_convergence(fanout: usize) -> u32 {
@@ -1432,6 +1458,7 @@ async fn bench_gossip_fanout_effect() {
 }
 
 /// 100K consistent-hash lookups on a 50-node ring; assert <100ms total.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_consistent_hash_lookup_speed() {
     let node_count = 50usize;
@@ -1462,6 +1489,7 @@ async fn bench_consistent_hash_lookup_speed() {
 }
 
 /// 1000 sequential QuorumDecision::vote() calls; assert fast.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_quorum_decision_throughput() {
     use mielin_mesh_core::partition::QuorumDecision;
@@ -1490,6 +1518,7 @@ async fn bench_quorum_decision_throughput() {
 }
 
 /// 1000 has_quorum() calls on a PartitionDetector; assert timing is acceptable.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_partition_detector_overhead() {
     let node_count = 20usize;
@@ -1517,6 +1546,7 @@ async fn bench_partition_detector_overhead() {
 }
 
 /// 10K membership events processed; measure throughput.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_membership_event_throughput() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -1586,6 +1616,7 @@ fn partition_info_quorum_math() {
 }
 
 /// PartitionDetector with a single-node cluster always has quorum.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn partition_single_node_always_quorum() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -1627,6 +1658,7 @@ fn consistent_hash_ring_gradual_growth() {
 }
 
 /// Kill a node from gossip state and verify membership_history records the event.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn chaos_node_kill_leaves_history() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -1712,6 +1744,7 @@ fn xorshift64_determinism_and_bounds() {
 }
 
 /// GossipState membership is thread-safe: concurrent add_member calls from many tasks.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn gossip_state_concurrent_membership() {
     let node = Arc::new(Node::new(NodeRole::Relay));

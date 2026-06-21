@@ -5,112 +5,141 @@ All notable changes to MielinOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-06-21 - "Oligodendrocyte" (Initial Release)
 
-### Added (iteration 2)
+**First stable release** of MielinOS — a microkernel-based distributed agent mesh operating system built in 100% pure Rust.
 
-#### Distributed Inference Engine (mielin-tensor/src/distributed.rs)
-- `PartitionStrategy` — RowWise, ColumnWise, Block{rows,cols}, Pipeline{stages}
-- `TensorShard` / `ShardedTensor::partition` + `reconstruct` — lossless roundtrip for all strategies; non-divisible dimensions distributed via `base+1` remainder
-- `DistributedTransport` trait + `LocalTransport` (Arc<Mutex<HashMap>>) for in-process simulation
-- `ReduceOp` (Sum, Product, Max, Min) with correct identity elements; used by `all_reduce`
-- `distributed_matmul` — Cannon's algorithm on a p_r×p_c process grid; bit-near-identical to local matmul
-- `ModelParallelLayer::forward` — RowWise concatenates shard outputs; ColumnWise all-reduces partial products
-- `ModelParallelPipeline` + `DistributedInferenceEngine` with compile-time `LayerSpec` → `CompiledModel` plan; exposes FLOP and inter-node-byte metrics
-- 16 integration tests covering all strategies, all reduce ops, distributed matmul, and engine end-to-end
+### Highlights
 
-#### Lock-Free Work-Stealing Scheduler (mielin-kernel)
-- `WorkStealingDeque<T>` — Chase-Lev (2005) + Lê/Pop/Cohen/Nardelli (2013) correction; power-of-2 circular buffer with 2× growth; `push` (owner), `pop` (owner), `steal` (any thread); `Steal<T>` = Success/Empty/Retry
-- `WorkStealingScheduler` — 8-worker array; per-worker 256-priority-level deques; LCG random victim selection; `spawn_task`, `schedule`, `yield_task`, `terminate_task`; `WorkStealingMetrics` + snapshot
-- 21 new tests (4 Chase-Lev unit + 17 scheduler) covering concurrency, work stealing, priority ordering, load balance
-
-#### Fault Injection and Chaos Testing (mielin-cells, mielin-mesh/core)
-- `mielin-cells/src/fault.rs` — `FaultInjector` with `FaultKind` (Drop/Delay/Corrupt/Duplicate/Timeout); probabilistic LCG; per-label `max_occurrences` cap; builder helpers `always_drop`, `always_delay`, `occasionally`
-- 15 fault injection tests: probability distribution, cross-version migration (v1→v2, v2→v1), HA failover under node failure, corruption detection, retry-on-transient, concurrent injection, composition
-- 10 chaos tests in `mielin-mesh/core/tests/chaos_tests.rs`: network partition splits cluster, failure detection timing, gossip convergence after join/leave, split-brain prevention, node rejoin, concurrent joins, rapid churn, registry consistency, migration during partition
-
-#### Energy-Aware Scheduling (mielin-rt)
-- `EnergyPolicy` / `EnergyMode` (Performance/Balanced/PowerSave/BudgetEnforced) + `SleepRecommendation` (StayAwake/LightSleep/DeepSleep/Hibernate); `recommend_sleep` decision tree
-- `PowerDomain` + `PowerDomainTracker` — 16-slot fixed array; per-peripheral power accounting with `E = P_mW × Δt_µs / 1000` µJ accrual on state transitions; `AtomicU32` total-power cache
-- `EnergyAwareScheduler` in `src/energy_scheduler.rs` — pre-schedule hint (power-cap check, budget exhaustion, 20%-headroom warning), task start/stop bracketing, idle sleep recommendation
-- `EnergyAdaptiveController` — proportional window controller; steps CPU frequency up/down based on energy utilisation vs target; no-heap, array-backed frequency table
-- `PowerManager::suggest_next_state` — maps `EnergySchedulingHint.sleep_recommendation` to `PowerState`
-- 21 new tests across energy.rs and energy_scheduler.rs
-
-### Test Results
-- **3704 tests run: 3704 passed** (up from 3617, net +87 new tests)
-- `cargo clippy --workspace --all-targets -- -D warnings` exits 0
+- **~189 K lines of Rust** across the workspace (188,466 code lines per tokei)
+- **4,565 tests passing** with zero clippy warnings
+- Pure-Rust stack: oxicrypto-*, oxiquic-*, oxihttp-*, oxiarc-lz4/zstd replace all C/FFI equivalents
+- Rust toolchain: 1.91.0 (stable)
 
 ### Added
 
-#### SVE2 Dispatcher Wire-up (mielin-tensor)
-- `sub_sve2` and `div_sve2` backend functions using `svsub_f32_m` / `svdiv_f32_m` intrinsics
-- `dot_sve2`, `matmul_sve2`, `add_sve2`, `sub_sve2`, `mul_sve2`, `div_sve2` fully routed from `TensorOps` on `target_feature=+sve2` AArch64
-- Removed obsolete "requires nightly Rust" comment — SVE2 intrinsics stabilised in Rust 1.86
-- 2 new unit tests (`test_sve2_sub`, `test_sve2_div`) in the sve2 backend
-- Benchmark harness extended with SVE2 in element-wise and matrix benchmarks
+#### Core Crates
 
-#### HTTP Control Plane (mielin-cli)
-- New `mielin-cli/src/control/` module: `ControlServer` (axum 0.8), `ControlClient` (reqwest), and serde DTOs
-- Endpoints: `GET /api/v1/health`, `GET /api/v1/mesh/status`, `GET /api/v1/mesh/peers`, `GET /api/v1/mesh/nodes`, `GET /api/v1/agents`, `POST /api/v1/agents`, `DELETE /api/v1/agents/:id`, `GET /api/v1/agents/:id`, `POST /api/v1/migrate`, `GET /api/v1/migrate/status`
-- `daemon` subcommand gains `--control-listen <addr>` (default `127.0.0.1:8081`); starts `ControlServer` alongside `MeshService`
-- `mielinctl mesh status --daemon <addr>` reads live `MeshService` data; graceful mock fallback when daemon is unreachable
-- Workspace dependencies: `axum 0.8`, `tower 0.5`, `tower-http 0.6`
+##### mielin (workspace root / lib)
+- `MielinOS` top-level facade — microkernel-based OS for distributed AI agents with neural mesh networking
 
-#### WASI Preview 2 / Component Model Foundation (mielin-wasm)
-- New `preview2` Cargo feature (default off) enabling `wasmtime-wasi` Component Model path
-- `ComponentExecutor` in `src/preview2.rs` with `P2HostState` implementing `WasiView` + `IoView`; uses `wasmtime_wasi::p2::add_to_linker_async`
-- Minimal WIT world at `wit/mielin.wit` importing `wasi:clocks/wall-clock`, `wasi:random/random`, `wasi:cli/environment`
-- 3 integration tests gated on `--features preview2`: compile, clock, and random
-- `wasmtime-wasi = "43.0.1"` added as optional workspace dependency
+##### mielin-kernel
+- Core unikernel implementation for agent execution across heterogeneous hardware (x86_64, AArch64, RISC-V, ARM Cortex-M)
+- NUMA-aware memory subsystem with buddy allocator and 4-level page table management
+- Hardware-assisted VMM: EPT/NPT with split-page guard mapping; IRQ injection via APIC/GIC
+- IPC subsystem: synchronous channels, async message queues, shared memory regions
+- **Lock-Free Work-Stealing Scheduler** (Chase-Lev 2005 + Lê/Pop/Cohen/Nardelli 2013 correction): `WorkStealingDeque<T>` with power-of-2 circular buffer and 2× growth; `WorkStealingScheduler` with 8 workers × 256 priority levels; LCG random victim selection; `WorkStealingMetrics` snapshot API
+- 25 tests: NUMA, memory management, IPC, and Chase-Lev concurrency
+
+##### mielin-hal
+- Unified hardware abstraction layer across x86_64, AArch64, RISC-V, and ARM Cortex-M
+- Architecture detection at runtime with compile-time feature gates
+- MIPS / PowerPC HAL stubs (feature-gated); hardware database module with traits and types
+- RISC-V and ARMv8-M MCU support; compiler-rt shim layer
+
+##### mielin-rt
+- Lightweight embedded runtime for Cortex-M and resource-constrained IoT devices
+- Power management: WFI / WFE deep-sleep, SysTick timer, interrupt priority 0–255
+- Memory pool bump allocator (`const`-generic size, alignment-aware, resettable)
+- Battery-aware migration triggers (< 20% battery, not charging)
+- **Energy-Aware Scheduling**: `EnergyPolicy` / `EnergyMode` (Performance/Balanced/PowerSave/BudgetEnforced); `SleepRecommendation` (StayAwake/LightSleep/DeepSleep/Hibernate); `recommend_sleep` decision tree
+- `PowerDomain` + `PowerDomainTracker`: 16-slot fixed array, per-peripheral µJ accounting (`E = P_mW × Δt_µs / 1000`), `AtomicU32` total-power cache
+- `EnergyAwareScheduler`: pre-schedule cap/budget/headroom hints; task start/stop bracketing; idle sleep recommendation
+- `EnergyAdaptiveController`: proportional-window CPU frequency stepper, no-heap array-backed frequency table
+- 29 tests (power modes, memory management, energy policy, energy scheduler)
+
+##### mielin-cells
+- Agent SDK: lifecycle management (`spawn`, `pause`, `resume`, `terminate`), policy execution, inter-agent messaging
+- High-availability and disaster-recovery subsystems (HA/DR, multi-region, compliance)
+- Agent versioning and cross-version live migration (v1→v2, v2→v1)
+- **Fault Injection**: `FaultInjector` with `FaultKind` (Drop/Delay/Corrupt/Duplicate/Timeout), probabilistic LCG, per-label `max_occurrences` cap; builder helpers `always_drop`, `always_delay`, `occasionally`
+- 15 fault injection tests (probability, cross-version migration, HA failover, corruption detection, retry-on-transient, concurrent injection)
+
+##### mielin-mesh-core
+- Kademlia DHT with XOR-distance routing, geographic-aware peer scoring, and latency-based sorting
+- SWIM-inspired gossip protocol: node membership (Alive/Suspect/Dead), heartbeat failure detection (15 s suspect, 30 s dead), anti-entropy via sync requests, incarnation-number refutation
+- mDNS discovery (mdns-sd 0.17) with 5-minute TTL caching; bootstrap node registry; peer exchange (PEX)
+- Distributed agent registry: DHT-backed location tracking, content-addressable agent IDs, 10-minute TTL, replication factor 3
+- Live migration coordinator: Pre-copy / Post-copy / Hybrid strategies; 9-phase telemetry (Planning→Complete); 30 s timeout; migration history & statistics API
+- Integrated `MeshService` orchestrator: single entry point with optional enable/disable of mDNS, gossip, registry, and migration
+- **Chaos testing** (10 tests): network partition cluster split, failure detection timing, gossip convergence after join/leave, split-brain prevention, node rejoin, concurrent joins, rapid churn, registry consistency, migration during partition
+
+##### mielin-mesh-wire
+- QUIC-based wire protocol using oxiquic-transport 0.1.4 + oxiquic-crypto 0.1.4 (pure-Rust QUIC, replaces quinn + ring)
+- TLS 1.3 via rustls 0.23 + oxitls-rcgen 0.1.3; self-signed certificate generation via rcgen 0.14
+- Certificate manager: `get_or_generate_cert`, `rotate_cert` (30-day threshold), expiry monitoring, thread-safe `Arc<RwLock>` cache
+- Certificate storage backend (in-memory + file-based interface), PKCS#8 + DER serialization
+- Multi-hop `RoutedMessage` envelope: TTL-based loop prevention (max 16 hops), transparent forwarding
+- Connection pooling, stream multiplexing, 16 MB message size, 10 s connection timeout
+- oxiarc-lz4 / oxiarc-zstd compression (replaces flate2/zstd C backends)
+- 12 tests: QUIC transport, multi-path, health monitoring, certificate lifecycle
+
+##### mielin-wasm
+- WebAssembly sandboxing and execution using Wasmtime 43.0.1
+- Capability-based resource isolation; WASI host-function bindings
+- Feature-gated alternative engines: Wasmer, WASM3
+- **WASI Preview 2 / Component Model** (`preview2` feature): `ComponentExecutor` with `P2HostState` implementing `WasiView + IoView`; minimal WIT world (`wasi:clocks/wall-clock`, `wasi:random/random`, `wasi:cli/environment`)
+- TFLite model export (feature-gated); WASM tensor host functions (hardware capability queries, tensor creation, dot/add/matmul)
+- 20+ tests: module loading, sandboxing, capability enforcement; 3 Component Model integration tests (compile, clock, random)
+
+##### mielin-tensor
+- Kernel-level tensor operations with runtime backend dispatch
+- **ARM NEON** (AArch64): 128-bit SIMD (4×f32), `vld1q_f32`, `vmlaq_f32`, `vaddq_f32`, `vaddvq_f32`
+- **x86_64 AVX2**: 256-bit SIMD (8×f32), `_mm256_loadu_ps`, `_mm256_mul_ps`, `_mm256_add_ps`, `_mm_hadd_ps`
+- **ARM SVE2** (AArch64, stable since Rust 1.86): `svsub_f32_m`, `svdiv_f32_m`; full `dot_sve2`, `matmul_sve2`, `add_sve2`, `sub_sve2`, `mul_sve2`, `div_sve2` routing from `TensorOps`
+- Scalar fallback; `no_std` compatible
+- **Distributed Inference Engine** (`distributed.rs`): `PartitionStrategy` (RowWise/ColumnWise/Block/Pipeline); `TensorShard` / `ShardedTensor::partition` + `reconstruct`; `DistributedTransport` trait + `LocalTransport`; `ReduceOp` (Sum/Product/Max/Min); `distributed_matmul` via Cannon's algorithm; `ModelParallelLayer` + `ModelParallelPipeline` + `DistributedInferenceEngine` with FLOP/byte metrics
+- Neural network layers: quantization, comprehensive benchmark harness (element-wise, matrix, SVE2)
+- 16 distributed inference integration tests + SIMD unit tests
+
+##### mielin-cli (`mielinctl` binary)
+- Subcommands: `daemon`, `mesh status`, `agent list/spawn/migrate`, `config`, shell completion
+- **HTTP Control Plane** (`control/` module): `ControlServer` (axum 0.8) + `ControlClient` (oxihttp-client 0.1.4, TLS); endpoints: health, mesh status/peers/nodes, agent CRUD, migrate/status
+- `daemon --control-listen <addr>` (default `127.0.0.1:8081`); graceful mock fallback when daemon unreachable
+- Rhai scripting engine for automation; comfy-table / tabled output formatting; rustyline REPL
+- oxihttp-client replaces reqwest (pure-Rust HTTP)
+
+#### Examples & Tooling
+
+- `examples/mesh-cluster`: 3-node QUIC mesh cluster with Edge/Relay/Core roles, live agent migration, registry + gossip integration, optional TLS (`--use-certs`), migration telemetry display
+- `examples/embedded-iot`: simulated temperature sensor node, battery lifecycle (100% → 15% → charging), automatic migration on low battery, power-mode transitions
+- Benchmark crate (`benches`): criterion harnesses for SIMD, matrix ops, CLI, quantization, WASM
 
 ### Changed
 
-#### Toolchain
-- Bumped `rust-toolchain.toml` channel from `1.90.0` to `1.91.0` (required by `wasmtime 43.0.1` MSRV)
+#### Pure-Rust Migration (COOLJAPAN Policy)
+- Replaced `ring` with `oxicrypto-*` sub-crates (hash, rand, aead, sig, kex, kdf, core)
+- Replaced `quinn` + `ring` QUIC stack with `oxiquic-transport` + `oxiquic-crypto`
+- Replaced `reqwest` HTTP client with `oxihttp-client 0.1.4`
+- Replaced `flate2` / `zstd` (C backends) with `oxiarc-lz4 0.3.3` / `oxiarc-zstd 0.3.3`
+- Replaced `bincode 1.x` with `oxicode 0.2.4` (with serde feature) for binary serialization
+- Replaced `rcgen 0.13` with `oxitls-rcgen 0.1.3`
 
-#### rand 0.10 API Migration
-- All `use rand::Rng` imports updated to `use rand::RngExt` following rand 0.10 trait reorganisation
-- `fill_bytes` calls updated to `fill` across mesh, cells, and cli crates
-
-#### wasmtime 43 Compatibility
-- Replaced `.context("msg")` with `.map_err(|e| anyhow::anyhow!("…: {e:#}"))` where `wasmtime::Error` is the error type (no longer implements `std::error::Error` in v43)
-- Removed deprecated `Config::async_support(false)` call (no-op in wasmtime 43)
+#### Toolchain & API Updates
+- Rust toolchain bumped from 1.90.0 → 1.91.0 (wasmtime 43.0.1 MSRV)
+- rand 0.10 API migration: `use rand::Rng` → `use rand::RngExt`; `fill_bytes` → `fill`
+- wasmtime 43 compatibility: `.context()` replaced with `.map_err(|e| anyhow::anyhow!())` where `wasmtime::Error` is the type; removed deprecated `Config::async_support(false)`
+- x86 architecture support added to HAL bootstrap
 
 #### Clippy / Zero-Warnings
-- Replaced manual `impl Default` blocks with `#[derive(Default)]` + `#[default]` on variants across `mielin-mesh-wire` and `mielin-rt`
-- Removed redundant `let i = i;` rebind in integration_tests.rs
-- Gated kernel `cli` privileged instruction behind `#[cfg(not(test))]` to fix SIGSEGV in userspace test runs
+- `#[derive(Default)]` + `#[default]` variants replace manual `impl Default` in `mielin-mesh-wire` and `mielin-rt`
+- `#[cfg(not(test))]` guard on kernel `cli` instruction to prevent SIGSEGV in userspace test runs
+- Removed redundant `let i = i;` rebind in integration tests
 
-### Test Results
-- **3617 tests run: 3617 passed** (up from 3255 at rc.1, +362 net new tests)
-- `cargo clippy --workspace --all-targets -- -D warnings` exits 0
+### Testing Summary
 
-### Planned
-- Docker Compose setup for local cluster testing
-- Real hardware testing (RasPi 4 + Graviton3)
-- Network partition simulation testing
-- NAT traversal (STUN/TURN)
-
----
-
-## [0.1.0] - 2026-05-01 - "Ranvier" (Initial Release)
-
-**First stable release** of MielinOS - Core mesh networking and agent migration.
-
-### Changes from rc.1
-- Version promoted from release candidate to stable
-- All known issues from 0.1.0-rc.1 resolved
-
-### Summary
-- **199,393 lines of Rust** across 458 files
-- **3,617 tests passing** with zero clippy warnings
-- Complete QUIC transport with TLS 1.3 encryption
-- P2P mesh networking with mDNS discovery and gossip protocol
-- Live agent migration with delta compression
-- Production features: HA, DR, multi-region, compliance
-
-See [0.1.0-rc.1] release notes below for full feature list.
+- **4,565 tests passing** across all workspace crates — zero failures, zero clippy warnings
+- Test breakdown by area:
+  - `mielin-kernel`: NUMA, buddy allocator, VMM, scheduler, IPC, work-stealing
+  - `mielin-hal`: architecture detection, capability queries
+  - `mielin-rt`: power management, sensors, communication, energy scheduling
+  - `mielin-cells`: agent lifecycle, migration, HA/DR, fault injection
+  - `mielin-mesh-core`: DHT, gossip, registry, partition tolerance, chaos
+  - `mielin-mesh-wire`: QUIC transport, TLS, certificate lifecycle, multi-path
+  - `mielin-wasm`: module loading, sandboxing, capability enforcement, WASI Preview 2
+  - `mielin-tensor`: SIMD backends (NEON/AVX2/SVE2), neural layers, distributed inference
+  - `mielin-cli`: control plane, daemon, scripting
+  - `mielin-tests`: cross-crate integration
 
 ---
 
@@ -360,6 +389,5 @@ MielinOS versions are named after key components of the nervous system:
 - [Discussions](https://github.com/cool-japan/mielin/discussions)
 - [Documentation](https://github.com/cool-japan/mielin/blob/main/README.md)
 
-[Unreleased]: https://github.com/cool-japan/mielin/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/cool-japan/mielin/compare/v0.1.0-rc.1...v0.1.0
+[0.1.0]: https://github.com/cool-japan/mielin/releases/tag/v0.1.0
 [0.1.0-rc.1]: https://github.com/cool-japan/mielin/releases/tag/v0.1.0-rc.1

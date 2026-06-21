@@ -8,7 +8,7 @@ A lightweight `no_std` unikernel providing the foundation for autonomous agent e
 
 The MielinOS kernel is a minimalist unikernel designed for extreme efficiency and portability. It eliminates traditional kernel-space/user-space boundaries, operating in a single memory address space to provide essential OS services (memory management, task scheduling, tensor awareness) without the overhead of traditional operating systems.
 
-**Current Status:** v0.1.0 "Ranvier" (Released 2026-05-01)
+**Current Status:** v0.1.0 "Oligodendrocyte" (Released 2026-06-21)
 
 ### Key Features
 
@@ -344,7 +344,7 @@ These constraints enable:
 - ✅ TensorContext foundation
 - ✅ Multi-architecture support
 
-### Phase 2 (v0.2 "Oligodendrocyte") - Q1-Q2 2026
+### Phase 2 (v0.2 "Oligodendrocyte") - 2026-06-21
 - [ ] Async/await executor integration
 - [ ] Real QUIC networking stack
 - [ ] Multi-core support (per-core schedulers)
@@ -404,4 +404,4 @@ Licensed under:
 
 **MielinOS Kernel** - The myelin sheath that enables saltatory conduction of AI agents across the computational nervous system 🧠⚡
 
-**Current Version:** v0.1.0 "Ranvier" | Released 2026-05-01
+**Current Version:** v0.1.0 "Oligodendrocyte" | Released 2026-06-21

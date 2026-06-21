@@ -13,7 +13,7 @@
 //! - [`cells`] - Cell-based computation units for distributed processing
 //! - [`wasm`] - WebAssembly runtime for portable agent execution
 //! - [`tensor`] - Tensor operations for AI/ML workloads
-//! - [`kernel`] - Microkernel (requires `kernel` feature, bare-metal only)
+//! - `kernel` - Microkernel (requires `kernel` feature, bare-metal only)
 //!
 //! ## Quick Start
 //!

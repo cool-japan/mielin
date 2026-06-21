@@ -567,7 +567,7 @@ pub struct EvolutionEngine {
 impl EvolutionEngine {
     /// Construct a new engine.
     ///
-    /// Population is **not** seeded until [`initialize`] is called.
+    /// Population is **not** seeded until [initialize][Self::initialize] is called.
     pub fn new(config: EvolutionConfig, evaluator: FitnessEvaluator) -> Self {
         let rng = Xorshift64::new(config.seed);
         let mutation_op = MutationOperator::default_rates();

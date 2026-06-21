@@ -832,6 +832,8 @@ mod tests {
         #![proptest_config(ProptestConfig::with_cases(100))]
 
         /// XOR distance is symmetric: d(a, b) = d(b, a)
+        // proptest uses rand::rng() → ChaCha20 NEON SIMD on aarch64; not UB — unsupported SIMD under Miri
+        #[cfg_attr(miri, ignore)]
         #[test]
         fn prop_xor_distance_symmetric(
             a_bytes in prop::collection::vec(any::<u8>(), 16),
@@ -843,6 +845,7 @@ mod tests {
         }
 
         /// XOR distance to self is zero: d(a, a) = 0
+        #[cfg_attr(miri, ignore)]
         #[test]
         fn prop_xor_distance_self_zero(
             a_bytes in prop::collection::vec(any::<u8>(), 16)
@@ -852,6 +855,7 @@ mod tests {
         }
 
         /// XOR distance is consistent: computed distance is the same for same inputs
+        #[cfg_attr(miri, ignore)]
         #[test]
         fn prop_xor_distance_deterministic(
             a_bytes in prop::collection::vec(any::<u8>(), 16),
@@ -866,6 +870,7 @@ mod tests {
         }
 
         /// find_closest returns at most k peers
+        #[cfg_attr(miri, ignore)]
         #[test]
         fn prop_find_closest_returns_at_most_k(
             local_bytes in prop::collection::vec(any::<u8>(), 16),
@@ -888,6 +893,7 @@ mod tests {
         }
 
         /// find_closest results are sorted by distance to target
+        #[cfg_attr(miri, ignore)]
         #[test]
         fn prop_find_closest_sorted_by_distance(
             local_bytes in prop::collection::vec(any::<u8>(), 16),
@@ -914,6 +920,7 @@ mod tests {
         }
 
         /// Inserting and removing a peer leaves DHT in consistent state
+        #[cfg_attr(miri, ignore)]
         #[test]
         fn prop_insert_remove_consistent(
             local_bytes in prop::collection::vec(any::<u8>(), 16),
@@ -938,6 +945,7 @@ mod tests {
         }
 
         /// Cache hit rate is between 0 and 1
+        #[cfg_attr(miri, ignore)]
         #[test]
         fn prop_cache_hit_rate_valid(
             num_ops in 1usize..100
@@ -957,6 +965,7 @@ mod tests {
         }
 
         /// Churn rate is non-negative
+        #[cfg_attr(miri, ignore)]
         #[test]
         fn prop_churn_rate_non_negative(
             arrivals in 0usize..50,
@@ -977,6 +986,7 @@ mod tests {
         }
 
         /// Cache never exceeds max size
+        #[cfg_attr(miri, ignore)]
         #[test]
         fn prop_cache_max_size(
             max_size in 1usize..50,
@@ -993,6 +1003,7 @@ mod tests {
         }
 
         /// Routing replica never exceeds max entries
+        #[cfg_attr(miri, ignore)]
         #[test]
         fn prop_replica_max_entries(
             max_entries in 1usize..50,

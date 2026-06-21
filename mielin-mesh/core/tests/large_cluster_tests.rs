@@ -246,6 +246,7 @@ async fn build_detector(
 // ============================================================================
 
 /// Create 100 nodes, verify all GossipStates initialize correctly.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_100_node_gossip_initialization() {
     let cluster = LargeCluster::new(100, 0x1111_2222_3333_4444);
@@ -262,6 +263,7 @@ async fn test_100_node_gossip_initialization() {
 }
 
 /// Full-mesh bootstrap + 20 rounds of all-to-all gossip → every node sees 100 alive.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_100_node_convergence_full_mesh() {
     let cluster = LargeCluster::new(100, 0xAAAA_BBBB_CCCC_DDDD);
@@ -278,6 +280,7 @@ async fn test_100_node_convergence_full_mesh() {
 }
 
 /// 100 nodes — kill 1, run 30 rounds — all 99 survivors see only 99 alive.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_100_node_single_failure_detection() {
     let mut cluster = LargeCluster::new(100, 0xDEAD_BEEF_0001_0001);
@@ -303,6 +306,7 @@ async fn test_100_node_single_failure_detection() {
 }
 
 /// 100 nodes — kill 20 simultaneously — run 50 rounds — all 80 survivors agree.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_100_node_burst_failure() {
     let mut cluster = LargeCluster::new(100, 0xBEEF_DEAD_CAFE_BABE);
@@ -325,6 +329,7 @@ async fn test_100_node_burst_failure() {
 }
 
 /// 100 nodes — kill 10 — detect — recover all — all 100 alive again.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_100_node_recovery() {
     let mut cluster = LargeCluster::new(100, 0x1234_5678_9ABC_DEF0);
@@ -367,6 +372,7 @@ async fn test_100_node_recovery() {
 // ============================================================================
 
 /// Add 500 nodes to ConsistentHashRing, verify node_count and random lookups.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_500_node_ring_construction() {
     let mut ring = ConsistentHashRing::new();
@@ -397,6 +403,7 @@ async fn test_500_node_ring_construction() {
 }
 
 /// 200-node ring, 10000 key lookups — verify distribution uniformity.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_consistent_hash_distribution_uniformity() {
     let mut ring = ConsistentHashRing::new();
@@ -451,6 +458,7 @@ async fn test_consistent_hash_distribution_uniformity() {
 }
 
 /// 200 nodes, record distribution, remove 10 nodes, verify stable keys don't change.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_consistent_hash_node_removal_consistency() {
     let nodes: Vec<Arc<Node>> = (0..200)
@@ -504,6 +512,7 @@ async fn test_consistent_hash_node_removal_consistency() {
 }
 
 /// 100 baseline nodes, add+remove 10 nodes 5 times, verify stability of untouched keys.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_consistent_hash_stable_during_churn() {
     let baseline_nodes: Vec<Arc<Node>> = (0..100)
@@ -562,6 +571,7 @@ async fn test_consistent_hash_stable_during_churn() {
 }
 
 /// 1000 nodes, 10000 key lookups must complete within generous timing bound.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_consistent_hash_performance_10k_lookups() {
     let nodes: Vec<Arc<Node>> = (0..1000)
@@ -593,6 +603,7 @@ async fn test_consistent_hash_performance_10k_lookups() {
 // ============================================================================
 
 /// 200 nodes split 100/100 — neither side has quorum (both detect partition).
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_200_node_50_50_partition() {
     let all_nodes: Vec<Arc<Node>> = (0..200)
@@ -634,6 +645,7 @@ async fn test_200_node_50_50_partition() {
 }
 
 /// 200 nodes split 134/66 — majority has quorum, minority does not.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_200_node_2_3_partition() {
     let all_nodes: Vec<Arc<Node>> = (0..200)
@@ -663,6 +675,7 @@ async fn test_200_node_2_3_partition() {
 }
 
 /// Partition 200 into 100/100, heal, verify all nodes have quorum again.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_200_node_partition_healing() {
     let all_nodes: Vec<Arc<Node>> = (0..200)
@@ -699,6 +712,7 @@ async fn test_200_node_partition_healing() {
 }
 
 /// 100 nodes, progressively remove visibility — detect quorum loss below 50%.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_100_node_cascading_failures() {
     let all_nodes: Vec<Arc<Node>> = (0..100)
@@ -747,6 +761,7 @@ async fn test_100_node_cascading_failures() {
 }
 
 /// 100 nodes: kill 20, recover one at a time, verify visible count grows correctly.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_100_node_rolling_restart() {
     let all_nodes: Vec<Arc<Node>> = (0..100)
@@ -803,6 +818,7 @@ async fn test_100_node_rolling_restart() {
 // ============================================================================
 
 /// 50-node gossip via SyncResponse, measure rounds to convergence (must be ≤ 15).
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_50_node_convergence_time() {
     let node_count = 50usize;
@@ -865,6 +881,7 @@ async fn bench_50_node_convergence_time() {
 }
 
 /// 100-node, 100 gossip rounds — verify convergence and throughput.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_gossip_100_node_throughput() {
     let node_count = 100usize;
@@ -894,6 +911,7 @@ async fn bench_gossip_100_node_throughput() {
 }
 
 /// 1000-node ring, 100K lookups, must complete within generous timing bound.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_consistent_hash_1000_node_lookup_speed() {
     let nodes: Vec<Arc<Node>> = (0..1000)
@@ -925,6 +943,7 @@ async fn bench_consistent_hash_1000_node_lookup_speed() {
 }
 
 /// 200-node detector — run 1000 visibility-sweep iterations — timing assertion.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_partition_detector_200_node_sweep() {
     let all_nodes: Vec<Arc<Node>> = (0..200)
@@ -961,6 +980,7 @@ async fn bench_partition_detector_200_node_sweep() {
 }
 
 /// 500-node cluster, 1 gossip round — no panics, state consistent.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn bench_gossip_500_nodes_one_round() {
     let node_count = 500usize;
@@ -1012,6 +1032,7 @@ async fn bench_gossip_500_nodes_one_round() {
 // ============================================================================
 
 /// Single-node cluster: initialises correctly, always has quorum.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_single_node_cluster() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -1036,6 +1057,7 @@ async fn test_single_node_cluster() {
 }
 
 /// Two-node cluster: both see each other, no quorum loss.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_two_node_cluster_symmetry() {
     let nodes: Vec<Arc<Node>> = (0..2)
@@ -1077,6 +1099,7 @@ async fn test_two_node_cluster_symmetry() {
 }
 
 /// 100 nodes, kill 99 — last survivor detects no quorum.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_all_nodes_failed_except_one() {
     let mut cluster = LargeCluster::new(100, 0x9876_5432_1000_ABCD);
@@ -1111,6 +1134,7 @@ async fn test_all_nodes_failed_except_one() {
 }
 
 /// 50 nodes, flood each with 100× messages — state stable, no panics.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_gossip_message_flood_stability() {
     let node_count = 50usize;
@@ -1147,6 +1171,7 @@ async fn test_gossip_message_flood_stability() {
 }
 
 /// Run same 100-node scenario twice with the same seed — identical convergence patterns.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_large_cluster_deterministic() {
     async fn run_scenario(seed: u64) -> Vec<usize> {
@@ -1178,6 +1203,7 @@ async fn test_large_cluster_deterministic() {
 }
 
 /// 150-node cluster, 3 repeated partition-heal cycles — state remains coherent.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_large_cluster_repeated_partition_heal() {
     let all_nodes: Vec<Arc<Node>> = (0..150)
@@ -1221,6 +1247,7 @@ async fn test_large_cluster_repeated_partition_heal() {
 }
 
 /// Verify that `ConsistentHashRing` handles the empty ring correctly.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_empty_ring_edge_case() {
     let ring = ConsistentHashRing::new();
@@ -1233,6 +1260,7 @@ async fn test_empty_ring_edge_case() {
 }
 
 /// Adding a single node to the ring — all keys route to it.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_single_node_ring() {
     let node = Arc::new(Node::new(NodeRole::Relay));
@@ -1254,6 +1282,7 @@ async fn test_single_node_ring() {
 }
 
 /// Gossip SyncResponse with full member list — verify all members are absorbed in one shot.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_gossip_sync_response_absorbs_full_membership() {
     let node_count = 100usize;

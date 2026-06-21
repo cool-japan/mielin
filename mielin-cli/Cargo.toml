@@ -50,7 +50,6 @@ rstest.workspace = true
 assert_cmd = "2.2"
 predicates = "3.1.4"
 criterion.workspace = true
-serial_test.workspace = true
 
 [[bench]]
 name = "cli_benchmarks"

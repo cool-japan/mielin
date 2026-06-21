@@ -186,6 +186,7 @@ fn test_node_identity_metadata() {
     assert_eq!(identity.metadata.get("role"), Some(&"core".to_string()));
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_identity_verifier_registration() {
     let verifier = IdentityVerifier::new();
@@ -204,6 +205,7 @@ async fn test_identity_verifier_registration() {
     assert_eq!(retrieved.as_ref().map(|i| i.node_id), Some(node_id));
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_identity_verifier_trust_anchors() {
     let node_id = NodeId::new_v4();
@@ -292,6 +294,7 @@ fn test_acl_rule_expiration() {
     assert!(rule.is_expired());
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_acl_policy_permissive() {
     let policy = AclPolicy::permissive();
@@ -304,6 +307,7 @@ async fn test_acl_policy_permissive() {
     assert!(result.is_ok());
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_acl_policy_restrictive() {
     let policy = AclPolicy::restrictive();
@@ -316,6 +320,7 @@ async fn test_acl_policy_restrictive() {
     assert!(result.is_err());
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_acl_policy_explicit_allow() {
     let policy = AclPolicy::restrictive();
@@ -343,6 +348,7 @@ async fn test_acl_policy_explicit_allow() {
     assert!(result.is_err());
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_acl_policy_explicit_deny() {
     let policy = AclPolicy::permissive();
@@ -370,6 +376,7 @@ async fn test_acl_policy_explicit_deny() {
     assert!(result.is_ok());
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_acl_rule_priority() {
     let policy = AclPolicy::restrictive();
@@ -427,6 +434,7 @@ fn test_gossip_key_generation() {
     assert!(!key.needs_rotation(Duration::from_secs(3600)));
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_gossip_encryption_roundtrip() {
     let encryption = GossipEncryption::new().expect("Failed to create encryption");
@@ -449,6 +457,7 @@ async fn test_gossip_encryption_roundtrip() {
     assert_eq!(decrypted, plaintext);
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_gossip_encryption_large_message() {
     let encryption = GossipEncryption::new().expect("Failed to create encryption");
@@ -468,6 +477,7 @@ async fn test_gossip_encryption_large_message() {
     assert_eq!(decrypted, plaintext);
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_gossip_encryption_nonce_reuse_detection() {
     let encryption = GossipEncryption::new().expect("Failed to create encryption");
@@ -490,6 +500,7 @@ async fn test_gossip_encryption_nonce_reuse_detection() {
     assert!(matches!(result, Err(SecurityError::NonceReuse)));
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_gossip_encryption_key_rotation() {
     let encryption = GossipEncryption::new().expect("Failed to create encryption");
@@ -523,6 +534,7 @@ async fn test_gossip_encryption_key_rotation() {
     // (In practice, old messages would have different nonces)
 }
 
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn test_gossip_encryption_old_message_rejected() {
     let mut encryption = GossipEncryption::new().expect("Failed to create encryption");
@@ -659,6 +671,7 @@ fn hex_to_vec(s: &str) -> Vec<u8> {
 ///   msg = 72
 ///   sig = 92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da
 ///         085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn ed25519_rfc8032_verify_through_identity_verifier() {
     let pk = hex_to_vec("3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c");
@@ -697,6 +710,7 @@ async fn ed25519_rfc8032_verify_through_identity_verifier() {
 /// ECDSA P-256 round-trip through the verifier: a SEC1 public key + ASN.1 DER
 /// signature produced by oxicrypto-sig's signer must verify, and a wrong
 /// message must be rejected. This exercises the exact `EcdsaP256Verify` path.
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn ecdsa_p256_verify_through_identity_verifier() {
     use oxicrypto_sig::EcdsaP256Signer;
@@ -738,6 +752,7 @@ async fn ecdsa_p256_verify_through_identity_verifier() {
 }
 
 /// ECDSA P-384 round-trip through the verifier (SEC1 pubkey + DER signature).
+#[cfg_attr(miri, ignore)]
 #[tokio::test]
 async fn ecdsa_p384_verify_through_identity_verifier() {
     use oxicrypto_sig::EcdsaP384Signer;
