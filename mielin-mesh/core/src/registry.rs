@@ -485,7 +485,7 @@ impl AccessTracker {
     /// Get top N accessed agents
     pub fn top_accessed(&self, n: usize) -> Vec<(AgentId, u64)> {
         let mut entries: Vec<_> = self.counts.iter().map(|(k, v)| (*k, *v)).collect();
-        entries.sort_by(|a, b| b.1.cmp(&a.1));
+        entries.sort_by_key(|x| std::cmp::Reverse(x.1));
         entries.truncate(n);
         entries
     }

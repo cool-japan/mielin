@@ -2,10 +2,12 @@
 //! MielinBPF verifier — static analysis pass that validates a program before
 //! allowing it to be executed by the interpreter.
 
+#[cfg(not(feature = "bpf-maps"))]
+use super::isa::HelperId;
 use super::{
     isa::{
-        AluOp, HelperId, Instruction, Reg, Source, DEFAULT_FUEL, MAX_PROGRAM_LEN, MIN_FUEL,
-        REG_FRAME, SCRATCH_BYTES,
+        AluOp, Instruction, Reg, Source, DEFAULT_FUEL, MAX_PROGRAM_LEN, MIN_FUEL, REG_FRAME,
+        SCRATCH_BYTES,
     },
     BpfError,
 };

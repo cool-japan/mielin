@@ -594,6 +594,7 @@ mod tests {
         assert!(compiler.is_ok());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_precompilation() {
         let config = AotConfig::fast();
@@ -608,6 +609,7 @@ mod tests {
         assert!(precompiled.verify_hash());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_precompiled_module_hash() {
         let wasm = create_simple_wasm();
@@ -625,6 +627,7 @@ mod tests {
         assert!(!tampered.verify_hash());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_serialization_deserialization() {
         let wasm = create_simple_wasm();
@@ -654,6 +657,7 @@ mod tests {
         std::fs::remove_file(path).ok();
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_metadata() {
         let wasm = create_simple_wasm();
@@ -676,6 +680,7 @@ mod tests {
         assert_eq!(precompiled.get_metadata("unknown"), None);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_cache_operations() {
         let temp_dir = std::env::temp_dir().join("mielin_aot_test");
@@ -709,6 +714,7 @@ mod tests {
         std::fs::remove_dir_all(temp_dir).ok();
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_cache_stats() {
         let temp_dir = std::env::temp_dir().join("mielin_aot_stats");
@@ -734,6 +740,7 @@ mod tests {
         std::fs::remove_dir_all(temp_dir).ok();
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_platform_verification() {
         let wasm = create_simple_wasm();

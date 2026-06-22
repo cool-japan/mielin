@@ -6,13 +6,13 @@
 use crate::KernelError;
 
 #[cfg(all(not(test), feature = "bootable"))]
-use bootloader::BootInfo;
+use bootloader_api::BootInfo;
 
 /// Initialize boot-time hardware and prepare kernel environment (with bootloader)
 #[cfg(all(not(test), feature = "bootable"))]
 pub fn init(boot_info: &'static BootInfo) -> Result<(), KernelError> {
     // Extract memory map from bootloader
-    let _memory_map = &boot_info.memory_map;
+    let _memory_regions = &boot_info.memory_regions;
 
     // Get physical memory offset for accessing physical memory
     let _phys_mem_offset = boot_info.physical_memory_offset;

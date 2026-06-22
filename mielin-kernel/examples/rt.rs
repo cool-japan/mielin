@@ -8,7 +8,8 @@ use mielin_kernel::scheduler;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Real-Time Scheduling Features Demo ===\n");
 
-    // Initialize the kernel
+    // Initialize the kernel (only available without the bootable feature)
+    #[cfg(not(feature = "bootable"))]
     mielin_kernel::kernel_init()?;
 
     // =========================================================================

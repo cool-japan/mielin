@@ -639,12 +639,14 @@ mod tests {
         .unwrap()
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_module_registry_creation() {
         let registry = ModuleRegistry::new();
         assert!(registry.is_ok());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_module_registration() {
         let mut registry = ModuleRegistry::new().unwrap();
@@ -659,6 +661,7 @@ mod tests {
         assert_eq!(module_info.unwrap().version, "1.0.0");
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_duplicate_registration() {
         let mut registry = ModuleRegistry::new().unwrap();
@@ -676,6 +679,7 @@ mod tests {
             .contains("already registered"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_import_extraction() {
         let mut registry = ModuleRegistry::new().unwrap();
@@ -691,6 +695,7 @@ mod tests {
         assert_eq!(module_info.imports[0].name, "add");
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_export_extraction() {
         let mut registry = ModuleRegistry::new().unwrap();
@@ -706,6 +711,7 @@ mod tests {
         assert_eq!(module_info.exports[0].export_type, ExportType::Function);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_dependency_detection() {
         let mut registry = ModuleRegistry::new().unwrap();
@@ -720,6 +726,7 @@ mod tests {
         assert_eq!(module_info.dependencies[0], "math");
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_shared_memory_creation() {
         let mut registry = ModuleRegistry::new().unwrap();
@@ -731,6 +738,7 @@ mod tests {
         assert!(registry.shared_memories.contains_key(&mem_id));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_circular_dependency_detection() {
         let mut registry = ModuleRegistry::new().unwrap();
@@ -754,6 +762,7 @@ mod tests {
             .contains("Circular dependency"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_module_linking() {
         let mut registry = ModuleRegistry::new().unwrap();
@@ -771,6 +780,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_registry_stats() {
         let mut registry = ModuleRegistry::new().unwrap();
@@ -785,6 +795,7 @@ mod tests {
         assert_eq!(stats.active_instances, 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_list_modules() {
         let mut registry = ModuleRegistry::new().unwrap();
@@ -801,6 +812,7 @@ mod tests {
         assert_eq!(modules.len(), 2);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_module_state_transitions() {
         let mut registry = ModuleRegistry::new().unwrap();

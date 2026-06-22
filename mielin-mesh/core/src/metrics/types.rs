@@ -1024,7 +1024,7 @@ impl Histogram {
     pub fn stats(&self) -> HistogramStats {
         let count = self.count.load(Ordering::Relaxed);
         let sum = self.sum.load(Ordering::Relaxed);
-        let mean = if count > 0 { sum / count } else { 0 };
+        let mean = sum.checked_div(count).unwrap_or(0);
         let bucket_counts: Vec<_> = self
             .counts
             .iter()

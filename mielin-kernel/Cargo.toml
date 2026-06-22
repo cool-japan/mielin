@@ -16,10 +16,11 @@ bitflags.workspace = true
 
 # Bootloader support (optional - requires nightly Rust)
 bootloader = { workspace = true, optional = true }
+bootloader_api = { workspace = true, optional = true }
 
 [features]
 default = []
-bootable = ["bootloader"]
+bootable = ["bootloader", "dep:bootloader_api"]
 std = []  # Enable std for testing and benchmarking
 bpf-maps = []  # Enable BPF map helpers (MapLookup, MapUpdate, MapAdd)
 

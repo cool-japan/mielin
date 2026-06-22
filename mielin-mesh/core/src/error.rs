@@ -44,8 +44,8 @@ pub enum MeshNetworkError {
     #[error("Too many connection attempts: {count} attempts to {addr}")]
     TooManyRetries { count: usize, addr: SocketAddr },
 
-    #[error("Circuit breaker open for {addr}")]
-    CircuitBreakerOpen { addr: SocketAddr },
+    #[error("Circuit breaker open{}", .addr.map(|a| format!(" for {a}")).unwrap_or_default())]
+    CircuitBreakerOpen { addr: Option<SocketAddr> },
 
     #[error("Protocol error: {message}")]
     ProtocolError { message: String },
@@ -397,11 +397,7 @@ impl RetryExecutor {
             // Check circuit breaker
             if let Some(cb) = &self.circuit_breaker {
                 if !cb.allow_request().await {
-                    return Err(MeshNetworkError::CircuitBreakerOpen {
-                        addr: "0.0.0.0:0"
-                            .parse()
-                            .expect("static placeholder addr must parse"), // Placeholder
-                    });
+                    return Err(MeshNetworkError::CircuitBreakerOpen { addr: None });
                 }
             }
 
@@ -656,5 +652,19 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(*attempts.lock().await, 3);
+    }
+
+    #[test]
+    fn test_circuit_breaker_open_display() {
+        let with_addr = MeshNetworkError::CircuitBreakerOpen {
+            addr: Some("127.0.0.1:9000".parse().unwrap()),
+        };
+        assert_eq!(
+            with_addr.to_string(),
+            "Circuit breaker open for 127.0.0.1:9000"
+        );
+
+        let without_addr = MeshNetworkError::CircuitBreakerOpen { addr: None };
+        assert_eq!(without_addr.to_string(), "Circuit breaker open");
     }
 }

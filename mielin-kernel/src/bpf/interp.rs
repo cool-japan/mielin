@@ -219,20 +219,8 @@ impl Vm {
                         AluOp::Add => lhs.wrapping_add(rhs),
                         AluOp::Sub => lhs.wrapping_sub(rhs),
                         AluOp::Mul => lhs.wrapping_mul(rhs),
-                        AluOp::Div => {
-                            if rhs == 0 {
-                                0
-                            } else {
-                                lhs / rhs
-                            }
-                        }
-                        AluOp::Mod => {
-                            if rhs == 0 {
-                                0
-                            } else {
-                                lhs % rhs
-                            }
-                        }
+                        AluOp::Div => lhs.checked_div(rhs).unwrap_or(0),
+                        AluOp::Mod => lhs.checked_rem(rhs).unwrap_or(0),
                         AluOp::And => lhs & rhs,
                         AluOp::Or => lhs | rhs,
                         AluOp::Xor => lhs ^ rhs,

@@ -14,6 +14,7 @@ use mielin_wasm::component::{
 use std::sync::Arc;
 use wasmtime::{component::Linker, Engine};
 
+#[cfg_attr(miri, ignore)]
 #[test]
 fn test_component_creation_and_validation() {
     // Create a simple component
@@ -61,6 +62,7 @@ fn test_component_creation_and_validation() {
     assert!(component.validate().is_ok());
 }
 
+#[cfg_attr(miri, ignore)]
 #[test]
 fn test_component_validation_empty_interface() {
     let engine = Engine::default();
@@ -184,6 +186,7 @@ fn test_component_resource_management() {
     assert_eq!(resource.methods[2].name, "close");
 }
 
+#[cfg_attr(miri, ignore)]
 #[test]
 fn test_component_linker_dependency_resolution() {
     let mut linker = ComponentLinker::new();
@@ -340,6 +343,7 @@ fn test_component_interface_compatibility_checking() {
     assert!(!iface1.is_compatible_with(&iface3));
 }
 
+#[cfg_attr(miri, ignore)]
 #[test]
 fn test_component_pre_instantiation() {
     let engine = Engine::default();
@@ -397,6 +401,7 @@ fn test_component_metadata_builder() {
     assert_eq!(metadata.license, Some("Apache-2.0".to_string()));
 }
 
+#[cfg_attr(miri, ignore)]
 #[test]
 fn test_component_import_export_management() {
     let engine = Engine::default();
@@ -504,6 +509,7 @@ fn test_complex_interface_types() {
     assert!(interface.get_function("get_user").is_some());
 }
 
+#[cfg_attr(miri, ignore)]
 #[test]
 fn test_component_linker_multiple_components() {
     let mut linker = ComponentLinker::new();

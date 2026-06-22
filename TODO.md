@@ -181,3 +181,10 @@ For detailed feature descriptions, see individual crate README files and the pro
   - Priority: P2 | Scope: trivial | Hint: serialize bytes + FNV-1a (already in cache.rs:37)
 - [x] `mielin-wasm`: `mielin-wasm/src/memory.rs:345` — MemorySnapshot::compress() prepends 12-byte header then raw data with no actual compression
   - Priority: P2 | Scope: small | Hint: oxiarc-lz4 already in workspace deps; add .workspace=true to mielin-wasm Cargo.toml
+
+## Stubs to implement (added 2026-06-22 by /cooljapan-stub-check)
+
+- [ ] **mielin** `mielin-cli`: `mielin-cli/src/script.rs:363` — `TODO`: `Add your script logic here` (placeholder inside the Rhai script scaffold template emitted by the CLI's `script new`/init command)
+  - **Priority:** P2  **Scope:** trivial  **Cross-project:** none
+  - **Approach:** Low-value — this `// TODO` lives in a *user-facing scaffold template string* (the boilerplate written into a freshly generated `.rhai` script), so it is arguably intentional. Optionally replace it with a tiny worked example (e.g. a sample `print`/return) so generated scripts are runnable as-is; otherwise leave as a deliberate placeholder for the user to fill in.
+  - **Risk:** None — it is template text, not live code. Do not "implement" it as engine logic; any change only affects the generated scaffold's friendliness.

@@ -64,8 +64,8 @@ serde_json = "1.0.149"
 oxicode = { version = "0.2.4", features = ["serde"] }
 
 # Networking
-oxiquic-transport = "0.1.4"
-oxiquic-crypto = "0.1.4"
+oxiquic-transport = "0.2.0"
+oxiquic-crypto = "0.2.0"
 tokio-util = "0.7.18"
 
 # WebAssembly
@@ -89,7 +89,7 @@ uuid = { version = "1.23.0", features = ["v4", "v5", "serde"] }
 postcard = { version = "1", features = ["alloc"] }
 rustls = { version = "0.23.37", default-features = false, features = ["std"] }
 rcgen = { version = "0.14.7", default-features = false, features = ["pem"] }
-oxitls-rcgen = "0.1.3"
+oxitls-rcgen = "0.2.0"
 
 # Error handling
 anyhow = "1.0.102"
@@ -104,6 +104,8 @@ rstest = "0.26.1"
 criterion = { version = "0.8.2", features = ["html_reports"] }
 proptest = "1.11.0"
 serial_test = "3.4.0"
+assert_cmd = "2.2"
+predicates = "3.1.4"
 
 # Utilities
 bitflags = "2.11.0"
@@ -115,10 +117,20 @@ libm = "0.2"
 hex = "0.4"
 futures = "0.3"
 
+# DHT and discovery
+lru = "0.16.4"
+mdns-sd = "0.18.2"
+
 # Low-level / embedded
 spin = "0.10.0"
 lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
 bootloader = "0.11.14"
+bootloader_api = "0.11.14"
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.5"
+embedded-hal = "1.0.0"
+heapless = "0.9.3"
+panic-halt = "1.0.0"
 
 # Parallelism (optional)
 rayon = "1.11"

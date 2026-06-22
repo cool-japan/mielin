@@ -1206,6 +1206,7 @@ mod tests {
         assert_eq!(stats.entries, 0);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_cached_executor_precompile() {
         let executor = CachedExecutor::new().expect("Failed to create executor");
@@ -1285,6 +1286,7 @@ mod tests {
         assert_eq!(key1, key3);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_cached_executor_lru_eviction() {
         let config = CacheConfig {

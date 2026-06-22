@@ -306,7 +306,7 @@ pub struct FsConfig {
 impl Default for FsConfig {
     fn default() -> Self {
         Self {
-            root: PathBuf::from("/tmp/mielin-sandbox"),
+            root: std::env::temp_dir().join("mielin-sandbox"),
             max_open_files: 64,
             max_path_length: 4096,
             permissions: FsPermissions::default(),
@@ -769,6 +769,7 @@ mod tests {
         assert!(!flags.has_append());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_file_create_and_write() {
         let (mut fs, _temp) = create_test_fs();
@@ -795,6 +796,7 @@ mod tests {
         fs.close(fd).unwrap();
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_file_stat() {
         let (mut fs, _temp) = create_test_fs();
@@ -841,6 +843,7 @@ mod tests {
         assert_eq!(entries[0].name, "file.txt");
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_file_seek() {
         let (mut fs, _temp) = create_test_fs();
@@ -899,6 +902,7 @@ mod tests {
         assert_eq!(result.unwrap_err(), FsError::PermissionDenied);
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_file_too_large() {
         let temp = TempDir::new().unwrap();

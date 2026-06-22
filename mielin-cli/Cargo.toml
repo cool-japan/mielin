@@ -47,8 +47,8 @@ mielin-hal.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true
-assert_cmd = "2.2"
-predicates = "3.1.4"
+assert_cmd.workspace = true
+predicates.workspace = true
 criterion.workspace = true
 
 [[bench]]

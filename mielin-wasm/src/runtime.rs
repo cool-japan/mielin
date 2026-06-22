@@ -460,16 +460,20 @@ impl Module for WasmtimeModule {
     }
 }
 
-// ─── Wasmer engine stub ──────────────────────────────────────────────────────
+// ─── Wasmer engine compatibility alias ───────────────────────────────────────
 //
-// When the `wasmer-engine` feature is enabled the compiler requires these
-// types to be present.  A future contributor who adds the `wasmer` crate as
-// a dependency should replace the bodies of `WasmerRuntime::compile` and
-// `WasmerRuntime::validate` with real calls to the Wasmer API.
+// WasmerRuntime is a wasmtime-backed compatibility alias.  The `wasmer-engine`
+// feature reserves this slot for future integration when a pure-Rust Wasmer
+// backend is available and the Runtime trait gains an execution surface
+// (instantiate/call).
 
+/// Wasmer-engine compatibility alias backed by Wasmtime (pure-Rust).
+/// The `wasmer-engine` feature reserves this slot for future integration
+/// when a pure-Rust Wasmer backend is available and the Runtime trait
+/// gains an execution surface.
 #[cfg(feature = "wasmer-engine")]
 struct WasmerRuntime {
-    /// Retained for when the real Wasmer crate is wired up (see stub comment above).
+    /// Retained for when a pure-Rust Wasmer backend is wired up.
     #[allow(dead_code)]
     config: RuntimeConfig,
     /// Serialised copy of the WASM bytes from the last compile call.
@@ -502,12 +506,11 @@ impl Runtime for WasmerRuntime {
     }
 
     fn compile(&self, wasm_bytes: &[u8]) -> Result<Arc<dyn Module>> {
-        // Validate the module and store a copy so callers can at least
-        // inspect it; replace with a real Wasmer store/module when the
-        // `wasmer` crate is added as a dependency.
+        // Delegate validation to the pure-Rust Wasmtime backend and store a
+        // copy of the bytes so callers can inspect or re-validate the module.
         wasmtime::Engine::new(&wasmtime::Config::new())
             .and_then(|e| wasmtime::Module::validate(&e, wasm_bytes).map(|_| e))
-            .map_err(|e| anyhow!("Wasmer (stub) validation failed: {}", e))?;
+            .map_err(|e| anyhow!("Wasmer engine validation error: {}", e))?;
         let mut guard = self.last_wasm.lock().unwrap_or_else(|p| p.into_inner());
         *guard = Some(wasm_bytes.to_vec());
         Ok(Arc::new(WasmerModule {
@@ -518,7 +521,7 @@ impl Runtime for WasmerRuntime {
     fn validate(&self, wasm_bytes: &[u8]) -> Result<()> {
         wasmtime::Engine::new(&wasmtime::Config::new())
             .and_then(|e| wasmtime::Module::validate(&e, wasm_bytes))
-            .map_err(|e| anyhow!("Wasmer (stub) validation failed: {}", e))
+            .map_err(|e| anyhow!("Wasmer engine validation error: {}", e))
     }
 }
 
@@ -548,15 +551,18 @@ impl Module for WasmerModule {
     }
 }
 
-// ─── WASM3 interpreter stub ──────────────────────────────────────────────────
+// ─── WASM3 interpreter compatibility alias ────────────────────────────────────
 //
-// WASM3 is a lightweight interpreter with no JIT, suitable for deeply embedded
-// targets.  Wire up the real `wasm3` crate here when it is added as a
-// dependency behind the `wasm3-engine` feature flag.
+// Wasm3Runtime is a wasmtime-backed compatibility alias.  Real WASM3 support
+// is blocked on a pure-Rust interpreter; the upstream wasm3 C library
+// conflicts with the workspace Pure Rust Policy.
 
+/// Wasm3-engine compatibility alias backed by Wasmtime (pure-Rust).
+/// Real WASM3 support is blocked on a pure-Rust interpreter; the upstream
+/// wasm3 C library conflicts with the workspace Pure Rust Policy.
 #[cfg(feature = "wasm3-engine")]
 struct Wasm3Runtime {
-    /// Retained for when the real wasm3 crate is wired up (see stub comment above).
+    /// Retained for when a pure-Rust wasm3 interpreter is wired up.
     #[allow(dead_code)]
     config: RuntimeConfig,
 }
@@ -590,12 +596,12 @@ impl Runtime for Wasm3Runtime {
     }
 
     fn compile(&self, wasm_bytes: &[u8]) -> Result<Arc<dyn Module>> {
-        // Validate via wasmtime as a proxy until the `wasm3` crate is added.
+        // Delegate to the pure-Rust Wasmtime backend as a compatibility alias.
         let cfg = wasmtime::Config::new();
         let engine =
-            wasmtime::Engine::new(&cfg).map_err(|e| anyhow!("WASM3 (stub) init: {}", e))?;
+            wasmtime::Engine::new(&cfg).map_err(|e| anyhow!("Wasm3 engine init error: {}", e))?;
         wasmtime::Module::validate(&engine, wasm_bytes)
-            .map_err(|e| anyhow!("WASM3 (stub) validation: {}", e))?;
+            .map_err(|e| anyhow!("Wasm3 engine validation error: {}", e))?;
         Ok(Arc::new(Wasm3Module {
             data: wasm_bytes.to_vec(),
         }))
@@ -604,9 +610,9 @@ impl Runtime for Wasm3Runtime {
     fn validate(&self, wasm_bytes: &[u8]) -> Result<()> {
         let cfg = wasmtime::Config::new();
         let engine =
-            wasmtime::Engine::new(&cfg).map_err(|e| anyhow!("WASM3 (stub) init: {}", e))?;
+            wasmtime::Engine::new(&cfg).map_err(|e| anyhow!("Wasm3 engine init error: {}", e))?;
         wasmtime::Module::validate(&engine, wasm_bytes)
-            .map_err(|e| anyhow!("WASM3 (stub) validation: {}", e))
+            .map_err(|e| anyhow!("Wasm3 engine validation error: {}", e))
     }
 }
 

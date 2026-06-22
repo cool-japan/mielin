@@ -18,14 +18,14 @@ mielin-kernel.workspace = true
 mielin-hal.workspace = true
 
 # Embedded-specific dependencies
-cortex-m = "0.7.7"
-cortex-m-rt = "0.7.5"
-embedded-hal = "1.0.0"
-heapless = "0.9.3"
+cortex-m.workspace = true
+cortex-m-rt.workspace = true
+embedded-hal.workspace = true
+heapless.workspace = true
 libm.workspace = true
 
 [dev-dependencies]
-panic-halt = "1.0.0"
+panic-halt.workspace = true
 
 [features]
 # Platform-specific GPIO implementations

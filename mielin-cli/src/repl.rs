@@ -230,20 +230,32 @@ impl Repl {
 
     /// Execute a command
     async fn execute_command(&self, line: &str) -> Result<()> {
-        // Parse the command line and execute it
-        // This is a simplified version - in a real implementation,
-        // you would parse the command and execute it properly
-
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.is_empty() {
-            return Ok(());
+        use clap::Parser;
+        let args = std::iter::once("mielinctl").chain(line.split_whitespace());
+        let cli = match crate::cli::Cli::try_parse_from(args) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("{e}");
+                return Ok(());
+            }
+        };
+        match &cli.command {
+            crate::cli::Commands::Interactive => {
+                println!("'interactive' is not available within an interactive session");
+                return Ok(());
+            }
+            crate::cli::Commands::Completion { .. } => {
+                println!("'completion' is not available in REPL mode");
+                return Ok(());
+            }
+            crate::cli::Commands::Daemon { .. } => {
+                println!("'daemon' is not available in REPL mode");
+                return Ok(());
+            }
+            _ => {}
         }
-
-        // For now, just print a message indicating the command would be executed
-        println!("Would execute: {}", line);
-        println!("(Command execution in REPL mode is a stub - full integration pending)");
-
-        Ok(())
+        let format = cli.output;
+        crate::cli::dispatch(cli.command, format).await
     }
 
     /// Show help message
@@ -281,8 +293,39 @@ impl Repl {
     }
 }
 
-impl Default for Repl {
-    fn default() -> Self {
-        Self::new().expect("Failed to create REPL")
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_repl() -> Repl {
+        Repl::new().expect("failed to create test repl")
+    }
+
+    #[tokio::test]
+    async fn test_repl_unknown_command_returns_ok() {
+        let repl = make_repl();
+        let result = repl.execute_command("not-a-command").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_repl_interactive_guard() {
+        let repl = make_repl();
+        let result = repl.execute_command("interactive").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_repl_completion_guard() {
+        let repl = make_repl();
+        let result = repl.execute_command("completion bash").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_repl_version_returns_ok() {
+        let repl = make_repl();
+        let result = repl.execute_command("version").await;
+        assert!(result.is_ok());
     }
 }

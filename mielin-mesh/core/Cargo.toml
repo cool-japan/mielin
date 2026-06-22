@@ -22,10 +22,10 @@ thiserror.workspace = true
 tracing.workspace = true
 
 # DHT and routing
-lru = "0.16.4"
+lru.workspace = true
 
 # Node discovery
-mdns-sd = "0.18.2"
+mdns-sd.workspace = true
 
 # Distributed tracing
 hex.workspace = true

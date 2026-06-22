@@ -57,7 +57,7 @@ impl Default for SandboxConfig {
             allowed_capabilities: HashSet::new(),
             blocked_syscalls: HashSet::new(),
             readonly_paths: vec!["/etc".to_string(), "/usr".to_string()],
-            writable_paths: vec!["/tmp".to_string()],
+            writable_paths: vec![std::env::temp_dir().to_string_lossy().into_owned()],
             network_restrictions: NetworkRestrictions::default(),
             strict_mode: true,
         }
@@ -103,7 +103,7 @@ impl SandboxConfig {
             blocked_syscalls: HashSet::new(),
             readonly_paths: Vec::new(),
             writable_paths: vec![
-                "/tmp".to_string(),
+                std::env::temp_dir().to_string_lossy().into_owned(),
                 "/var/tmp".to_string(),
                 "/home".to_string(),
             ],
@@ -485,9 +485,13 @@ mod tests {
     fn test_sandbox_config_path_access() {
         let config = SandboxConfig::default();
 
+        let tmp_test = std::env::temp_dir()
+            .join("test")
+            .to_string_lossy()
+            .into_owned();
         assert!(config.is_path_readable("/etc/config"));
         assert!(!config.is_path_writable("/etc/config"));
-        assert!(config.is_path_writable("/tmp/test"));
+        assert!(config.is_path_writable(&tmp_test));
     }
 
     #[test]
@@ -582,7 +586,11 @@ mod tests {
         let config = SandboxConfig::default();
         let mut executor = SandboxExecutor::new(config);
 
-        assert!(executor.check_file_access("/tmp/test", true).is_ok());
+        let tmp_test = std::env::temp_dir()
+            .join("test")
+            .to_string_lossy()
+            .into_owned();
+        assert!(executor.check_file_access(&tmp_test, true).is_ok());
         assert!(executor.check_file_access("/etc/passwd", false).is_ok());
         assert!(executor.check_file_access("/etc/passwd", true).is_err());
     }

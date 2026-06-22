@@ -551,7 +551,10 @@ mod tests {
             author: "Test Author".to_string(),
             required_version: "0.1.0".to_string(),
             tags: vec!["test".to_string(), "demo".to_string()],
-            path: "/tmp/test.rhai".to_string(),
+            path: std::env::temp_dir()
+                .join("test.rhai")
+                .to_string_lossy()
+                .into_owned(),
             lines: 42,
         };
 

@@ -53,6 +53,7 @@ mod tests {
         assert!(err.to_string().contains("Invalid module"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_tensor_host_functions() {
         // Create executor with tensor support
@@ -106,6 +107,7 @@ mod tests {
         assert!(store.data().tensor_runtime().supports_neon());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_tensor_operations_integration() {
         // Create a WASM module that performs tensor operations
@@ -175,6 +177,7 @@ mod tests {
         assert!(tensors.is_empty());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_time_host_functions() {
         // Create a WASM module that uses time functions
@@ -232,6 +235,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_random_host_functions() {
         // Create a WASM module that uses random functions
@@ -310,6 +314,7 @@ mod tests {
         assert!((0.0..1.0).contains(&f), "random_f32 should be in [0, 1)");
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_process_host_functions() {
         // Create a WASM module that queries process info

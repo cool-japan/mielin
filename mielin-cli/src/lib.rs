@@ -3,6 +3,7 @@
 //! Control and management library for MielinOS.
 
 pub mod audit;
+pub mod cli;
 pub mod commands;
 pub mod config;
 pub mod config_validator;

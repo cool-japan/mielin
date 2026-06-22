@@ -36,16 +36,18 @@ pub mod vmm;
 pub mod work_stealing;
 pub use work_stealing::WorkStealingScheduler;
 
+#[cfg(all(not(test), feature = "bootable", target_arch = "x86_64"))]
+use bootloader_api::entry_point;
 #[cfg(all(not(test), feature = "bootable"))]
-use bootloader::{entry_point, BootInfo};
+use bootloader_api::BootInfo;
 #[cfg(not(any(test, feature = "std")))]
 use core::panic::PanicInfo;
 
-#[cfg(all(not(test), feature = "bootable"))]
+#[cfg(all(not(test), feature = "bootable", target_arch = "x86_64"))]
 entry_point!(kernel_main);
 
 /// Kernel entry point called by the bootloader
-#[cfg(all(not(test), feature = "bootable"))]
+#[cfg(all(not(test), feature = "bootable", target_arch = "x86_64"))]
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // Initialize the kernel
     match kernel_init(boot_info) {
@@ -85,7 +87,7 @@ fn panic(info: &PanicInfo) -> ! {
 
 /// Kernel initialization entry point (with bootloader)
 #[cfg(all(not(test), feature = "bootable"))]
-pub fn kernel_init(boot_info: &'static bootloader::BootInfo) -> Result<(), KernelError> {
+pub fn kernel_init(boot_info: &'static bootloader_api::BootInfo) -> Result<(), KernelError> {
     // Boot sequence initialization
     boot::init(boot_info)?;
 

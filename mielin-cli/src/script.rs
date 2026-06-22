@@ -500,7 +500,7 @@ fn main() {
         let context = ScriptContext {
             args,
             env,
-            working_dir: "/tmp".to_string(),
+            working_dir: std::env::temp_dir().to_string_lossy().into_owned(),
             cli_version: "0.1.0".to_string(),
         };
 

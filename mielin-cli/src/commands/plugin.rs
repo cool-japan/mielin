@@ -500,12 +500,16 @@ mod tests {
 
     #[test]
     fn test_plugin_directory_info() {
+        let tmp_plugins = std::env::temp_dir()
+            .join("plugins")
+            .to_string_lossy()
+            .into_owned();
         let info = PluginDirectoryInfo {
-            path: "/tmp/plugins".to_string(),
+            path: tmp_plugins.clone(),
             exists: false,
         };
 
         let quiet = info.to_quiet();
-        assert_eq!(quiet, "/tmp/plugins");
+        assert_eq!(quiet, tmp_plugins);
     }
 }

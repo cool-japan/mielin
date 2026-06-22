@@ -80,9 +80,9 @@ enum MonitorSubcommand {
         #[arg(short = 'l', long, default_value = "50")]
         limit: usize,
 
-        /// Output to file
-        #[arg(short = 'o', long)]
-        output: Option<PathBuf>,
+        /// Write events to file
+        #[arg(short = 'w', long = "write-to")]
+        write_to: Option<PathBuf>,
     },
 
     /// Show system metrics dashboard
@@ -92,9 +92,9 @@ enum MonitorSubcommand {
         #[arg(short = 'i', long, default_value = "5")]
         interval: u64,
 
-        /// Output format
-        #[arg(short = 'o', long, value_enum)]
-        output: Option<OutputFormat>,
+        /// Override output format for this subcommand
+        #[arg(short = 'F', long = "format", value_enum)]
+        format_override: Option<OutputFormat>,
     },
 }
 
@@ -128,7 +128,7 @@ impl MonitorCommand {
                 node,
                 follow,
                 limit,
-                output,
+                write_to,
             } => {
                 events_command(
                     event_type.as_deref(),
@@ -136,13 +136,16 @@ impl MonitorCommand {
                     node.as_deref(),
                     *follow,
                     *limit,
-                    output.as_ref(),
+                    write_to.as_ref(),
                     output_format,
                 )
                 .await
             }
-            MonitorSubcommand::Dashboard { interval, output } => {
-                let format = output.unwrap_or(output_format);
+            MonitorSubcommand::Dashboard {
+                interval,
+                format_override,
+            } => {
+                let format = format_override.unwrap_or(output_format);
                 dashboard_command(*interval, format).await
             }
         }

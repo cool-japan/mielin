@@ -415,7 +415,7 @@ impl TimeoutManager {
                 Err(MeshNetworkError::Timeout { addr, timeout })
             }
             Err(TimeoutError::CircuitBreakerOpen { .. }) => {
-                Err(MeshNetworkError::CircuitBreakerOpen { addr })
+                Err(MeshNetworkError::CircuitBreakerOpen { addr: Some(addr) })
             }
             Err(e) => Err(MeshNetworkError::ProtocolError {
                 message: e.to_string(),
