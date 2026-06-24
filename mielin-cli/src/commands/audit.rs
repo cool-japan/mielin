@@ -241,7 +241,7 @@ async fn query_command(
     }
 
     // Sort by timestamp (newest first)
-    entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    entries.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
 
     // Limit
     entries.truncate(limit);

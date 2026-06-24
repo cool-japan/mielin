@@ -405,7 +405,7 @@ fn bench_hashmap_baseline(c: &mut Criterion) {
                 }
 
                 // Lookup all keys
-                for (key, _) in map.iter() {
+                for key in map.keys() {
                     let _ = map.get(key);
                 }
 

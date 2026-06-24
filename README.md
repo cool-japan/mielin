@@ -4,7 +4,7 @@
 
 MielinOS is a next-generation operating system designed from the ground up for distributed AI agents with neural mesh networking capabilities. Named after the myelin sheath that enables rapid signal transmission in biological neural networks, MielinOS provides the infrastructure for agents to migrate, communicate, and execute across heterogeneous hardware platforms.
 
-**Current Status:** v0.1.0 "Oligodendrocyte" (Released 2026-06-21)
+**Current Status:** v0.1.0 "Oligodendrocyte" (Released 2026-06-23)
 
 ## Overview
 
@@ -196,7 +196,7 @@ fn main() {
 
 ### Prerequisites
 
-- Rust 1.75+ (stable)
+- Rust nightly (1.98.0-nightly, per `rust-toolchain.toml`)
 - For kernel development: `rustup target add x86_64-unknown-none`
 - For WASM agents: `rustup target add wasm32-wasip1`
 
@@ -228,14 +228,14 @@ cargo bench -p benches
 
 ## Roadmap
 
-### Phase 1: "Ranvier" (v0.1.x) - Foundation ✅
+### Phase 1: "Oligodendrocyte" (v0.1.x) - Foundation ✅
 - ✅ Microkernel with capability-based IPC
 - ✅ Hardware abstraction layer
 - ✅ Basic mesh networking (DHT, QUIC)
 - ✅ WebAssembly agent runtime
 - ✅ Tensor operations with SIMD
 
-### Phase 2: "Oligodendrocyte" (v0.2.x) - Q1-Q2 2026
+### Phase 2: "Ranvier" (v0.2.x) - Q3-Q4 2026
 - [ ] Live agent migration
 - [ ] Multi-region deployment
 - [ ] GPU/NPU acceleration

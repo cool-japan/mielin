@@ -5,12 +5,12 @@
 //! compiled only when the `preview2` crate feature is enabled (gated in
 //! `lib.rs` via `#[cfg(feature = "preview2")]`).
 //!
-//! # API surface used from `wasmtime-wasi` 43.x
+//! # API surface used from `wasmtime-wasi` 46.x
 //!
 //! | Symbol | Source |
 //! |--------|--------|
 //! | `WasiView` | `wasmtime_wasi::WasiView` (top-level re-export) |
-//! | `WasiCtxView<'_>` | `wasmtime_wasi::WasiCtxView` |
+//! | `WasiCtxView` | `wasmtime_wasi::WasiCtxView` — returned by `WasiView::ctx` |
 //! | `WasiCtx` | `wasmtime_wasi::WasiCtx` |
 //! | `WasiCtxBuilder` | `wasmtime_wasi::WasiCtxBuilder` |
 //! | `ResourceTable` | `wasmtime::component::ResourceTable` (re-exported) |

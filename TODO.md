@@ -1,4 +1,4 @@
-# MielinOS TODO — v0.1.0 (2026-06-21)
+# MielinOS TODO — v0.1.0 (2026-06-23)
 
 ## Pending Tasks
 
@@ -159,7 +159,7 @@ For detailed feature descriptions, see individual crate README files and the pro
 - [ ] Transitive `ring` removal: `ring 0.17.14` survives as a transitive dep via `rustls-webpki`. Blocked on upstream rustls/webpki adopting a pure-Rust CryptoProvider. Track and re-visit when rustls 0.24+ ships a ring-free path.
 - [ ] `hal-ci-all-architectures` (mielin-hal/TODO.md): COOLJAPAN policy forbids creating `.github/workflows/*.yml` (except pypi/npm). Rework as a local QEMU/cross-emulation `Makefile` target instead, or defer until policy allows.
 
-## Last updated: 2026-06-21
+## Last updated: 2026-06-23
 
 ## Stubs to implement (round 2, added 2026-06-14 by /ultra)
 

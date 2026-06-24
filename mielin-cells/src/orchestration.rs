@@ -402,7 +402,7 @@ impl Scheduler {
                 PlacementConstraint::PodAffinity(_label) => {
                     // Find nodes that have agents with this label
                     let mut affinity_nodes = HashSet::new();
-                    for (_agent_id, node_id) in agent_placements.iter() {
+                    for node_id in agent_placements.values() {
                         // This would need access to agent labels
                         // Simplified for now
                         affinity_nodes.insert(node_id.clone());

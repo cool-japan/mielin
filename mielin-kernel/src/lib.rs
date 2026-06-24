@@ -38,7 +38,7 @@ pub use work_stealing::WorkStealingScheduler;
 
 #[cfg(all(not(test), feature = "bootable", target_arch = "x86_64"))]
 use bootloader_api::entry_point;
-#[cfg(all(not(test), feature = "bootable"))]
+#[cfg(all(not(test), feature = "bootable", target_arch = "x86_64"))]
 use bootloader_api::BootInfo;
 #[cfg(not(any(test, feature = "std")))]
 use core::panic::PanicInfo;

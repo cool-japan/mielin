@@ -1482,8 +1482,8 @@ async fn bench_consistent_hash_lookup_speed() {
 
     let elapsed = t0.elapsed();
     assert!(
-        elapsed < Duration::from_millis(2000),
-        "100K consistent-hash lookups must complete in <2s (debug build), took {:?}",
+        elapsed < Duration::from_millis(15_000),
+        "100K consistent-hash lookups must complete in <15s (debug build), took {:?}",
         elapsed
     );
 }

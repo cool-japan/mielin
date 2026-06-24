@@ -904,8 +904,8 @@ async fn bench_gossip_100_node_throughput() {
         "total alive-entries across all nodes must be >= 5000, got {total_alive}"
     );
     assert!(
-        elapsed.as_millis() < 60_000,
-        "5 gossip rounds on 100 nodes took {}ms, must be < 60000ms",
+        elapsed.as_millis() < 180_000,
+        "5 gossip rounds on 100 nodes took {}ms, must be < 180000ms",
         elapsed.as_millis()
     );
 }

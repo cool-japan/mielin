@@ -403,10 +403,11 @@ impl PriorityQueue {
             // Update average queue time
             let queue_time_ns = m.queue_time().as_nanos() as u64;
             self.total_queue_time_ns += queue_time_ns;
-            if self.stats.dequeued > 0 {
-                self.stats.avg_queue_time_ms =
-                    (self.total_queue_time_ns / self.stats.dequeued) / 1_000_000;
-            }
+            self.stats.avg_queue_time_ms = self
+                .total_queue_time_ns
+                .checked_div(self.stats.dequeued)
+                .unwrap_or(0)
+                / 1_000_000;
         }
 
         msg

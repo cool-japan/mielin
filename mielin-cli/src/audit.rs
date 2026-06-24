@@ -291,7 +291,7 @@ impl AuditLogger {
         });
 
         // Sort by timestamp (newest first)
-        entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
 
         // Apply limit
         if let Some(limit_count) = limit {

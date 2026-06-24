@@ -382,7 +382,7 @@ impl TensorPool {
     pub fn clear_cache(&self) {
         unsafe {
             let free_lists = &mut *self.free_lists.get();
-            for (_, blocks) in free_lists.iter_mut() {
+            for blocks in free_lists.values_mut() {
                 for block in blocks.drain(..) {
                     alloc::alloc::dealloc(block.ptr.as_ptr(), block.layout);
                 }

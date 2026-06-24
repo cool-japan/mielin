@@ -389,11 +389,6 @@ impl WasmtimeRuntime {
             wasmtime_config.strategy(wasmtime::Strategy::Cranelift);
         }
 
-        wasmtime_config.wasm_simd(config.enable_simd);
-        wasmtime_config.wasm_threads(config.enable_threads);
-        wasmtime_config.wasm_bulk_memory(config.enable_bulk_memory);
-        wasmtime_config.wasm_reference_types(config.enable_reference_types);
-
         let engine = wasmtime::Engine::new(&wasmtime_config)?;
 
         Ok(Self {

@@ -151,11 +151,11 @@ impl BatteryHealth {
             return HealthStatus::Fault;
         }
         let expected_cycles = self.chemistry.typical_cycle_life();
-        let cycle_health = if expected_cycles > 0 {
-            100u32.saturating_sub((self.cycle_count * 100) / expected_cycles)
-        } else {
-            100
-        };
+        let cycle_health = 100u32.saturating_sub(
+            (self.cycle_count * 100)
+                .checked_div(expected_cycles)
+                .unwrap_or(0),
+        );
         let combined = (self.soh_percent as u32 + cycle_health) / 2;
         match combined {
             80..=100 => HealthStatus::Good,

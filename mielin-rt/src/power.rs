@@ -1107,13 +1107,11 @@ impl AdvancedPowerManager {
                     return Err(PowerError::NoStandbyWakeSource);
                 }
             }
-            PowerMode::Shutdown => {
-                // Verify no critical peripherals are active
-                if self.power_gating.active_count() > 0 {
-                    return Err(PowerError::TransitionBlocked(
-                        "Active peripherals must be shut down first",
-                    ));
-                }
+            // Verify no critical peripherals are active
+            PowerMode::Shutdown if self.power_gating.active_count() > 0 => {
+                return Err(PowerError::TransitionBlocked(
+                    "Active peripherals must be shut down first",
+                ));
             }
             _ => {}
         }

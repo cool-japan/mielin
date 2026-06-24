@@ -344,10 +344,9 @@ impl PowerStatistics {
 
     /// Get average efficiency (energy per time)
     pub const fn average_efficiency(&self) -> u32 {
-        if self.total_time_us == 0 {
-            0
-        } else {
-            (self.total_energy_uj / self.total_time_us) as u32
+        match self.total_energy_uj.checked_div(self.total_time_us) {
+            Some(v) => v as u32,
+            None => 0,
         }
     }
 }

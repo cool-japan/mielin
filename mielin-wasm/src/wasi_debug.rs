@@ -149,7 +149,7 @@ impl WasiTraceEntry {
     pub fn format(&self) -> String {
         let mut parts = vec![
             format!("[{:?}]", self.timestamp.elapsed()),
-            format!("{}", self.syscall.name()),
+            self.syscall.name().to_string(),
         ];
 
         if let Some(fd) = self.fd {
