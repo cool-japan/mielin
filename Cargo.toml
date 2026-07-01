@@ -55,12 +55,12 @@ mielin-tensor = { version = "0.1.0", path = "mielin-tensor" }
 mielin-cli = { version = "0.1.0", path = "mielin-cli" }
 
 # Core async runtime
-tokio = { version = "1.50", features = ["full"] }
+tokio = { version = "1.52", features = ["full"] }
 async-trait = "0.1.89"
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 oxicode = { version = "0.2.4", features = ["serde"] }
 
 # Networking
@@ -69,30 +69,30 @@ oxiquic-crypto = "0.2.0"
 tokio-util = "0.7.18"
 
 # WebAssembly
-wasmtime = "46.0.0"
-wasmtime-wasi = "46.0.0"
-wit-bindgen = "0.54.0"
+wasmtime = "46.0.1"
+wasmtime-wasi = "46.0.1"
+wit-bindgen = "0.58.0"
 
 # Cryptography & Security
 # ring removed — replaced by oxiquic-crypto (pure-Rust QUIC provider) in mesh-wire
 # Pure-Rust OxiCrypto sub-crates (replacing direct `ring` usage; ring remains a
 # transitive dep via rustls/quinn/rcgen — that migration is tracked separately).
-oxicrypto-hash = "0.1.2"
-oxicrypto-rand = "0.1.2"
-oxicrypto-aead = "0.1.2"
-oxicrypto-sig = "0.1.2"
-oxicrypto-kex = "0.1.2"
-oxicrypto-kdf = "0.1.2"
-oxicrypto-core = "0.1.2"
+oxicrypto-hash = "0.2.0"
+oxicrypto-rand = "0.2.0"
+oxicrypto-aead = "0.2.0"
+oxicrypto-sig = "0.2.0"
+oxicrypto-kex = "0.2.0"
+oxicrypto-kdf = "0.2.0"
+oxicrypto-core = "0.2.0"
 ml-kem = "0.3"
-uuid = { version = "1.23.0", features = ["v4", "v5", "serde"] }
+uuid = { version = "1.23.4", features = ["v4", "v5", "serde"] }
 postcard = { version = "1", features = ["alloc"] }
-rustls = { version = "0.23.37", default-features = false, features = ["std"] }
-rcgen = { version = "0.14.7", default-features = false, features = ["pem"] }
+rustls = { version = "0.23.41", default-features = false, features = ["std"] }
+rcgen = { version = "0.14.8", default-features = false, features = ["pem"] }
 oxitls-rcgen = "0.2.0"
 
 # Error handling
-anyhow = "1.0.102"
+anyhow = "1.0.103"
 thiserror = "2.0.18"
 
 # Logging
@@ -103,14 +103,14 @@ tracing-subscriber = "0.3.23"
 rstest = "0.26.1"
 criterion = { version = "0.8.2", features = ["html_reports"] }
 proptest = "1.11.0"
-serial_test = "3.4.0"
+serial_test = "3.5.0"
 assert_cmd = "2.2"
 predicates = "3.1.4"
 
 # Utilities
-bitflags = "2.11.0"
-clap = "4.6.0"
-wat = "1.245.1"
+bitflags = "2.13.0"
+clap = "4.6.1"
+wat = "1.252.0"
 oxiarc-lz4 = "0.3.3"
 oxiarc-zstd = "0.3.3"
 libm = "0.2"
@@ -118,14 +118,14 @@ hex = "0.4"
 futures = "0.3"
 
 # DHT and discovery
-lru = "0.16.4"
-mdns-sd = "0.18.2"
+lru = "0.18.0"
+mdns-sd = "0.20.1"
 
 # Low-level / embedded
-spin = "0.10.0"
+spin = "0.12.1"
 lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
-bootloader = "0.11.14"
-bootloader_api = "0.11.14"
+bootloader = "0.11.15"
+bootloader_api = "0.11.15"
 cortex-m = "0.7.7"
 cortex-m-rt = "0.7.5"
 embedded-hal = "1.0.0"
@@ -133,7 +133,7 @@ heapless = "0.9.3"
 panic-halt = "1.0.0"
 
 # Parallelism (optional)
-rayon = "1.11"
+rayon = "1.12"
 num_cpus = "1.17"
 
 # WebSocket
@@ -143,7 +143,7 @@ tokio-tungstenite = "0.29"
 base64 = "0.22"
 x509-parser = "0.18.1"
 rustls-pemfile = "2.2"
-p256 = { version = "0.14.0-rc.11", default-features = false, features = ["ecdsa", "alloc"] }
+p256 = { version = "0.14.0-rc.15", default-features = false, features = ["ecdsa", "alloc"] }
 
 # WebAssembly parsing
 wasmparser = { version = "0.252", default-features = false, features = ["std"] }
@@ -152,24 +152,24 @@ wasmparser = { version = "0.252", default-features = false, features = ["std"] }
 tempfile = "3.27"
 
 # CLI-specific utilities
-clap_complete = "4.6.0"
+clap_complete = "4.6.7"
 dirs = "6.0.0"
-rustyline = "17.0.2"
-regex = "1.12.3"
-chrono = { version = "0.4.44", features = ["serde"] }
+rustyline = "18.0.1"
+regex = "1.12.4"
+chrono = { version = "0.4.45", features = ["serde"] }
 comfy-table = "7.2.2"
-tabled = "0.20.0"
+tabled = "0.21.0"
 
 # Serialization formats
 serde_yaml = "0.9.34"
-toml = "1.1.0"
+toml = "1.1.2"
 
 # Random number generation
 rand = "0.10"
 rand_core = "0.10"
 
 # Scripting
-rhai = "1.24.0"
+rhai = "1.25.1"
 
 # HTTP client for remote operations (reqwest removed — replaced by oxihttp-client)
 oxihttp-client = { version = "0.2.0", features = ["tls"] }
@@ -177,7 +177,7 @@ oxihttp-client = { version = "0.2.0", features = ["tls"] }
 # HTTP server for control plane
 axum = "0.8.9"
 tower = "0.5.3"
-tower-http = { version = "0.6.8", features = ["trace", "cors"] }
+tower-http = { version = "0.7.0", features = ["trace", "cors"] }
 
 [profile.release]
 opt-level = "z"
