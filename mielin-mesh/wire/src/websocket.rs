@@ -10,8 +10,8 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tokio_tungstenite::{
-    accept_async, client_async, tungstenite::protocol::Message as WsMessage, MaybeTlsStream,
-    WebSocketStream,
+    accept_async, client_async, tungstenite::http::Uri,
+    tungstenite::protocol::Message as WsMessage, MaybeTlsStream, WebSocketStream,
 };
 
 /// Maximum message size (16MB, same as QUIC)
@@ -98,10 +98,24 @@ impl WebSocketTransport {
             }
         }
 
-        // Parse URL to get host and port
-        let tcp_stream = TcpStream::connect("localhost:8080")
-            .await
-            .map_err(|e| WireError::ConnectionFailed(format!("Failed to connect: {}", e)))?;
+        // Parse the URL to get the actual host and port to dial. The WebSocket
+        // handshake below (`client_async`) only speaks the WS protocol over an
+        // already-open TCP stream, so the stream *must* be opened against the
+        // host/port encoded in `url`, not a fixed address.
+        let uri: Uri = url.parse().map_err(|e| {
+            WireError::ConnectionFailed(format!("Invalid WebSocket URL '{}': {}", url, e))
+        })?;
+        let host = uri.host().ok_or_else(|| {
+            WireError::ConnectionFailed(format!("WebSocket URL '{}' is missing a host", url))
+        })?;
+        let port = uri.port_u16().unwrap_or(match uri.scheme_str() {
+            Some("wss") => 443,
+            _ => 80,
+        });
+
+        let tcp_stream = TcpStream::connect((host, port)).await.map_err(|e| {
+            WireError::ConnectionFailed(format!("Failed to connect to {}:{}: {}", host, port, e))
+        })?;
 
         let maybe_tls_stream = MaybeTlsStream::Plain(tcp_stream);
 
@@ -463,6 +477,49 @@ mod tests {
         };
         assert!(!error_response.accepted);
         assert!(error_response.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_connect_honors_target_host_and_port() {
+        // Regression test: `connect()` must dial the host/port encoded in the
+        // supplied URL rather than a hardcoded address. We bind the server on
+        // an OS-assigned ephemeral port (almost certainly not 8080) and drive
+        // a full round trip through it; this would fail (or hang against a
+        // dead/foreign socket) if `connect()` ignored the URL and always
+        // dialed a fixed `localhost:8080`.
+        let server_config = WebSocketConfig::development();
+        let server = WebSocketTransport::new("127.0.0.1:0".parse().unwrap(), server_config)
+            .await
+            .expect("server transport should bind");
+        let server_addr = server.local_addr().expect("server should have local addr");
+        assert_ne!(
+            server_addr.port(),
+            8080,
+            "test requires a non-8080 ephemeral port to prove the target is honored"
+        );
+
+        let accept_task = tokio::spawn(async move {
+            let conn = server.accept().await.expect("server should accept");
+            let msg = conn.receive().await.expect("server should receive");
+            match msg {
+                Message::Ping { timestamp } => timestamp,
+                other => panic!("unexpected message: {:?}", other),
+            }
+        });
+
+        let client = WebSocketTransport::new_client(WebSocketConfig::development());
+        let url = WebSocketUrlBuilder::new("127.0.0.1", server_addr.port()).build();
+        let conn = client
+            .connect(&url)
+            .await
+            .expect("client should connect to the exact host/port from the URL");
+
+        conn.send(&Message::Ping { timestamp: 42 })
+            .await
+            .expect("client should send");
+
+        let received_timestamp = accept_task.await.expect("server task should not panic");
+        assert_eq!(received_timestamp, 42);
     }
 
     #[tokio::test]

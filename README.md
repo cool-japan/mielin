@@ -36,15 +36,21 @@ fn main() {
     let arch = detect_architecture();
     println!("Running on: {:?}", arch);
 
-    // Create an agent
-    let agent_id = AgentId::new();
-    println!("Agent ID: {}", agent_id);
+    // Create an agent from its WASM binary ("DNA")
+    let wasm_binary = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+    let agent = Agent::new(wasm_binary);
+    println!("Agent ID: {}", agent.id());
+    println!("Agent state: {:?}", agent.state());
 
-    // Access tensor operations
-    let tensor = Tensor::zeros(&[2, 3]);
+    // Access tensor operations (Tensor::zeros takes a Vec<usize> shape)
+    let tensor = Tensor::zeros(vec![2, 3]);
     println!("Tensor shape: {:?}", tensor.shape());
 }
 ```
+
+(Compile-verified against `mielin` 0.1.0; see [`docs/TUTORIALS.md`](./docs/TUTORIALS.md) for a
+full, runnable walkthrough — `cargo run -p hello-agent` runs the equivalent agent-creation example
+directly.)
 
 ## Crate Organization
 
@@ -137,60 +143,88 @@ MielinOS uses a layered architecture inspired by biological neural networks:
 
 ### Running a Mesh Cluster
 
-```bash
-# Start a mesh node
-cargo run -p mielin-cli -- mesh start --bind 0.0.0.0:9000
+`mielin-cli` builds a binary named `mielinctl`. There is no `mesh start`/`mesh join` subcommand —
+bring up a node with `daemon`, and join an existing cluster by passing a `--bootstrap` address:
 
-# Join an existing cluster
-cargo run -p mielin-cli -- mesh join 192.168.1.100:9000
+```bash
+# Start the MielinOS daemon (mesh service + HTTP control-plane API)
+cargo run -p mielin-cli -- daemon --listen 0.0.0.0:9000 --role edge --control-listen 127.0.0.1:8081
+
+# In another terminal: join an existing cluster's bootstrap node
+cargo run -p mielin-cli -- node join 192.168.1.100:9000
 
 # Deploy an agent
 cargo run -p mielin-cli -- agent deploy ./my-agent.wasm
 ```
 
+See [`docs/TUTORIALS.md`](./docs/TUTORIALS.md) (Tutorial 11) for the full mesh-cluster walkthrough,
+including the standalone `examples/mesh-cluster` binary and which `mielinctl` subcommands are wired
+to a live daemon versus illustrative.
+
 ### Creating an Agent
 
+`Agent` is a concrete struct with a lifecycle state machine — not a trait you implement. Create one
+from a WASM binary, attach a `Policy`, and drive it through valid state transitions:
+
 ```rust
-use mielin::prelude::*;
-use mielin::cells::{Agent, AgentState, Policy};
+use mielin_cells::{Agent, AgentState, Policy, TransitionResult};
 
-// Define agent behavior
-struct MyAgent {
-    counter: u64,
-}
+fn main() {
+    // Agent::new assigns a random UUID and starts the agent in `Created` state
+    let wasm_binary = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+    let mut agent = Agent::new(wasm_binary);
+    assert_eq!(agent.state(), &AgentState::Created);
 
-impl Agent for MyAgent {
-    fn on_message(&mut self, msg: Message) -> Result<(), AgentError> {
-        self.counter += 1;
-        println!("Received message #{}", self.counter);
-        Ok(())
-    }
+    // Attach an execution policy (battery/latency/architecture constraints)
+    let policy = Policy {
+        min_battery_percent: 20,
+        max_latency_ms: 100,
+        preferred_architectures: vec!["x86_64".to_string()],
+    };
+    policy.validate().expect("policy should be valid");
+    agent.set_policy(policy);
 
-    fn on_migrate(&self) -> AgentState {
-        // Serialize state for migration
-        AgentState::new(self.counter)
+    // Created -> Running is a valid transition
+    match agent.start() {
+        TransitionResult::Success => {
+            println!("Agent {} is now {:?}", agent.id(), agent.state());
+        }
+        other => println!("Unexpected transition result: {other:?}"),
     }
 }
 ```
 
+See [`docs/TUTORIALS.md`](./docs/TUTORIALS.md) (Tutorials 1–2) for the full lifecycle state
+machine, error recovery, and migration, or run `cargo run -p hello-agent` /
+`cargo run -p agent-migration` directly.
+
 ### Hardware-Aware Tensor Operations
 
+`Tensor` has no `randn`/RNG-based constructor; use `zeros`/`ones`/`filled`/`from_vec`, and dispatch
+hardware-accelerated ops through `TensorRuntime::ops()` (which returns `Option`, not a bare value):
+
 ```rust
-use mielin::tensor::{Tensor, TensorOps};
-use mielin::hal::capabilities::HardwareProfile;
+use mielin_hal::capabilities::HardwareProfile;
+use mielin_tensor::{Tensor, TensorRuntime};
 
 fn main() {
     let hw = HardwareProfile::detect();
     println!("Vector width: {} bits", hw.max_vector_width());
 
-    // Operations automatically use best available SIMD
-    let a = Tensor::randn(&[1024, 1024]);
-    let b = Tensor::randn(&[1024, 1024]);
-    let c = a.matmul(&b);
+    let runtime = TensorRuntime::new(hw.capabilities);
+    println!("Backend: {}", runtime.acceleration_info());
+
+    // Operations dispatch to the best available SIMD backend via TensorRuntime::ops()
+    let a = Tensor::zeros(vec![1024, 1024]);
+    let b = Tensor::zeros(vec![1024, 1024]);
+    let c = runtime.ops().matmul(&a, &b).expect("shape mismatch");
 
     println!("Result shape: {:?}", c.shape());
 }
 ```
+
+See [`docs/TUTORIALS.md`](./docs/TUTORIALS.md) (Tutorials 7–8) for quantization and multi-backend
+benchmarking, or run `cargo run -p tensor-inference` / `cargo run --release -p e2e-tensor-compute`.
 
 ## Building from Source
 
@@ -222,9 +256,17 @@ cargo bench -p benches
 ## Documentation
 
 - [API Documentation](https://docs.rs/mielin) - Rustdoc reference
-- [Architecture Guide](./docs/architecture.md) - System design details
-- [Migration Guide](./docs/migration.md) - Agent migration protocol
-- [Security Model](./docs/security.md) - Capability-based security
+- [Tutorials](./docs/TUTORIALS.md) - Hands-on, compile-verified tutorial series (start here)
+- [Architecture Guide](./docs/ARCHITECTURE.md) - System design details
+- [Migration Guide](./docs/MIGRATION.md) - Agent migration protocol
+- [Protocol Reference](./docs/PROTOCOL.md) - Wire protocol and message format
+- [Networking Guide](./docs/NETWORKING.md) - Mesh discovery, gossip, and QUIC transport
+- [Certificates Guide](./docs/CERTIFICATES.md) - TLS certificate issuance and rotation
+- [Deployment Guide](./docs/DEPLOYMENT.md) - Running MielinOS in production/cluster environments
+- [Troubleshooting Guide](./docs/TROUBLESHOOTING.md) - Common issues and how to resolve them
+- [Performance Tuning](./docs/PERFORMANCE_TUNING.md) - Benchmarks and optimization guidance
+- [Security Policy](./SECURITY.md) - Vulnerability reporting and capability-based security model
+- [Code of Conduct](./CODE_OF_CONDUCT.md) - Community guidelines
 
 ## Roadmap
 

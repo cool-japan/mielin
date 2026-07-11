@@ -659,11 +659,13 @@ pub fn detect_frequency() -> CpuFrequency {
 #[cfg(target_arch = "x86_64")]
 fn detect_frequency_cpuid() -> CpuFrequency {
     // CPUID leaf 0x16 provides frequency information on newer CPUs
-    let result = unsafe { core::arch::x86_64::__cpuid(0) };
+    // Safety note: __cpuid is a safe fn on this toolchain (CPUID is
+    // unconditionally available on x86_64), so no `unsafe` block is needed.
+    let result = core::arch::x86_64::__cpuid(0);
     let max_leaf = result.eax;
 
     if max_leaf >= 0x16 {
-        let freq = unsafe { core::arch::x86_64::__cpuid(0x16) };
+        let freq = core::arch::x86_64::__cpuid(0x16);
         let base_mhz = freq.eax;
         let max_mhz = freq.ebx;
         let bus_mhz = freq.ecx;
@@ -685,7 +687,7 @@ fn detect_frequency_from_brand() -> CpuFrequency {
     let mut brand = [0u32; 12];
 
     for i in 0..3usize {
-        let result = unsafe { core::arch::x86_64::__cpuid(0x80000002 + i as u32) };
+        let result = core::arch::x86_64::__cpuid(0x80000002 + i as u32);
         brand[i * 4] = result.eax;
         brand[i * 4 + 1] = result.ebx;
         brand[i * 4 + 2] = result.ecx;
@@ -759,7 +761,7 @@ pub fn detect_p_states() -> Vec<PState> {
 #[cfg(target_arch = "x86_64")]
 pub fn detect_c_states() -> CStateSupport {
     // Check CPUID for MWAIT/MONITOR support
-    let result = unsafe { core::arch::x86_64::__cpuid(1) };
+    let result = core::arch::x86_64::__cpuid(1);
     let mwait_supported = (result.ecx & (1 << 3)) != 0;
 
     if !mwait_supported {
@@ -767,7 +769,7 @@ pub fn detect_c_states() -> CStateSupport {
     }
 
     // CPUID leaf 5 provides MWAIT parameters
-    let mwait = unsafe { core::arch::x86_64::__cpuid(5) };
+    let mwait = core::arch::x86_64::__cpuid(5);
     let _smallest_line = mwait.eax as u16;
     let _largest_line = mwait.ebx as u16;
     let extensions = mwait.ecx;
@@ -791,7 +793,7 @@ pub fn detect_c_states() -> CStateSupport {
 
     // Extended C-states (common on modern Intel)
     // Check for deeper C-states via extended feature check
-    let max_leaf = unsafe { core::arch::x86_64::__cpuid(0) }.eax;
+    let max_leaf = core::arch::x86_64::__cpuid(0).eax;
     if max_leaf >= 0x15 {
         states.push(CState::C6);
         states.push(CState::C7);
@@ -816,7 +818,7 @@ pub fn detect_c_states() -> CStateSupport {
 #[cfg(target_arch = "x86_64")]
 pub fn detect_thermal() -> ThermalCapabilities {
     // Check for thermal monitoring via CPUID
-    let result = unsafe { core::arch::x86_64::__cpuid(1) };
+    let result = core::arch::x86_64::__cpuid(1);
     let has_tm = (result.edx & (1 << 29)) != 0; // Thermal Monitor
     let has_tm2 = (result.ecx & (1 << 8)) != 0; // Thermal Monitor 2
 
@@ -825,7 +827,7 @@ pub fn detect_thermal() -> ThermalCapabilities {
     }
 
     // Check leaf 6 for thermal and power management
-    let thermal = unsafe { core::arch::x86_64::__cpuid(6) };
+    let thermal = core::arch::x86_64::__cpuid(6);
     let has_digital_sensor = (thermal.eax & 1) != 0;
     let has_turbo = (thermal.eax & (1 << 1)) != 0;
     let has_hwp = (thermal.eax & (1 << 7)) != 0;
@@ -854,7 +856,7 @@ pub fn detect_thermal() -> ThermalCapabilities {
 /// Detect HWP (Hardware P-states) support
 #[cfg(target_arch = "x86_64")]
 pub fn detect_hwp_support() -> bool {
-    let result = unsafe { core::arch::x86_64::__cpuid(6) };
+    let result = core::arch::x86_64::__cpuid(6);
     (result.eax & (1 << 7)) != 0
 }
 
@@ -866,7 +868,7 @@ pub fn detect_hwp_support() -> bool {
 /// Detect turbo boost support
 #[cfg(target_arch = "x86_64")]
 pub fn detect_turbo_support() -> bool {
-    let result = unsafe { core::arch::x86_64::__cpuid(6) };
+    let result = core::arch::x86_64::__cpuid(6);
     (result.eax & (1 << 1)) != 0
 }
 

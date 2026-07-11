@@ -250,9 +250,7 @@ impl EventQueue {
     pub fn clear(&mut self) {
         self.head.store(0, Ordering::Release);
         self.tail.store(0, Ordering::Release);
-        for event in &mut self.events {
-            *event = None;
-        }
+        self.events.fill(None);
     }
 }
 

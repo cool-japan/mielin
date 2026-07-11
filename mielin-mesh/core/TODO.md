@@ -17,11 +17,11 @@
 - [x] Support for alternative discovery mechanisms — StaticPeerList, DnsSrvDiscovery (RFC 2782 SRV), DiscoveryAggregator (multi-source fan-out with dedup); 28 tests in discovery_static/dns/aggregator.rs
 - [x] Configurable gossip protocols — GossipConfig struct with gossip_interval/heartbeat_timeout/failure_timeout/fanout/max_history; GossipState::with_config()
 - [x] Historical membership queries — MembershipEvent log with membership_history/history_for/history_since; bounded VecDeque ring
-- [ ] Networking architecture guide
-- [ ] Deployment guide
-- [ ] Gossip protocol documentation
-- [ ] Troubleshooting guide
-- [ ] Video tutorials for mesh setup
+- [x] Networking architecture guide — docs/NETWORKING.md (grounded in dht/gossip/routing/discovery/partition) (2026-07-11)
+- [x] Deployment guide — docs/DEPLOYMENT.md (2026-07-11)
+- [x] Gossip protocol documentation — docs/NETWORKING.md §3 (GossipConfig, super-peer election, anti-entropy) (2026-07-11)
+- [x] Troubleshooting guide — docs/TROUBLESHOOTING.md (2026-07-11)
+- [ ] Video tutorials for mesh setup — DEFERRED (media production; not actionable in-repo)
 
 ## Completed Features (v0.1.0-rc.1)
 

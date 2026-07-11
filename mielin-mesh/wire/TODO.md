@@ -18,11 +18,11 @@
 - [ ] Support for alternative TLS libraries
 - [x] Custom serialization formats — WireSerializer (Bincode/JSON/Postcard), 1-byte format prefix, FormatNegotiation, FormatBenchmark; 16 tests in wire_formats.rs
 - [x] Protocol buffer support — Postcard encoding (compact binary, embedded-optimized) added as Postcard format in wire_formats.rs
-- [ ] Protocol specification document
-- [ ] Certificate management guide
-- [ ] Performance tuning documentation
-- [ ] Troubleshooting guide
-- [ ] Video tutorials for wire protocol
+- [x] Protocol specification document — docs/PROTOCOL.md (RFC-style, grounded in wire src) (2026-07-11)
+- [x] Certificate management guide — docs/CERTIFICATES.md (grounded in certs/*, cert_rotation, advanced_tls) (2026-07-11)
+- [x] Performance tuning documentation — docs/PERFORMANCE_TUNING.md (backoff/retry/batch/compression knobs) (2026-07-11)
+- [x] Troubleshooting guide — docs/TROUBLESHOOTING.md (2026-07-11)
+- [ ] Video tutorials for wire protocol — DEFERRED (media production; not actionable in-repo)
 - [x] Examples for common use cases
 
 ## Completed Features (v0.1.0-rc.1)

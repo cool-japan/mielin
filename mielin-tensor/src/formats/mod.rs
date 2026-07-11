@@ -484,8 +484,8 @@ fn push_shape_json(buf: &mut alloc::string::String, shape: &[usize]) {
 fn base64_encode(data: &[u8]) -> alloc::string::String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = alloc::string::String::with_capacity((data.len() * 4).div_ceil(3));
-    let mut chunks = data.chunks_exact(3);
-    for chunk in chunks.by_ref() {
+    let (chunks, remainder) = data.as_chunks::<3>();
+    for chunk in chunks {
         let b0 = chunk[0] as usize;
         let b1 = chunk[1] as usize;
         let b2 = chunk[2] as usize;
@@ -494,7 +494,7 @@ fn base64_encode(data: &[u8]) -> alloc::string::String {
         out.push(CHARS[((b1 & 0xf) << 2) | (b2 >> 6)] as char);
         out.push(CHARS[b2 & 0x3f] as char);
     }
-    match chunks.remainder() {
+    match remainder {
         [b0] => {
             let b0 = *b0 as usize;
             out.push(CHARS[b0 >> 2] as char);

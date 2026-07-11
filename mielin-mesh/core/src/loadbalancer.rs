@@ -15,7 +15,7 @@ use crate::error::MeshNetworkError;
 use crate::service_discovery::{ServiceEndpoint, ServiceHealth, ServiceRegistration};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -83,8 +83,10 @@ impl Default for HealthCheckConfig {
 pub struct EndpointStats {
     /// Endpoint address
     pub endpoint: ServiceEndpoint,
-    /// Service health status
-    pub health: ServiceHealth,
+    /// Service health status, stored as a `ServiceHealth` discriminant so it
+    /// can be mutated through a shared reference (endpoints are held behind
+    /// `Arc<EndpointStats>`, not `Arc<RwLock<EndpointStats>>`).
+    health: AtomicU8,
     /// Active connection count
     pub active_connections: AtomicUsize,
     /// Total requests served
@@ -106,7 +108,7 @@ impl EndpointStats {
     pub fn new(endpoint: ServiceEndpoint) -> Self {
         Self {
             endpoint,
-            health: ServiceHealth::Healthy,
+            health: AtomicU8::new(Self::health_to_u8(ServiceHealth::Healthy)),
             active_connections: AtomicUsize::new(0),
             total_requests: AtomicU64::new(0),
             failed_requests: AtomicU64::new(0),
@@ -148,9 +150,40 @@ impl EndpointStats {
         }
     }
 
+    /// Encode a `ServiceHealth` value into the `u8` stored in the atomic.
+    const fn health_to_u8(health: ServiceHealth) -> u8 {
+        match health {
+            ServiceHealth::Healthy => 0,
+            ServiceHealth::Degraded => 1,
+            ServiceHealth::Unhealthy => 2,
+            ServiceHealth::Maintenance => 3,
+        }
+    }
+
+    /// Decode a `u8` (as stored in the atomic) back into a `ServiceHealth`.
+    const fn u8_to_health(value: u8) -> ServiceHealth {
+        match value {
+            0 => ServiceHealth::Healthy,
+            1 => ServiceHealth::Degraded,
+            2 => ServiceHealth::Unhealthy,
+            _ => ServiceHealth::Maintenance,
+        }
+    }
+
+    /// Get the current health status of this endpoint
+    pub fn health(&self) -> ServiceHealth {
+        Self::u8_to_health(self.health.load(Ordering::Relaxed))
+    }
+
+    /// Set the health status of this endpoint
+    pub fn set_health(&self, health: ServiceHealth) {
+        self.health
+            .store(Self::health_to_u8(health), Ordering::Relaxed);
+    }
+
     /// Check if endpoint is healthy
     pub fn is_healthy(&self) -> bool {
-        matches!(self.health, ServiceHealth::Healthy)
+        matches!(self.health(), ServiceHealth::Healthy)
     }
 
     /// Get active connections count
@@ -328,11 +361,25 @@ impl ServicePool {
     }
 
     /// Random selection
+    ///
+    /// Uses `oxicrypto_rand::random_range_to`, which draws a uniformly
+    /// distributed index over `[0, endpoints.len())` via rejection sampling
+    /// (no modulo bias), per the SciRS2/COOLJAPAN policy of not depending on
+    /// the `rand` crate directly.
     fn random_select<'a>(&self, endpoints: &[&'a Arc<EndpointStats>]) -> &'a Arc<EndpointStats> {
-        use rand::RngExt;
-        let mut rng = rand::rng();
-        let index = rng.random_range(0..endpoints.len());
-        endpoints[index]
+        match oxicrypto_rand::random_range_to(endpoints.len() as u64) {
+            Ok(index) => endpoints[index as usize],
+            Err(err) => {
+                // `endpoints` is guaranteed non-empty by `select_endpoint`, so this
+                // path is only reachable if the OS entropy source itself fails.
+                // Fail honestly (fall back to the first endpoint) rather than panic.
+                warn!(
+                    "Random endpoint selection failed to obtain entropy ({err}); \
+                     falling back to first endpoint"
+                );
+                endpoints[0]
+            }
+        }
     }
 
     /// Least response time selection
@@ -357,7 +404,7 @@ impl ServicePool {
 
                 let failures = stats.consecutive_failures.load(Ordering::Relaxed);
                 if failures >= self.health_check_config.unhealthy_threshold {
-                    // Mark as unhealthy (would need mutable access in real impl)
+                    stats.set_health(ServiceHealth::Unhealthy);
                     warn!(
                         "Endpoint {:?} marked as unhealthy after {} consecutive failures",
                         endpoint.address, failures
@@ -378,6 +425,7 @@ impl ServicePool {
 
                 let successes = stats.consecutive_successes.load(Ordering::Relaxed);
                 if successes >= self.health_check_config.healthy_threshold {
+                    stats.set_health(ServiceHealth::Healthy);
                     debug!(
                         "Endpoint {:?} marked as healthy after {} consecutive successes",
                         endpoint.address, successes
@@ -713,8 +761,9 @@ mod tests {
         assert_eq!(stats.total_connections, 1);
     }
 
-    // random_select calls rand::rng() -> ChaCha20 NEON backend on aarch64.
-    // Miri cannot emulate llvm.aarch64.neon.tbl1.v16i8. Not UB — hardware SIMD.
+    // random_select calls oxicrypto_rand::random_range_to() -> ChaCha20 NEON
+    // backend on aarch64. Miri cannot emulate llvm.aarch64.neon.tbl1.v16i8.
+    // Not UB — hardware SIMD.
     #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_random_selection() {
@@ -766,6 +815,8 @@ mod tests {
 
         let endpoints = pool.endpoints.read().await;
         assert_eq!(endpoints[0].consecutive_failures.load(Ordering::Relaxed), 1);
+        // Below the unhealthy threshold (default 3): health must not have flipped yet.
+        assert!(endpoints[0].is_healthy());
     }
 
     #[cfg_attr(miri, ignore)]
@@ -782,5 +833,71 @@ mod tests {
             endpoints[0].consecutive_successes.load(Ordering::Relaxed),
             1
         );
+        assert!(endpoints[0].is_healthy());
+    }
+
+    /// GAP A regression test: crossing the unhealthy threshold must actually
+    /// flip `EndpointStats.health`, and health-aware selection must then
+    /// route around the unhealthy endpoint until it recovers.
+    #[cfg_attr(miri, ignore)]
+    #[tokio::test]
+    async fn test_mark_unhealthy_updates_health_and_selection() {
+        let config = HealthCheckConfig {
+            unhealthy_threshold: 2,
+            healthy_threshold: 2,
+            ..HealthCheckConfig::default()
+        };
+        let pool = ServicePool::new("test-service", LoadBalancingAlgorithm::RoundRobin)
+            .with_health_check(config);
+
+        let bad_endpoint = create_endpoint(8080);
+        let good_endpoint = create_endpoint(8081);
+        pool.add_endpoint(bad_endpoint.clone()).await;
+        pool.add_endpoint(good_endpoint.clone()).await;
+
+        // Both endpoints start healthy.
+        {
+            let endpoints = pool.endpoints.read().await;
+            assert!(endpoints.iter().all(|e| e.is_healthy()));
+        }
+
+        // Cross the unhealthy_threshold (2) for `bad_endpoint`.
+        pool.mark_unhealthy(&bad_endpoint).await;
+        pool.mark_unhealthy(&bad_endpoint).await;
+
+        // The stored health must have actually flipped, not just the counter.
+        {
+            let endpoints = pool.endpoints.read().await;
+            let bad_stats = endpoints
+                .iter()
+                .find(|e| e.endpoint.address == bad_endpoint.address)
+                .expect("bad endpoint present");
+            assert_eq!(bad_stats.health(), ServiceHealth::Unhealthy);
+            assert!(!bad_stats.is_healthy());
+
+            let good_stats = endpoints
+                .iter()
+                .find(|e| e.endpoint.address == good_endpoint.address)
+                .expect("good endpoint present");
+            assert!(good_stats.is_healthy());
+        }
+
+        // Health-aware selection must now consistently avoid the unhealthy endpoint.
+        for _ in 0..10 {
+            let selected = pool.select_endpoint().await.expect("selection succeeds");
+            assert_eq!(selected.endpoint.address, good_endpoint.address);
+        }
+
+        // Recovering (crossing healthy_threshold) must flip health back to Healthy.
+        pool.mark_healthy(&bad_endpoint).await;
+        pool.mark_healthy(&bad_endpoint).await;
+
+        let endpoints = pool.endpoints.read().await;
+        let bad_stats = endpoints
+            .iter()
+            .find(|e| e.endpoint.address == bad_endpoint.address)
+            .expect("bad endpoint present");
+        assert_eq!(bad_stats.health(), ServiceHealth::Healthy);
+        assert!(bad_stats.is_healthy());
     }
 }

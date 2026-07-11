@@ -417,9 +417,19 @@ pub enum CongestionAlgorithm {
     /// Additive Increase Multiplicative Decrease (AIMD)
     #[default]
     Aimd,
-    /// Cubic (TCP Cubic-like)
+    /// TCP CUBIC (RFC 8312): the congestion window follows a cubic function
+    /// of the time elapsed since the last congestion event, with a
+    /// TCP-friendly linear region so CUBIC flows remain fair when they
+    /// share a bottleneck with Reno/AIMD flows.
     Cubic,
-    /// BBR-like (Bandwidth-Based)
+    /// BBR (Bottleneck Bandwidth and RTT), following Cardwell et al.,
+    /// "BBR: Congestion-Based Congestion Control" (ACM Queue, 2016). Builds
+    /// an explicit model of the path (max-filtered delivery rate `BtlBw`,
+    /// min-filtered RTT `RTprop`) and drives the window to
+    /// `BtlBw * RTprop * gain` through the Startup / Drain / ProbeBW /
+    /// ProbeRTT state machine. Note: this controller only sizes the
+    /// congestion window; it does not implement BBR's packet-level pacer,
+    /// since pacing requires a send-side scheduler this crate does not own.
     Bbr,
 }
 
@@ -468,6 +478,106 @@ pub enum CongestionState {
     Recovery,
 }
 
+/// Segment size (bytes) used as CUBIC's and BBR's internal unit of account.
+/// RFC 8312's constants (`C`, `beta_cubic`) are defined in units of
+/// (typically 1460-byte) segments, so byte-denominated windows are converted
+/// to/from segments with this constant to keep the growth dynamics faithful
+/// to the RFC regardless of the actual MSS negotiated on the wire.
+const CONGESTION_MSS: f64 = 1460.0;
+
+/// RFC 8312 `C`: scaling constant controlling how aggressively CUBIC probes
+/// for additional bandwidth.
+const CUBIC_C: f64 = 0.4;
+
+/// RFC 8312 `beta_cubic`: multiplicative window decrease factor applied on
+/// congestion (less aggressive than AIMD's classic 0.5, per the RFC).
+const CUBIC_BETA: f64 = 0.7;
+
+/// Internal epoch state for TCP CUBIC (RFC 8312) congestion avoidance.
+#[derive(Debug, Default)]
+struct CubicState {
+    /// Window size (bytes) recorded at the last congestion event (`W_max`).
+    w_max: u64,
+    /// Wall-clock origin of the current cubic epoch; set the first time
+    /// congestion avoidance runs after (re)entering it, and cleared again on
+    /// the next congestion event so a fresh epoch begins.
+    epoch_start: Option<Instant>,
+    /// Precomputed `K`: the time (seconds) at which `W_cubic(t)` returns to
+    /// `w_max`, derived from `w_max` and the constants above.
+    k: f64,
+}
+
+/// BBR operating phase (Startup / Drain / ProbeBW / ProbeRTT), mirroring the
+/// state machine described in Cardwell et al., 2016.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BbrPhase {
+    /// Exponential search for the bottleneck bandwidth.
+    Startup,
+    /// Drain the queue built up during Startup's overshoot.
+    Drain,
+    /// Steady state: cycle the pacing gain to probe for extra bandwidth
+    /// while otherwise sending at the estimated bottleneck rate.
+    ProbeBw,
+    /// Periodically shrink the window to get an uninflated RTT sample.
+    ProbeRtt,
+}
+
+/// Gain cycle applied to the pacing rate during `ProbeBw` (BBR v1): probe up
+/// once, drain the resulting queue once, then cruise at the estimated rate.
+const BBR_GAIN_CYCLE: [f64; 8] = [1.25, 0.75, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+/// `cwnd` gain used in `ProbeBw` (2x the bandwidth-delay product, per BBR v1).
+const BBR_PROBE_BW_CWND_GAIN: f64 = 2.0;
+/// `Startup`/`Drain` gain: `2/ln(2)`, doubles the delivery rate each round.
+const BBR_STARTUP_GAIN: f64 = 2.885_390_08;
+/// How long BBR holds a minimal window in `ProbeRTT` before resuming.
+const BBR_PROBE_RTT_DURATION: Duration = Duration::from_millis(200);
+/// How often BBR forces a `ProbeRTT` round to refresh the RTprop estimate.
+const BBR_PROBE_RTT_INTERVAL: Duration = Duration::from_secs(10);
+/// Number of delivery-rate samples retained for the `BtlBw` max-filter.
+const BBR_BW_WINDOW: usize = 16;
+
+/// Internal model state for BBR: the max-filtered bandwidth (`BtlBw`) and
+/// min-filtered RTT (`RTprop`) estimates, plus the state-machine phase used
+/// to decide which gain to apply to the bandwidth-delay product.
+#[derive(Debug)]
+struct BbrModel {
+    /// Current state-machine phase.
+    phase: BbrPhase,
+    /// Delivery-rate samples (bytes/sec), each timestamped so stale samples
+    /// can be evicted from the windowed max-filter.
+    bw_samples: std::collections::VecDeque<(Instant, f64)>,
+    /// Windowed-min RTT estimate (`RTprop`) and when it was last refreshed.
+    min_rtt: Option<Duration>,
+    min_rtt_stamp: Instant,
+    /// Bandwidth observed at the start of the current Startup round, used to
+    /// detect the growth plateau that signals the pipe is full.
+    startup_last_bw: f64,
+    /// Consecutive Startup rounds without >=25% bandwidth growth.
+    startup_plateau_rounds: u32,
+    /// Index into [`BBR_GAIN_CYCLE`] for the current `ProbeBw` phase.
+    cycle_index: usize,
+    /// When the current gain-cycle phase (or Startup round) began.
+    cycle_start: Instant,
+    /// Deadline for leaving `ProbeRTT`, set once the phase is entered.
+    probe_rtt_deadline: Option<Instant>,
+}
+
+impl BbrModel {
+    fn new(now: Instant) -> Self {
+        Self {
+            phase: BbrPhase::Startup,
+            bw_samples: std::collections::VecDeque::with_capacity(BBR_BW_WINDOW),
+            min_rtt: None,
+            min_rtt_stamp: now,
+            startup_last_bw: 0.0,
+            startup_plateau_rounds: 0,
+            cycle_index: 0,
+            cycle_start: now,
+            probe_rtt_deadline: None,
+        }
+    }
+}
+
 /// Congestion controller
 #[derive(Debug)]
 pub struct CongestionController {
@@ -491,11 +601,16 @@ pub struct CongestionController {
     packets_lost: AtomicU64,
     /// Last window reduction time
     last_reduction: Mutex<Option<Instant>>,
+    /// CUBIC epoch state (only touched when `config.algorithm` is `Cubic`)
+    cubic: Mutex<CubicState>,
+    /// BBR path model (only touched when `config.algorithm` is `Bbr`)
+    bbr: Mutex<BbrModel>,
 }
 
 impl CongestionController {
     /// Create new congestion controller
     pub fn new(config: CongestionConfig) -> Self {
+        let now = Instant::now();
         Self {
             cwnd: AtomicU64::new(config.initial_window),
             ssthresh: AtomicU64::new(config.max_window),
@@ -506,6 +621,8 @@ impl CongestionController {
             acks_received: AtomicU64::new(0),
             packets_lost: AtomicU64::new(0),
             last_reduction: Mutex::new(None),
+            cubic: Mutex::new(CubicState::default()),
+            bbr: Mutex::new(BbrModel::new(now)),
             config,
         }
     }
@@ -553,10 +670,8 @@ impl CongestionController {
         match self.config.algorithm {
             CongestionAlgorithm::None => {}
             CongestionAlgorithm::Aimd => self.aimd_ack(bytes).await,
-            CongestionAlgorithm::Cubic | CongestionAlgorithm::Bbr => {
-                // Simplified: use AIMD for now
-                self.aimd_ack(bytes).await;
-            }
+            CongestionAlgorithm::Cubic => self.cubic_ack(bytes).await,
+            CongestionAlgorithm::Bbr => self.bbr_ack(bytes, rtt_us).await,
         }
     }
 
@@ -570,9 +685,9 @@ impl CongestionController {
 
         match self.config.algorithm {
             CongestionAlgorithm::None => {}
-            CongestionAlgorithm::Aimd | CongestionAlgorithm::Cubic | CongestionAlgorithm::Bbr => {
-                self.aimd_loss().await;
-            }
+            CongestionAlgorithm::Aimd => self.aimd_loss().await,
+            CongestionAlgorithm::Cubic => self.cubic_loss().await,
+            CongestionAlgorithm::Bbr => self.bbr_loss().await,
         }
     }
 
@@ -653,6 +768,275 @@ impl CongestionController {
         *self.state.lock().await = CongestionState::Recovery;
     }
 
+    /// CUBIC: handle ACK.
+    ///
+    /// Implements RFC 8312's window-growth function directly: slow start is
+    /// shared with AIMD (exponential growth until `ssthresh`), but once in
+    /// congestion avoidance the window follows `W_cubic(t) = C*(t-K)^3 +
+    /// W_max`, where `t` is the time elapsed since the last congestion event
+    /// and `K` is chosen so the curve reaches `W_max` again at `t = K`. The
+    /// RFC's TCP-friendly region (`W_est`) is also evaluated so CUBIC never
+    /// grows slower than standard Reno/AIMD would, preserving fairness.
+    async fn cubic_ack(&self, bytes: u64) {
+        let cwnd = self.cwnd.load(Ordering::Relaxed);
+        let ssthresh = self.ssthresh.load(Ordering::Relaxed);
+        let mut state = self.state.lock().await;
+
+        let new_cwnd = match *state {
+            CongestionState::SlowStart => {
+                // Exponential growth, identical in spirit to AIMD/Reno slow
+                // start (RFC 8312 does not redefine slow start).
+                let new = cwnd + bytes;
+                if new >= ssthresh {
+                    *state = CongestionState::CongestionAvoidance;
+                }
+                new
+            }
+            CongestionState::CongestionAvoidance | CongestionState::Recovery => {
+                // A loss's Recovery ends as soon as a new ACK arrives; fold
+                // back into ordinary congestion avoidance.
+                *state = CongestionState::CongestionAvoidance;
+                self.cubic_window(cwnd).await
+            }
+        };
+
+        self.cwnd.store(
+            new_cwnd.clamp(self.config.min_window, self.config.max_window),
+            Ordering::Relaxed,
+        );
+    }
+
+    /// CUBIC: compute the RFC 8312 target window for the current epoch.
+    async fn cubic_window(&self, cwnd: u64) -> u64 {
+        let now = Instant::now();
+        let mut cubic = self.cubic.lock().await;
+
+        if cubic.epoch_start.is_none() {
+            // Starting a fresh epoch. If we haven't recorded a congestion
+            // event yet (e.g. this is the first transition out of slow
+            // start), anchor W_max at the current window so the curve
+            // begins flat rather than jumping.
+            if cubic.w_max == 0 {
+                cubic.w_max = cwnd.max(1);
+            }
+            let w_max_segments = cubic.w_max as f64 / CONGESTION_MSS;
+            cubic.k = (w_max_segments * (1.0 - CUBIC_BETA) / CUBIC_C).cbrt();
+            cubic.epoch_start = Some(now);
+        }
+
+        let epoch_start = cubic
+            .epoch_start
+            .expect("epoch_start is set unconditionally above");
+        let w_max = cubic.w_max;
+        let k = cubic.k;
+        drop(cubic);
+
+        let t = epoch_start.elapsed().as_secs_f64();
+        let w_max_segments = w_max as f64 / CONGESTION_MSS;
+        let w_cubic_segments = CUBIC_C * (t - k).powi(3) + w_max_segments;
+        let w_cubic = (w_cubic_segments * CONGESTION_MSS).max(0.0);
+
+        // TCP-friendly region (RFC 8312 §4.2): the window a standard
+        // AIMD/Reno flow would reach over the same interval. CUBIC uses
+        // whichever of the two curves is larger so it never grows slower
+        // than Reno when they compete for the same bottleneck.
+        let srtt_s = (self.srtt() as f64 / 1_000_000.0).max(0.001);
+        let w_est = w_max as f64 * CUBIC_BETA
+            + (3.0 * (1.0 - CUBIC_BETA) / (1.0 + CUBIC_BETA)) * (t / srtt_s) * CONGESTION_MSS;
+
+        // The window never shrinks on an ACK; a target below the current
+        // cwnd just means neither curve has caught up yet.
+        w_cubic.max(w_est).max(cwnd as f64) as u64
+    }
+
+    /// CUBIC: handle loss.
+    ///
+    /// Applies RFC 8312's multiplicative decrease (`beta_cubic = 0.7`,
+    /// gentler than AIMD's classic 0.5) and records the pre-reduction window
+    /// as the new `W_max`, then clears the epoch so the next ACK recomputes
+    /// `K` from this fresh reference point.
+    async fn cubic_loss(&self) {
+        let mut last_reduction = self.last_reduction.lock().await;
+        if let Some(last) = *last_reduction {
+            if last.elapsed() < Duration::from_millis(100) {
+                return; // Don't reduce too frequently
+            }
+        }
+        *last_reduction = Some(Instant::now());
+        drop(last_reduction);
+
+        let cwnd = self.cwnd.load(Ordering::Relaxed);
+        let new_cwnd = (cwnd as f64 * CUBIC_BETA) as u64;
+        let new_cwnd = new_cwnd.clamp(self.config.min_window, self.config.max_window);
+
+        self.cwnd.store(new_cwnd, Ordering::Relaxed);
+        self.ssthresh.store(new_cwnd, Ordering::Relaxed);
+
+        {
+            let mut cubic = self.cubic.lock().await;
+            cubic.w_max = cwnd;
+            cubic.epoch_start = None;
+        }
+
+        *self.state.lock().await = CongestionState::Recovery;
+    }
+
+    /// BBR: fold one ACK sample into the bandwidth/RTT model and recompute
+    /// `cwnd` as `BDP * gain`, following Cardwell et al., "BBR:
+    /// Congestion-Based Congestion Control" (ACM Queue, 2016).
+    ///
+    /// This drives the window from the same `BtlBw` (max-filtered delivery
+    /// rate) / `RTprop` (min-filtered RTT) model and Startup -> Drain ->
+    /// ProbeBW -> ProbeRTT state machine as the paper. It intentionally does
+    /// not implement packet-level pacing: this controller only exposes a
+    /// congestion window, not a send-side pacer, so the pacing gain informs
+    /// window sizing rather than an actual paced send rate.
+    async fn bbr_ack(&self, bytes: u64, rtt_us: u64) {
+        if rtt_us == 0 || bytes == 0 {
+            return; // No usable delivery-rate sample.
+        }
+
+        let now = Instant::now();
+        let rtt = Duration::from_micros(rtt_us);
+        let delivery_rate = bytes as f64 / (rtt_us as f64 / 1_000_000.0);
+
+        let mut model = self.bbr.lock().await;
+
+        // --- RTprop: windowed-min RTT filter ---
+        let is_new_min = match model.min_rtt {
+            None => true,
+            Some(m) => rtt < m,
+        };
+        let stale = now.duration_since(model.min_rtt_stamp) > BBR_PROBE_RTT_INTERVAL;
+        if is_new_min {
+            model.min_rtt = Some(rtt);
+            model.min_rtt_stamp = now;
+        } else if stale && model.phase != BbrPhase::ProbeRtt {
+            // The RTprop estimate is stale; force a ProbeRTT round to get an
+            // uninflated sample instead of trusting a possibly-queued RTT.
+            model.phase = BbrPhase::ProbeRtt;
+            model.probe_rtt_deadline = None;
+        }
+
+        // --- BtlBw: windowed-max delivery-rate filter ---
+        model.bw_samples.push_back((now, delivery_rate));
+        while model.bw_samples.len() > BBR_BW_WINDOW {
+            model.bw_samples.pop_front();
+        }
+        let window_horizon = model.min_rtt.unwrap_or(Duration::from_millis(100)) * 10;
+        while let Some(&(ts, _)) = model.bw_samples.front() {
+            if now.duration_since(ts) > window_horizon && model.bw_samples.len() > 1 {
+                model.bw_samples.pop_front();
+            } else {
+                break;
+            }
+        }
+        let btlbw = model
+            .bw_samples
+            .iter()
+            .map(|(_, bw)| *bw)
+            .fold(0.0_f64, f64::max);
+        let rtprop = model.min_rtt.unwrap_or(rtt).as_secs_f64().max(0.0001);
+        let bdp = (btlbw * rtprop) as u64;
+
+        // --- State machine: choose this round's cwnd gain ---
+        let cwnd_gain = match model.phase {
+            BbrPhase::Startup => {
+                // Exit Startup once BtlBw plateaus (<25% growth) for 3
+                // consecutive ~RTT-spaced rounds: the pipe is full.
+                if now.duration_since(model.cycle_start) >= rtt {
+                    if btlbw < model.startup_last_bw * 1.25 {
+                        model.startup_plateau_rounds += 1;
+                    } else {
+                        model.startup_plateau_rounds = 0;
+                    }
+                    model.startup_last_bw = btlbw;
+                    model.cycle_start = now;
+                    if model.startup_plateau_rounds >= 3 {
+                        model.phase = BbrPhase::Drain;
+                    }
+                }
+                BBR_STARTUP_GAIN
+            }
+            BbrPhase::Drain => {
+                let in_flight = self.bytes_in_flight.load(Ordering::Relaxed);
+                if in_flight as f64 <= bdp as f64 {
+                    model.phase = BbrPhase::ProbeBw;
+                    model.cycle_index = 0;
+                    model.cycle_start = now;
+                }
+                // Drain the Startup overshoot: shrink the window below BDP.
+                1.0 / BBR_STARTUP_GAIN
+            }
+            BbrPhase::ProbeBw => {
+                if now.duration_since(model.cycle_start) >= rtt.max(Duration::from_micros(1)) {
+                    model.cycle_index = (model.cycle_index + 1) % BBR_GAIN_CYCLE.len();
+                    model.cycle_start = now;
+                }
+                if now.duration_since(model.min_rtt_stamp) > BBR_PROBE_RTT_INTERVAL {
+                    model.phase = BbrPhase::ProbeRtt;
+                    model.probe_rtt_deadline = None;
+                }
+                // This controller has no separate pacing-rate knob, so the
+                // gain-cycle (which BBR v1 applies to pacing rate) is folded
+                // into the window gain directly: probing phases visibly
+                // grow/shrink the window around the steady BDP*2 target.
+                BBR_GAIN_CYCLE[model.cycle_index] * BBR_PROBE_BW_CWND_GAIN
+            }
+            BbrPhase::ProbeRtt => {
+                let deadline = *model
+                    .probe_rtt_deadline
+                    .get_or_insert(now + BBR_PROBE_RTT_DURATION);
+                if now >= deadline {
+                    model.phase = BbrPhase::ProbeBw;
+                    model.cycle_index = 0;
+                    model.cycle_start = now;
+                    model.probe_rtt_deadline = None;
+                    model.min_rtt_stamp = now; // Fresh RTprop sample taken.
+                }
+                0.0 // Overridden below: ProbeRTT clamps to a minimal window.
+            }
+        };
+
+        let final_phase = model.phase;
+        drop(model);
+
+        let target = if final_phase == BbrPhase::ProbeRtt {
+            // Hold a minimal window (4 segments) so queued bytes drain and
+            // the next RTT sample reflects true propagation delay.
+            (4.0 * CONGESTION_MSS) as u64
+        } else {
+            (bdp as f64 * cwnd_gain) as u64
+        };
+
+        self.cwnd.store(
+            target.clamp(self.config.min_window, self.config.max_window),
+            Ordering::Relaxed,
+        );
+
+        let mapped_state = match final_phase {
+            BbrPhase::Startup => CongestionState::SlowStart,
+            BbrPhase::Drain | BbrPhase::ProbeBw => CongestionState::CongestionAvoidance,
+            BbrPhase::ProbeRtt => CongestionState::Recovery,
+        };
+        *self.state.lock().await = mapped_state;
+    }
+
+    /// BBR: handle loss.
+    ///
+    /// Unlike AIMD/CUBIC, BBR deliberately does not multiplicatively cut
+    /// `cwnd` in response to an isolated packet loss: its control loop is
+    /// bandwidth-model-driven, not loss-driven (Cardwell et al. 2016, §3).
+    /// `packets_lost` is still tracked by the caller for observability, and
+    /// sustained loss will show up as reduced deliveries and shrink the
+    /// `BtlBw` max-filter naturally through subsequent `bbr_ack` samples.
+    async fn bbr_loss(&self) {
+        tracing::debug!(
+            "BBR congestion controller observed a packet loss; cwnd is model-driven \
+             (BtlBw * RTprop * gain) and is intentionally not cut on isolated loss"
+        );
+    }
+
     /// Get smoothed RTT (microseconds)
     pub fn srtt(&self) -> u64 {
         self.srtt.load(Ordering::Relaxed)
@@ -692,6 +1076,8 @@ impl CongestionController {
         self.rttvar.store(0, Ordering::Relaxed);
         *self.state.lock().await = CongestionState::SlowStart;
         *self.last_reduction.lock().await = None;
+        *self.cubic.lock().await = CubicState::default();
+        *self.bbr.lock().await = BbrModel::new(Instant::now());
     }
 }
 
@@ -1043,6 +1429,122 @@ mod tests {
 
         assert!(stats.cwnd > 0);
         assert_eq!(stats.bytes_in_flight, 0);
+    }
+
+    // CUBIC / BBR honesty tests: prove these algorithms run their own real
+    // logic rather than silently falling back to the AIMD codepath.
+
+    fn congestion_config_with_algorithm(algorithm: CongestionAlgorithm) -> CongestionConfig {
+        CongestionConfig {
+            algorithm,
+            initial_window: 4_000,
+            min_window: 200,
+            max_window: 16_000_000,
+            aimd_increase: 16_000,
+            aimd_decrease: 0.5,
+            rtt_alpha: 0.125,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cubic_loss_uses_rfc8312_beta_not_aimd_half() {
+        let aimd =
+            CongestionController::new(congestion_config_with_algorithm(CongestionAlgorithm::Aimd));
+        let cubic =
+            CongestionController::new(congestion_config_with_algorithm(CongestionAlgorithm::Cubic));
+
+        aimd.record_loss(1000).await;
+        cubic.record_loss(1000).await;
+
+        // AIMD halves the window (factor 0.5); CUBIC applies RFC 8312's
+        // gentler beta_cubic = 0.7. If CUBIC silently reused AIMD's loss
+        // handler these two would be equal.
+        assert_eq!(aimd.cwnd(), (4_000_f64 * 0.5) as u64);
+        assert_eq!(cubic.cwnd(), (4_000_f64 * 0.7) as u64);
+        assert_ne!(
+            aimd.cwnd(),
+            cubic.cwnd(),
+            "CUBIC must not fabricate AIMD's multiplicative-decrease factor"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cubic_growth_diverges_from_aimd_growth() {
+        let aimd =
+            CongestionController::new(congestion_config_with_algorithm(CongestionAlgorithm::Aimd));
+        let cubic =
+            CongestionController::new(congestion_config_with_algorithm(CongestionAlgorithm::Cubic));
+
+        for controller in [&aimd, &cubic] {
+            controller.record_loss(1000).await;
+        }
+
+        // Let real wall-clock time pass so CUBIC's epoch timer (t in
+        // W_cubic(t)) advances; AIMD's growth rule has no time dependence.
+        tokio::time::sleep(Duration::from_millis(250)).await;
+
+        for controller in [&aimd, &cubic] {
+            controller.record_ack(1000, 20_000).await;
+        }
+
+        assert_ne!(
+            aimd.cwnd(),
+            cubic.cwnd(),
+            "CUBIC's post-loss regrowth must follow its own cubic/TCP-friendly \
+             curve, not AIMD's additive-increase rule"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bbr_ignores_isolated_loss() {
+        let controller =
+            CongestionController::new(congestion_config_with_algorithm(CongestionAlgorithm::Bbr));
+        let initial = controller.cwnd();
+
+        controller.record_loss(1000).await;
+
+        // Real BBR is bandwidth-model-driven, not loss-driven: an isolated
+        // loss must not multiplicatively cut cwnd the way AIMD/CUBIC do.
+        assert_eq!(
+            controller.cwnd(),
+            initial,
+            "BBR must not fabricate AIMD's loss-triggered window cut"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bbr_cwnd_tracks_bandwidth_delay_product() {
+        let controller =
+            CongestionController::new(congestion_config_with_algorithm(CongestionAlgorithm::Bbr));
+
+        // A single high-bandwidth, low-RTT delivery sample: 100_000 bytes
+        // acknowledged over a 10ms RTT implies ~10MB/s of delivered
+        // bandwidth.
+        controller.record_sent(100_000);
+        controller.record_ack(100_000, 10_000).await;
+
+        // AIMD's slow-start rule would give exactly initial_window + bytes
+        // = 4_000 + 100_000 = 104_000. BBR must instead size the window
+        // from BtlBw * RTprop * gain (Startup gain ~2.885), which is
+        // substantially larger here and independent of the AIMD formula.
+        let cwnd = controller.cwnd();
+        assert!(
+            cwnd > 200_000,
+            "BBR cwnd ({cwnd}) should scale with bandwidth * RTT * gain, not \
+             AIMD's additive '+= bytes' rule"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bbr_state_reflects_startup_phase() {
+        let controller =
+            CongestionController::new(congestion_config_with_algorithm(CongestionAlgorithm::Bbr));
+
+        controller.record_ack(1_000, 10_000).await;
+
+        // BBR starts in its Startup phase, which is projected onto the
+        // shared CongestionState::SlowStart for API compatibility.
+        assert_eq!(controller.state().await, CongestionState::SlowStart);
     }
 
     // Flow Controller Tests

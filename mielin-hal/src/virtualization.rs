@@ -492,14 +492,16 @@ fn detect_hypervisor(info: &mut VirtualizationInfo) -> Option<HypervisorType> {
 /// Detect hypervisor on x86_64 via CPUID
 #[cfg(target_arch = "x86_64")]
 fn detect_hypervisor_x86_64(info: &mut VirtualizationInfo) -> Option<HypervisorType> {
-    // CPUID leaf 0x1, ECX bit 31: Hypervisor present
-    let cpuid1 = unsafe { __cpuid(1) };
+    // CPUID leaf 0x1, ECX bit 31: Hypervisor present.
+    // Safety note: __cpuid is a safe fn on this toolchain (CPUID is
+    // unconditionally available on x86_64), so no `unsafe` block is needed.
+    let cpuid1 = __cpuid(1);
     if (cpuid1.ecx & (1 << 31)) == 0 {
         return None; // Bare metal
     }
 
     // CPUID leaf 0x40000000: Hypervisor CPUID information
-    let cpuid_hv = unsafe { __cpuid(0x40000000) };
+    let cpuid_hv = __cpuid(0x40000000);
 
     // Extract vendor string from EBX, ECX, EDX (12 bytes)
     let mut vendor_bytes = [0u8; 12];
@@ -534,7 +536,7 @@ fn detect_hypervisor_x86_64(info: &mut VirtualizationInfo) -> Option<HypervisorT
 /// Detect KVM paravirtualization features via CPUID leaf 0x40000001
 #[cfg(target_arch = "x86_64")]
 fn detect_kvm_paravirt_features(info: &mut VirtualizationInfo) {
-    let cpuid_kvm = unsafe { __cpuid(0x40000001) };
+    let cpuid_kvm = __cpuid(0x40000001);
     let mut features = ParavirtFeatures::empty();
 
     // KVM paravirt features in EAX

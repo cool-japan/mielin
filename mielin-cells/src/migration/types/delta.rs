@@ -257,9 +257,7 @@ impl DirtyPageTracker {
 
     /// Clear all dirty bits
     pub fn clear_all(&mut self) {
-        for word in &mut self.dirty_bitmap {
-            *word = 0;
-        }
+        self.dirty_bitmap.fill(0);
     }
 
     /// Create a delta snapshot from the current state

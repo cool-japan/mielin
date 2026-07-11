@@ -251,7 +251,9 @@ pub fn detect_pmu() -> PmuInfo {
 #[cfg(target_arch = "x86_64")]
 fn detect_pmu_x86_64() -> PmuInfo {
     // CPUID.0AH: Architectural Performance Monitoring
-    let cpuid_pmu = unsafe { __cpuid(0x0A) };
+    // Safety note: __cpuid is a safe fn on this toolchain (CPUID is
+    // unconditionally available on x86_64), so no `unsafe` block is needed.
+    let cpuid_pmu = __cpuid(0x0A);
 
     let version = (cpuid_pmu.eax & 0xFF) as u8;
 
@@ -307,7 +309,7 @@ fn detect_pmu_x86_64() -> PmuInfo {
     supported_events.push(PerfEvent::TLBMisses);
 
     // Detect vendor
-    let cpuid_vendor = unsafe { __cpuid(0) };
+    let cpuid_vendor = __cpuid(0);
     let vendor = detect_x86_vendor(cpuid_vendor.ebx, cpuid_vendor.edx, cpuid_vendor.ecx);
 
     PmuInfo {

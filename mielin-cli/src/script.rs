@@ -360,18 +360,27 @@ fn main(args) {{
     print("Hello from {}!");
     print("Arguments: " + args);
 
-    // TODO: Add your script logic here
+    // Example: put your automation logic here.
+    // Below we count the arguments and build a small summary map
+    // that gets merged into the value this script returns.
+    let arg_count = args.len();
+    let summary = #{{
+        argument_count: arg_count,
+        greeting: "Hello from {}!"
+    }};
+    print("Summary: " + summary);
 
-    return {{
+    return #{{
         status: "success",
-        message: "Script executed successfully"
+        message: "Script executed successfully",
+        summary: summary
     }};
 }}
 
 // Call main function
 main(args)
 "#,
-            name, name
+            name, name, name
         );
 
         fs::write(output_path, template).context("Failed to write script template")?;

@@ -655,9 +655,7 @@ impl EnergyProfiler {
 
     /// Reset all energy statistics
     pub fn reset(&mut self) {
-        for slot in &mut self.tasks {
-            *slot = None;
-        }
+        self.tasks.fill(None);
         self.mode_stats = PowerModeStats::new();
         self.total_system_energy = Energy::ZERO;
     }

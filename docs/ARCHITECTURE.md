@@ -248,7 +248,7 @@ pub struct Agent {
 
 pub struct Dna {
     binary: Vec<u8>,    // WASM bytecode
-    hash: [u8; 32],     // SHA-256 hash
+    hash: [u8; 32],     // SHA-256 digest of `binary` (via `oxicrypto_hash::Sha256`)
 }
 ```
 
@@ -474,7 +474,7 @@ mielinctl mesh topology
 ```
 1. User provides WASM binary
 2. Validate WASM magic number and structure
-3. Compute DNA hash (SHA-256)
+3. Compute DNA hash (SHA-256 digest of the WASM binary — see `Dna::hash()`)
 4. Create Agent with UUID
 5. Set initial state to Created
 6. Apply policy constraints
@@ -740,7 +740,7 @@ pub enum SandboxViolation {
 pub struct AgentIdentity {
     agent_id: AgentId,
     public_key: [u8; 32],  // Ed25519 public key
-    dna_hash: [u8; 32],    // SHA-256 of WASM binary
+    dna_hash: [u8; 32],    // SHA-256 digest of WASM binary (see `Dna::hash()`)
 }
 ```
 
@@ -783,7 +783,7 @@ pub enum EventType {
 - Connection migration support
 - Congestion control
 
-**Implementation**: quinn crate (Rust QUIC library)
+**Implementation**: `oxiquic-transport` / `oxiquic-crypto` (pure-Rust QUIC implementation)
 
 ### Service Discovery
 

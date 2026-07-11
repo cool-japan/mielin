@@ -152,8 +152,9 @@ struct CachedCrl {
 pub struct CertificateAuthority {
     /// CA configuration
     config: CaConfig,
-    /// Trust anchors (root CA certificates)
-    trust_anchors: Arc<RwLock<Vec<TrustAnchor<'static>>>>,
+    /// Trust anchors (root CA certificates), keyed by certificate fingerprint
+    /// so that removal can prune the exact anchor added for a given CA.
+    trust_anchors: Arc<RwLock<HashMap<String, TrustAnchor<'static>>>>,
     /// CA certificate info indexed by fingerprint
     ca_info: Arc<RwLock<HashMap<String, CaCertInfo>>>,
     /// CRL cache indexed by issuer fingerprint
@@ -165,7 +166,7 @@ impl CertificateAuthority {
     pub fn new(config: CaConfig) -> Self {
         Self {
             config,
-            trust_anchors: Arc::new(RwLock::new(Vec::new())),
+            trust_anchors: Arc::new(RwLock::new(HashMap::new())),
             ca_info: Arc::new(RwLock::new(HashMap::new())),
             crl_cache: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -213,9 +214,9 @@ impl CertificateAuthority {
         // Parse as trust anchor
         let trust_anchor = Self::cert_to_trust_anchor(cert)?;
 
-        // Add to trust anchors
+        // Add to trust anchors, keyed by fingerprint so it can be pruned on removal
         let mut trust_anchors = self.trust_anchors.write().await;
-        trust_anchors.push(trust_anchor);
+        trust_anchors.insert(fingerprint.clone(), trust_anchor);
 
         info!("CA certificate added successfully: {}", common_name);
 
@@ -223,13 +224,28 @@ impl CertificateAuthority {
     }
 
     /// Remove a CA certificate by fingerprint
+    ///
+    /// Removes both the CA metadata entry and the corresponding trust anchor
+    /// (keyed by fingerprint), so a removed CA can no longer be used to
+    /// validate certificate chains.
     pub async fn remove_ca_cert(&self, fingerprint: &str) -> Result<bool, CertError> {
         let mut ca_info_lock = self.ca_info.write().await;
 
         if ca_info_lock.remove(fingerprint).is_some() {
+            // Prune the matching trust anchor so removal actually takes effect
+            // for chain validation, not just for the metadata listing.
+            let mut trust_anchors = self.trust_anchors.write().await;
+            let anchor_removed = trust_anchors.remove(fingerprint).is_some();
+            drop(trust_anchors);
+
+            if !anchor_removed {
+                warn!(
+                    "CA certificate {} removed from metadata but had no matching trust anchor",
+                    fingerprint
+                );
+            }
+
             info!("Removed CA certificate: {}", fingerprint);
-            // Note: We don't remove from trust_anchors as it's hard to identify
-            // In production, consider rebuilding the trust_anchors list
             Ok(true)
         } else {
             warn!("CA certificate not found: {}", fingerprint);
@@ -257,11 +273,25 @@ impl CertificateAuthority {
             RevocationCheckMethod::Ocsp => self.check_ocsp(cert).await,
             RevocationCheckMethod::Crl => self.check_crl(cert).await,
             RevocationCheckMethod::OcspThenCrl => {
-                // Try OCSP first
+                // Try OCSP first. Online OCSP request/response is not
+                // implemented (see `check_ocsp` docs), so `check_ocsp` can
+                // only ever return `Ok(RevocationStatus::Unknown)` (or
+                // `Err` on cert-parse failure) — it never yields a real
+                // Valid/Revoked verdict. Treat both `Err` *and*
+                // `Ok(Unknown)` as "OCSP could not determine the status"
+                // and fall back to CRL, which can produce a real verdict.
+                // Without this, `OcspThenCrl` (the production default)
+                // would silently short-circuit to `Unknown` on every call
+                // and CRL checking — the only source of real revocation
+                // data today — would never run.
                 match self.check_ocsp(cert).await {
+                    Ok(RevocationStatus::Unknown) => {
+                        debug!("OCSP could not determine status (not implemented), falling back to CRL");
+                        self.check_crl(cert).await
+                    }
                     Ok(status) => Ok(status),
-                    Err(_) => {
-                        debug!("OCSP failed, falling back to CRL");
+                    Err(e) => {
+                        debug!("OCSP check failed ({e}), falling back to CRL");
                         self.check_crl(cert).await
                     }
                 }
@@ -271,9 +301,16 @@ impl CertificateAuthority {
 
     /// Check revocation via OCSP
     ///
-    /// Extracts the OCSP responder URL from the certificate's Authority
-    /// Information Access extension (OID 1.3.6.1.5.5.7.1.1) and returns
-    /// `RevocationStatus::Unknown` with a log of the URL.
+    /// HONEST STATUS: online OCSP request/response checking is **not
+    /// implemented**. This method only extracts the OCSP responder URL from
+    /// the certificate's Authority Information Access extension (OID
+    /// 1.3.6.1.5.5.7.1.1, access method 1.3.6.1.5.5.7.48.1) for diagnostic
+    /// logging, and always returns `RevocationStatus::Unknown` — it never
+    /// makes a network request and never asserts that a certificate is
+    /// valid or revoked. Callers MUST NOT treat `Unknown` as "not revoked";
+    /// `check_revocation`'s `OcspThenCrl` path falls back to the real CRL
+    /// check whenever OCSP yields `Unknown`, precisely because this method
+    /// cannot produce a trustworthy verdict on its own.
     ///
     /// Full OCSP request/response requires ASN.1 DER encoding that has no
     /// suitable pure-Rust workspace dep yet; the URL-extraction scaffold is
@@ -317,16 +354,23 @@ impl CertificateAuthority {
 
         match ocsp_url {
             None => {
-                debug!("No OCSP URL found in certificate AIA extension; status unknown");
+                debug!(
+                    "OCSP status unknown: no OCSP responder URL found in certificate AIA \
+                     extension (and online OCSP checking is not implemented)"
+                );
                 Ok(RevocationStatus::Unknown)
             }
             Some(url) => {
-                // URL extracted — full OCSP request/response encoding requires a
-                // dedicated crate (e.g. ocsp-stapling) not yet in the workspace.
-                // Log the URL and return Unknown rather than skipping revocation
-                // silently or panicking on an unimplemented path.
-                debug!(
-                    "OCSP responder URL found: {}; request encoding not yet implemented",
+                // URL extracted, but online OCSP request/response encoding is
+                // NOT implemented — no network request is made here. This
+                // deliberately returns Unknown (never Valid) so callers do
+                // not mistake "we didn't check" for "we checked and it's
+                // fine". A dedicated OCSP request/response ASN.1 encoder
+                // (e.g. via a crate like ocsp-stapling) would be needed to
+                // make this a real online check.
+                warn!(
+                    "OCSP responder URL found ({}), but online OCSP checking is not \
+                     implemented; returning Unknown rather than a real revocation verdict",
                     url
                 );
                 Ok(RevocationStatus::Unknown)
@@ -596,10 +640,10 @@ impl CertificateAuthority {
         })
     }
 
-    /// Get trust anchors
+    /// Get trust anchors currently in effect (reflects any removals)
     pub async fn trust_anchors(&self) -> Vec<TrustAnchor<'static>> {
         let anchors = self.trust_anchors.read().await;
-        anchors.clone()
+        anchors.values().cloned().collect()
     }
 
     /// Get CA count
@@ -654,6 +698,71 @@ mod tests {
         let removed = ca.remove_ca_cert(&fingerprint).await.unwrap();
         assert!(removed);
         assert_eq!(ca.ca_count().await, 0);
+    }
+
+    /// GAP A regression test: removing a CA must prune its trust anchor too,
+    /// not just the metadata entry, so a removed CA can no longer be used to
+    /// validate chains.
+    #[tokio::test]
+    async fn test_remove_ca_cert_rebuilds_trust_anchors() {
+        let ca = CertificateAuthority::new(CaConfig::new());
+
+        let cert_a = Certificate::generate_self_signed("CA-A".to_string(), 365).unwrap();
+        let cert_b = Certificate::generate_self_signed("CA-B".to_string(), 365).unwrap();
+
+        let fp_a = ca.add_ca_cert(&cert_a.cert_chain[0]).await.unwrap();
+        let fp_b = ca.add_ca_cert(&cert_b.cert_chain[0]).await.unwrap();
+        assert_ne!(fp_a, fp_b);
+
+        assert_eq!(ca.ca_count().await, 2);
+        assert_eq!(
+            ca.trust_anchors().await.len(),
+            2,
+            "both CA certs should have produced a trust anchor"
+        );
+
+        // Remove CA-A: its trust anchor must be pruned, leaving only CA-B's.
+        let removed = ca.remove_ca_cert(&fp_a).await.unwrap();
+        assert!(removed);
+
+        assert_eq!(ca.ca_count().await, 1);
+        let remaining_anchors = ca.trust_anchors().await;
+        assert_eq!(
+            remaining_anchors.len(),
+            1,
+            "removed CA's trust anchor must no longer be present"
+        );
+
+        // The surviving anchor must be CA-B's, identified by its subject bytes.
+        let expected_subject = CertificateAuthority::cert_to_trust_anchor(&cert_b.cert_chain[0])
+            .unwrap()
+            .subject;
+        assert_eq!(remaining_anchors[0].subject, expected_subject);
+
+        // Removing CA-B too must empty the trust anchor set entirely.
+        let removed_b = ca.remove_ca_cert(&fp_b).await.unwrap();
+        assert!(removed_b);
+        assert_eq!(ca.ca_count().await, 0);
+        assert!(ca.trust_anchors().await.is_empty());
+    }
+
+    /// Removing a fingerprint that was never added must not touch existing
+    /// trust anchors and must report `false`.
+    #[tokio::test]
+    async fn test_remove_ca_cert_unknown_fingerprint_is_noop() {
+        let ca = CertificateAuthority::new(CaConfig::new());
+
+        let cert = Certificate::generate_self_signed("CA-A".to_string(), 365).unwrap();
+        ca.add_ca_cert(&cert.cert_chain[0]).await.unwrap();
+        assert_eq!(ca.trust_anchors().await.len(), 1);
+
+        let removed = ca
+            .remove_ca_cert("deadbeef-not-a-real-fingerprint")
+            .await
+            .unwrap();
+        assert!(!removed);
+        assert_eq!(ca.ca_count().await, 1);
+        assert_eq!(ca.trust_anchors().await.len(), 1);
     }
 
     #[tokio::test]
@@ -815,6 +924,60 @@ mod tests {
 
         let status = ca.check_revocation(cert_der, None).await.unwrap();
         assert_eq!(status, RevocationStatus::Valid);
+    }
+
+    /// GAP B regression test: since online OCSP checking is not implemented,
+    /// `check_ocsp` can only ever yield `Unknown`. The `OcspThenCrl` method
+    /// (the production default) must therefore fall back to the real CRL
+    /// check instead of silently surfacing `Unknown` as the final verdict —
+    /// otherwise CRL revocation data would never be consulted in production.
+    #[tokio::test]
+    async fn test_ocsp_then_crl_falls_back_to_crl_on_unknown_ocsp() {
+        use x509_parser::prelude::*;
+
+        let ca = CertificateAuthority::new(
+            CaConfig::new().with_revocation_check(RevocationCheckMethod::OcspThenCrl),
+        );
+
+        // Self-signed test certs carry no AIA/OCSP extension, so `check_ocsp`
+        // is guaranteed to return `Ok(RevocationStatus::Unknown)` here.
+        let cert =
+            Certificate::generate_self_signed("ocsp-fallback-node".to_string(), 365).unwrap();
+        let cert_der = &cert.cert_chain[0];
+
+        let (_, parsed) = X509Certificate::from_der(cert_der.as_ref()).unwrap();
+        let serial_number = parsed.serial.to_bytes_be();
+        let issuer_bytes = parsed.issuer().as_raw();
+        let issuer_fingerprint = {
+            let hash = oxicrypto_hash::Sha256.hash_fixed(issuer_bytes);
+            hex::encode(hash)
+        };
+
+        // Seed the CRL cache so the fallback path has a definitive answer.
+        let revoked_at = SystemTime::now();
+        let synthetic_crl = CachedCrl {
+            entries: vec![CrlEntry {
+                serial_number: serial_number.clone(),
+                revoked_at,
+                reason: Some("keyCompromise".to_string()),
+            }],
+            _fetched_at: SystemTime::now(),
+            expires_at: SystemTime::now() + Duration::from_secs(3600),
+        };
+        {
+            let mut cache = ca.crl_cache.write().await;
+            cache.insert(issuer_fingerprint, synthetic_crl);
+        }
+
+        // With the pre-GAP-B behavior this would return `Unknown` (OCSP's
+        // `Ok` result short-circuited the match and CRL was never
+        // consulted). The honest fix must reach the CRL cache and report
+        // the certificate as revoked.
+        let status = ca.check_revocation(cert_der, None).await.unwrap();
+        assert!(
+            matches!(status, RevocationStatus::Revoked { .. }),
+            "OcspThenCrl must fall back to CRL when OCSP is Unknown; got {status:?}"
+        );
     }
 
     // ── ITEM 7: NameConstraints parsing ───────────────────────────────────────

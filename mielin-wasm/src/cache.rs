@@ -71,6 +71,13 @@ pub struct CacheEntry<T> {
     access_count: u64,
     /// Size of the original bytecode
     bytecode_size: usize,
+    /// Monotonic access-sequence stamp used for deterministic LRU ordering.
+    ///
+    /// Unlike `last_accessed` (an `Instant`), this is guaranteed to be
+    /// strictly comparable across entries even when several accesses land
+    /// within the same clock tick, avoiding nondeterministic tie-breaking
+    /// via `HashMap` iteration order.
+    last_access_seq: u64,
 }
 
 impl<T: Clone> CacheEntry<T> {
@@ -83,6 +90,7 @@ impl<T: Clone> CacheEntry<T> {
             last_accessed: now,
             access_count: 1,
             bytecode_size,
+            last_access_seq: 0,
         }
     }
 
@@ -231,6 +239,10 @@ pub struct ModuleCache<T: Clone> {
     config: CacheConfig,
     stats: Mutex<CacheStats>,
     insertion_order: Mutex<Vec<CacheKey>>,
+    /// Monotonic counter handed out to entries on insert/access, used to
+    /// order LRU eviction deterministically instead of relying on
+    /// `Instant`-based tie-breaks (see `CacheEntry::last_access_seq`).
+    access_seq: std::sync::atomic::AtomicU64,
 }
 
 impl<T: Clone> ModuleCache<T> {
@@ -246,7 +258,14 @@ impl<T: Clone> ModuleCache<T> {
             config,
             stats: Mutex::new(CacheStats::default()),
             insertion_order: Mutex::new(Vec::new()),
+            access_seq: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    /// Get the next monotonic access-sequence stamp for LRU ordering.
+    fn next_access_seq(&self) -> u64 {
+        self.access_seq
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Get a cached module
@@ -275,8 +294,10 @@ impl<T: Clone> ModuleCache<T> {
             }
 
             // Update access tracking for LRU
+            let seq = self.next_access_seq();
             entry.last_accessed = Instant::now();
             entry.access_count += 1;
+            entry.last_access_seq = seq;
 
             // Record hit
             let mut stats = self.stats.lock().expect("Cache stats lock poisoned");
@@ -317,7 +338,8 @@ impl<T: Clone> ModuleCache<T> {
         }
 
         let is_new = !entries.contains_key(&key);
-        let entry = CacheEntry::new(module, bytecode_size);
+        let mut entry = CacheEntry::new(module, bytecode_size);
+        entry.last_access_seq = self.next_access_seq();
         entries.insert(key.clone(), entry);
 
         if is_new {
@@ -489,10 +511,15 @@ impl<T: Clone> ModuleCache<T> {
 
         match self.config.eviction_policy {
             EvictionPolicy::Lru => {
-                // Find least recently used
+                // Find least recently used: the entry with the smallest
+                // monotonic access-sequence stamp. This is deterministic
+                // even when multiple accesses land within the same
+                // `Instant` tick, unlike ordering by `idle_time()` (which
+                // ties and falls back to nondeterministic HashMap
+                // iteration order).
                 entries
                     .iter()
-                    .max_by_key(|(_, entry)| entry.idle_time())
+                    .min_by_key(|(_, entry)| entry.last_access_seq)
                     .map(|(key, _)| key.clone())
             }
             EvictionPolicy::Lfu => {

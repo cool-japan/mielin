@@ -300,9 +300,11 @@ fn detect_x86_64() -> CacheTopology {
 
     let mut topology = CacheTopology::default_topology();
 
-    // Try to detect actual cache sizes using CPUID
+    // Try to detect actual cache sizes using CPUID.
+    // Note: __cpuid/__cpuid_count are safe fns on this toolchain (CPUID is
+    // unconditionally available on x86_64), so this is a plain scoping block.
     #[cfg(target_feature = "sse")]
-    unsafe {
+    {
         use core::arch::x86_64::{__cpuid, __cpuid_count};
 
         // Check if extended cache info is available

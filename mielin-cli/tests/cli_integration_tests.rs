@@ -112,37 +112,120 @@ fn test_node_info_alias_show() {
 
 #[test]
 fn test_agent_list() {
+    // `agent list` still succeeds, but it serves sample/mock data (there is
+    // no live daemon connection wired up here) — the CLI must say so clearly
+    // rather than presenting it as real state.
     let mut cmd = mielinctl();
     cmd.arg("agent").arg("list");
-    cmd.assert().success();
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("sample/mock"));
 }
 
 #[test]
 fn test_agent_list_alias_ls() {
     let mut cmd = mielinctl();
     cmd.arg("agent").arg("ls");
-    cmd.assert().success();
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("sample/mock"));
 }
 
 #[test]
 fn test_agent_list_with_filter() {
     let mut cmd = mielinctl();
     cmd.arg("agent").arg("list").arg("--state").arg("Running");
-    cmd.assert().success();
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("sample/mock"));
 }
 
 #[test]
 fn test_agent_inspect() {
+    // `agent inspect` still succeeds, but it must clearly label its output
+    // as sample/mock data rather than fabricating real agent details.
     let mut cmd = mielinctl();
     cmd.arg("agent").arg("inspect").arg("test-agent-id");
-    cmd.assert().success();
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("sample/mock"))
+        .stdout(predicate::str::contains("sample/mock"));
 }
 
 #[test]
 fn test_agent_inspect_alias_show() {
     let mut cmd = mielinctl();
     cmd.arg("agent").arg("show").arg("test-agent-id");
-    cmd.assert().success();
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("sample/mock"))
+        .stdout(predicate::str::contains("sample/mock"));
+}
+
+#[test]
+fn test_agent_deploy_requires_live_daemon() {
+    // `agent deploy` must not fabricate a success/UUID without ever talking
+    // to a daemon: it should fail with an explicit, honest error instead.
+    let mut cmd = mielinctl();
+    cmd.arg("agent").arg("deploy").arg("some.wasm");
+    cmd.assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("requires a live daemon").and(predicate::str::contains(
+                "not yet supported over the control plane",
+            )),
+        );
+}
+
+#[test]
+fn test_agent_migrate_requires_live_daemon() {
+    let mut cmd = mielinctl();
+    cmd.arg("agent")
+        .arg("migrate")
+        .arg("test-agent-id")
+        .arg("test-target-node");
+    cmd.assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("requires a live daemon").and(predicate::str::contains(
+                "not yet supported over the control plane",
+            )),
+        );
+}
+
+#[test]
+fn test_agent_stop_requires_live_daemon() {
+    let mut cmd = mielinctl();
+    cmd.arg("agent").arg("stop").arg("test-agent-id");
+    cmd.assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("requires a live daemon").and(predicate::str::contains(
+                "not yet supported over the control plane",
+            )),
+        );
+}
+
+#[test]
+fn test_agent_stop_alias_kill() {
+    let mut cmd = mielinctl();
+    cmd.arg("agent").arg("kill").arg("test-agent-id");
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("requires a live daemon"));
+}
+
+#[test]
+fn test_agent_logs_requires_live_daemon() {
+    let mut cmd = mielinctl();
+    cmd.arg("agent").arg("logs").arg("test-agent-id");
+    cmd.assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("requires a live daemon").and(predicate::str::contains(
+                "not yet supported over the control plane",
+            )),
+        );
 }
 
 #[test]
@@ -184,12 +267,60 @@ fn test_agent_create_invalid_env_format() {
 }
 
 #[test]
+fn test_agent_create_valid_input_requires_live_daemon() {
+    // Even with fully valid input, `agent create` must not fabricate a
+    // successfully-created agent id: there is no live daemon to actually
+    // create it against, so it must fail honestly after validation passes.
+    let mut cmd = mielinctl();
+
+    let temp_dir = std::env::temp_dir();
+    let wasm_path = temp_dir.join("test_agent_create_valid.wasm");
+    std::fs::write(&wasm_path, b"test").unwrap();
+
+    cmd.arg("agent")
+        .arg("create")
+        .arg(&wasm_path)
+        .arg("--name")
+        .arg("test-agent");
+
+    cmd.assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("requires a live daemon").and(predicate::str::contains(
+                "not yet supported over the control plane",
+            )),
+        );
+
+    std::fs::remove_file(&wasm_path).ok();
+}
+
+#[test]
 fn test_agent_exec_no_command() {
     let mut cmd = mielinctl();
     cmd.arg("agent").arg("exec").arg("test-agent-id");
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("No command specified"));
+}
+
+#[test]
+fn test_agent_exec_requires_live_daemon() {
+    // A valid command must not be reported as "executed successfully"
+    // without ever reaching a live agent runtime.
+    let mut cmd = mielinctl();
+    cmd.arg("agent")
+        .arg("exec")
+        .arg("test-agent-id")
+        .arg("--")
+        .arg("echo")
+        .arg("hello");
+    cmd.assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("requires a live daemon").and(predicate::str::contains(
+                "not yet supported over the control plane",
+            )),
+        );
 }
 
 #[test]

@@ -181,8 +181,10 @@ impl HostFunctions {
                     return 0;
                 }
 
-                let shape: Vec<usize> = data[shape_offset..shape_offset + shape_size]
-                    .chunks_exact(4)
+                let (chunks, _remainder) =
+                    data[shape_offset..shape_offset + shape_size].as_chunks::<4>();
+                let shape: Vec<usize> = chunks
+                    .iter()
                     .map(|chunk| {
                         u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize
                     })
@@ -215,8 +217,10 @@ impl HostFunctions {
                     return 0;
                 }
 
-                let shape: Vec<usize> = data[shape_offset..shape_offset + shape_size]
-                    .chunks_exact(4)
+                let (chunks, _remainder) =
+                    data[shape_offset..shape_offset + shape_size].as_chunks::<4>();
+                let shape: Vec<usize> = chunks
+                    .iter()
                     .map(|chunk| {
                         u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize
                     })

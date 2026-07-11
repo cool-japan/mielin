@@ -277,6 +277,20 @@ impl PartitionDetector {
                             *current_state = PartitionState::Recovering;
 
                             let handlers = event_handlers.read().await;
+
+                            // Quorum was tracked as lost when we transitioned into
+                            // `Partitioned` (QuorumLost was emitted then); this branch
+                            // is reached only when a prior quorum loss was recorded and
+                            // `has_quorum` has now flipped back to true, so it is the
+                            // genuine, state-grounded point to report quorum regained.
+                            let event = PartitionEvent::QuorumRegained {
+                                visible: visible_count,
+                                total: known_count,
+                            };
+                            for handler in handlers.iter() {
+                                handler(event.clone());
+                            }
+
                             if let Some(partition) = current_partition.read().await.as_ref() {
                                 let event = PartitionEvent::RecoveryStarted {
                                     partition_id: partition.partition_id,
@@ -873,6 +887,109 @@ mod tests {
 
         // Initially no partition
         assert!(detector.get_partition_info().await.is_none());
+    }
+
+    /// Drives the real background detection loop (via `start()`) through
+    /// Normal -> Suspected -> Partitioned -> Recovering and verifies that
+    /// `PartitionEvent::QuorumRegained` is genuinely emitted (with the
+    /// correct visible/total counts) at the moment quorum is restored after
+    /// a tracked prior loss, and that it fires before `RecoveryStarted`.
+    #[cfg_attr(miri, ignore)]
+    #[tokio::test]
+    async fn test_quorum_regained_event_emitted() {
+        use std::sync::Mutex as StdMutex;
+
+        let node = Arc::new(Node::new(NodeRole::Relay));
+        let detector = PartitionDetector::new(node.clone());
+
+        // Build a 5-node cluster where only the local node is initially
+        // visible, so quorum (>= 4 of 5) is lost from the very first check.
+        let mut other_nodes = Vec::new();
+        for _ in 0..4 {
+            let id = NodeId::new_v4();
+            detector.add_known_node(id).await;
+            other_nodes.push(id);
+        }
+        assert_eq!(detector.known_count().await, 5);
+        assert_eq!(detector.visible_count().await, 1);
+
+        let events: Arc<StdMutex<Vec<PartitionEvent>>> = Arc::new(StdMutex::new(Vec::new()));
+        let events_clone = events.clone();
+        detector
+            .on_event(move |event| {
+                events_clone
+                    .lock()
+                    .expect("event log lock poisoned")
+                    .push(event);
+            })
+            .await;
+
+        detector.start().await;
+        let margin = Duration::from_millis(750);
+
+        // `tokio::time::interval` fires its first tick immediately, so
+        // Tick 1 (Normal -> Suspected, 1 of 5 visible, no quorum) lands
+        // almost as soon as the detection task is scheduled.
+        tokio::time::sleep(margin).await;
+        assert_eq!(detector.get_state().await, PartitionState::Suspected);
+
+        // Tick 2 (one full interval later): Suspected -> Partitioned;
+        // QuorumLost is recorded.
+        tokio::time::sleep(PARTITION_CHECK_INTERVAL + margin).await;
+        assert_eq!(detector.get_state().await, PartitionState::Partitioned);
+        {
+            let recorded = events.lock().expect("event log lock poisoned");
+            assert!(
+                recorded
+                    .iter()
+                    .any(|e| matches!(e, PartitionEvent::QuorumLost { .. })),
+                "QuorumLost should have been recorded before quorum can be regained"
+            );
+        }
+
+        // Bring exactly 3 of the 4 missing nodes back into view, crossing
+        // the quorum threshold (4 of 5) without reaching full visibility.
+        for id in &other_nodes[..3] {
+            detector.mark_node_visible(*id).await;
+        }
+        assert_eq!(detector.visible_count().await, 4);
+        assert_eq!(detector.known_count().await, 5);
+
+        // Tick 3: Partitioned -> Recovering; QuorumRegained + RecoveryStarted
+        // must both be emitted, in that order.
+        tokio::time::sleep(PARTITION_CHECK_INTERVAL + margin).await;
+        assert_eq!(detector.get_state().await, PartitionState::Recovering);
+
+        let recorded = events.lock().expect("event log lock poisoned").clone();
+        let regained_idx = recorded
+            .iter()
+            .position(|e| matches!(e, PartitionEvent::QuorumRegained { .. }))
+            .unwrap_or_else(|| {
+                panic!("QuorumRegained was not emitted; recorded events: {recorded:?}")
+            });
+
+        match &recorded[regained_idx] {
+            PartitionEvent::QuorumRegained { visible, total } => {
+                assert_eq!(
+                    *visible, 4,
+                    "QuorumRegained.visible must reflect the state that triggered recovery"
+                );
+                assert_eq!(
+                    *total, 5,
+                    "QuorumRegained.total must reflect the known node count"
+                );
+            }
+            other => panic!("expected QuorumRegained, got {other:?}"),
+        }
+
+        let recovery_idx = recorded
+            .iter()
+            .position(|e| matches!(e, PartitionEvent::RecoveryStarted { .. }))
+            .expect("RecoveryStarted should have been emitted alongside QuorumRegained");
+        assert!(
+            regained_idx < recovery_idx,
+            "QuorumRegained must be emitted before RecoveryStarted for the same recovery"
+        );
     }
 
     #[cfg_attr(miri, ignore)]

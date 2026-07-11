@@ -25,8 +25,9 @@ fn test_heartbeat_timeout_detection() {
     let mut member = MemberInfo::new(node_id);
     member.last_seen = SystemTime::now() - Duration::from_secs(20);
 
-    assert!(member.should_suspect());
-    assert!(!member.should_declare_dead());
+    let config = GossipConfig::default();
+    assert!(member.should_suspect(config.heartbeat_timeout));
+    assert!(!member.should_declare_dead(config.failure_timeout));
 }
 
 #[test]
@@ -36,7 +37,98 @@ fn test_failure_timeout_detection() {
     member.status = HealthStatus::Suspect;
     member.last_seen = SystemTime::now() - Duration::from_secs(35);
 
-    assert!(member.should_declare_dead());
+    let config = GossipConfig::default();
+    assert!(member.should_declare_dead(config.failure_timeout));
+}
+
+#[test]
+fn test_custom_gossip_config_governs_suspicion_and_death() {
+    // A custom, much shorter GossipConfig must actually change the outcome
+    // of should_suspect()/should_declare_dead() — proving that runtime
+    // configuration (not the hard-coded module defaults) drives failure
+    // detection.
+    let custom_config = GossipConfig {
+        gossip_interval: Duration::from_millis(100),
+        heartbeat_timeout: Duration::from_millis(50),
+        failure_timeout: Duration::from_millis(100),
+        fanout: 3,
+        max_history: 512,
+    };
+
+    let node_id = NodeId::new_v4();
+    let mut member = MemberInfo::new(node_id);
+    member.last_seen = SystemTime::now() - Duration::from_millis(75);
+
+    // Under the default config (15s / 30s), this member is nowhere near
+    // suspect.
+    let default_config = GossipConfig::default();
+    assert!(!member.should_suspect(default_config.heartbeat_timeout));
+
+    // Under the custom config (50ms), the same member IS suspect.
+    assert!(member.should_suspect(custom_config.heartbeat_timeout));
+    assert!(!member.should_declare_dead(custom_config.failure_timeout));
+
+    // Push it further out so it also exceeds the custom failure_timeout.
+    member.status = HealthStatus::Suspect;
+    member.last_seen = SystemTime::now() - Duration::from_millis(150);
+
+    assert!(!member.should_declare_dead(default_config.failure_timeout));
+    assert!(member.should_declare_dead(custom_config.failure_timeout));
+}
+
+#[cfg_attr(miri, ignore)]
+#[tokio::test]
+async fn test_failure_detection_task_honors_custom_config() {
+    // End-to-end: spawn_failure_detection_task (invoked via GossipState::start)
+    // must mark a stale peer as Suspect using the *configured*
+    // heartbeat_timeout rather than the hard-coded 15s module default.
+    //
+    // `tokio::time::interval`'s first tick fires immediately, so the
+    // detection loop's initial pass runs as soon as the spawned task is
+    // scheduled — no need to wait out its 5s recurring cadence.
+    let node = Arc::new(Node::new(NodeRole::Relay));
+    let custom_config = GossipConfig {
+        gossip_interval: Duration::from_millis(50),
+        heartbeat_timeout: Duration::from_millis(50),
+        failure_timeout: Duration::from_millis(100),
+        fanout: 3,
+        max_history: 512,
+    };
+    let gossip = GossipState::with_config(node.clone(), custom_config);
+
+    let peer_id = NodeId::new_v4();
+    gossip.handle_heartbeat(peer_id, 1).await.unwrap();
+
+    // Age the peer's last_seen past the configured heartbeat_timeout, but
+    // nowhere near the hard-coded 15s default — proving the running task
+    // honors the custom config rather than the module constant.
+    {
+        let mut members = gossip.members.write().await;
+        let member = members.get_mut(&peer_id).unwrap();
+        member.last_seen = SystemTime::now() - Duration::from_millis(75);
+    }
+
+    gossip.start().await;
+
+    // Bounded retry (real time, small total budget) until the spawned
+    // task's immediate first tick has had a chance to run and update status.
+    let mut detected = false;
+    for _ in 0..50 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let members = gossip.get_all_members().await;
+        if let Some(peer) = members.iter().find(|m| m.node_id == peer_id) {
+            if peer.status == HealthStatus::Suspect {
+                detected = true;
+                break;
+            }
+        }
+    }
+
+    assert!(
+        detected,
+        "expected the running failure-detection task to mark the peer Suspect \
+         using the custom (50ms) heartbeat_timeout, not the 15s module default"
+    );
 }
 
 #[cfg_attr(miri, ignore)]

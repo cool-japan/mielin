@@ -239,6 +239,20 @@ mod tests {
         let snapshot = MigrationSnapshot::capture(&agent, None).unwrap();
         assert_eq!(snapshot.agent_id, *agent.id().as_bytes());
         assert_eq!(snapshot.wasm_binary.len(), 4);
+        // No WASM runtime is embedded in this crate: capture must not
+        // fabricate runtime-memory state.
+        assert!(snapshot.wasm_state.is_empty());
+    }
+    #[test]
+    fn test_snapshot_restore_refuses_to_drop_nonempty_wasm_state() {
+        // A snapshot with (hypothetically) captured runtime memory must not
+        // have that memory silently discarded on restore, since this crate
+        // has no WASM runtime to load it into.
+        let agent = Agent::new(vec![0x00, 0x61, 0x73, 0x6d]);
+        let mut snapshot = MigrationSnapshot::capture(&agent, None).unwrap();
+        snapshot.wasm_state = vec![1, 2, 3, 4];
+        let result = snapshot.restore();
+        assert!(result.is_err());
     }
     #[test]
     fn test_snapshot_serialization() {
@@ -821,33 +835,65 @@ mod tests {
     }
     #[test]
     fn test_verification_result_success() {
-        let result = VerificationResult::success();
+        // agent_responsive must be supplied by the caller from a real
+        // signal; the constructor does not fabricate it.
+        let result = VerificationResult::success(true);
         assert!(result.passed);
         assert!(result.checksum_valid);
         assert!(result.size_valid);
+        assert!(result.agent_responsive);
+
+        let result_unknown = VerificationResult::success(false);
+        assert!(result_unknown.passed);
+        assert!(!result_unknown.agent_responsive);
     }
     #[test]
     fn test_verification_result_failure() {
         let result = VerificationResult::failure("Test failure");
         assert!(!result.passed);
         assert!(!result.checksum_valid);
+        assert!(!result.agent_responsive);
         assert!(result.details.contains(&"Test failure".to_string()));
     }
     #[test]
     fn test_state_verifier_verify_state_success() {
         let state = vec![1u8, 2, 3, 4, 5];
         let checksum = simple_checksum(&state);
-        let result = StateVerifier::verify_state(&state, &state, checksum);
+        let result = StateVerifier::verify_state(&state, &state, checksum, None);
         assert!(result.passed);
         assert!(result.checksum_valid);
         assert!(result.size_valid);
+        // No restored agent handle was supplied, so responsiveness must be
+        // honestly reported as unknown/false, never fabricated as true.
+        assert!(!result.agent_responsive);
+    }
+    #[test]
+    fn test_state_verifier_verify_state_with_live_agent_is_responsive() {
+        let state = vec![1u8, 2, 3, 4, 5];
+        let checksum = simple_checksum(&state);
+        let mut agent = Agent::new(vec![0x00, 0x61, 0x73, 0x6d]);
+        assert!(matches!(
+            agent.transition_to(crate::AgentState::Running),
+            crate::TransitionResult::Success
+        ));
+        let result = StateVerifier::verify_state(&state, &state, checksum, Some(&agent));
+        assert!(result.agent_responsive);
+    }
+    #[test]
+    fn test_state_verifier_verify_state_with_non_running_agent_not_responsive() {
+        let state = vec![1u8, 2, 3, 4, 5];
+        let checksum = simple_checksum(&state);
+        // Freshly-created agent is in the `Created` state, not `Running`.
+        let agent = Agent::new(vec![0x00, 0x61, 0x73, 0x6d]);
+        let result = StateVerifier::verify_state(&state, &state, checksum, Some(&agent));
+        assert!(!result.agent_responsive);
     }
     #[test]
     fn test_state_verifier_verify_state_size_mismatch() {
         let original = vec![1u8, 2, 3, 4, 5];
         let migrated = vec![1u8, 2, 3];
         let checksum = simple_checksum(&original);
-        let result = StateVerifier::verify_state(&original, &migrated, checksum);
+        let result = StateVerifier::verify_state(&original, &migrated, checksum, None);
         assert!(!result.passed);
         assert!(!result.size_valid);
     }
@@ -856,7 +902,7 @@ mod tests {
         let original = vec![1u8, 2, 3, 4, 5];
         let migrated = vec![1u8, 2, 3, 4, 6];
         let checksum = simple_checksum(&original);
-        let result = StateVerifier::verify_state(&original, &migrated, checksum);
+        let result = StateVerifier::verify_state(&original, &migrated, checksum, None);
         assert!(!result.passed);
         assert!(!result.checksum_valid);
     }
@@ -867,10 +913,11 @@ mod tests {
         let mut new_state = base_state.clone();
         new_state[100] = 42;
         let delta = DeltaSnapshot::create(agent_id, &base_state, &new_state, 0, 1).unwrap();
-        let result = StateVerifier::verify_delta(&base_state, &delta, delta.checksum);
+        let result = StateVerifier::verify_delta(&base_state, &delta, delta.checksum, None);
         assert!(result.passed);
         assert!(result.checksum_valid);
         assert!(result.size_valid);
+        assert!(!result.agent_responsive);
     }
     #[test]
     fn test_rollback_info_capture() {
@@ -1013,9 +1060,28 @@ mod tests {
         let migration_id = [1u8; 16];
         let agent_id = [2u8; 16];
         let state = vec![1u8, 2, 3, 4, 5];
-        let result = validator.verify_post_migration(migration_id, agent_id, &state, &state);
+        let result = validator.verify_post_migration(migration_id, agent_id, &state, &state, None);
         assert!(result.passed);
+        // No restored agent handle was supplied: liveness is honestly
+        // unknown, not fabricated as responsive.
+        assert!(!result.agent_responsive);
         assert_eq!(validator.audit_log().len(), 1);
+    }
+    #[test]
+    fn test_migration_validator_verify_post_migration_with_live_agent() {
+        let mut validator = MigrationValidator::new();
+        let migration_id = [1u8; 16];
+        let state = vec![1u8, 2, 3, 4, 5];
+        let mut agent = Agent::new(vec![0x00, 0x61, 0x73, 0x6d]);
+        assert!(matches!(
+            agent.transition_to(crate::AgentState::Running),
+            crate::TransitionResult::Success
+        ));
+        let agent_id = *agent.id().as_bytes();
+        let result =
+            validator.verify_post_migration(migration_id, agent_id, &state, &state, Some(&agent));
+        assert!(result.passed);
+        assert!(result.agent_responsive);
     }
     #[test]
     fn test_migration_validator_execute_rollback() {

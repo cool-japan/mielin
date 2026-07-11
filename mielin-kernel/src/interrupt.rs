@@ -640,7 +640,7 @@ pub fn process_work_queue() -> usize {
         return 0;
     }
 
-    let work_items: Vec<WorkItem> = state.work_queue.drain(..).collect();
+    let work_items: Vec<WorkItem> = core::mem::take(&mut state.work_queue);
     let count = work_items.len();
 
     // Update statistics
@@ -834,13 +834,19 @@ pub fn set_timer_freq_hz(freq: u64) {
 #[inline]
 pub unsafe fn disable_interrupts() -> bool {
     // x86_64: read EFLAGS.IF, then CLI.
-    #[cfg(all(target_arch = "x86_64", not(test)))]
+    //
+    // Excluded when `feature = "std"` is active (in addition to `test`),
+    // mirroring the aarch64/riscv64 branches below: hosted/std builds (e.g.
+    // integration tests linking this crate as a normal, non-cfg(test)
+    // dependency) run in unprivileged userspace where `cli` would fault, so
+    // they must fall through to the safe fallback instead.
+    #[cfg(all(target_arch = "x86_64", not(any(test, feature = "std"))))]
     {
         let flags: u64;
         core::arch::asm!("pushfq; pop {}", out(reg) flags, options(nostack));
         let enabled = (flags & (1u64 << 9)) != 0;
         core::arch::asm!("cli", options(nostack, preserves_flags));
-        return enabled;
+        enabled
     }
 
     // aarch64: read DAIF.I, then DAIFSET.
@@ -858,7 +864,7 @@ pub unsafe fn disable_interrupts() -> bool {
         let sstatus: u64;
         core::arch::asm!("csrr {}, sstatus", out(reg) sstatus, options(nostack));
         core::arch::asm!("csrci sstatus, 2", options(nostack));
-        return (sstatus & 2) != 0;
+        (sstatus & 2) != 0
     }
 
     // Fallback for test / std / other.

@@ -94,20 +94,32 @@ pub struct VerificationResult {
     pub checksum_valid: bool,
     /// State size matches
     pub size_valid: bool,
-    /// Agent is responsive
+    /// Whether the (restored) agent was observed to be responsive.
+    ///
+    /// This is only ever `true` when a real liveness signal backs it (the
+    /// restored agent's [`AgentState::is_active`](crate::AgentState::is_active)
+    /// was actually consulted). Callers that have no such signal to offer
+    /// must pass `false` / `None` rather than assume responsiveness —
+    /// nothing in this module fabricates a "yes" here.
     pub agent_responsive: bool,
     /// Verification details
     pub details: Vec<String>,
 }
 
 impl VerificationResult {
-    /// Create a successful verification result
-    pub fn success() -> Self {
+    /// Create a verification result representing a fully successful check.
+    ///
+    /// `agent_responsive` is taken verbatim from the caller: this
+    /// constructor performs no liveness check of its own, so it cannot
+    /// invent a value. Pass `true` only if you have an actual signal (e.g.
+    /// `restored_agent.state().is_active()`) confirming the agent is
+    /// responsive; otherwise pass `false`.
+    pub fn success(agent_responsive: bool) -> Self {
         Self {
             passed: true,
             checksum_valid: true,
             size_valid: true,
-            agent_responsive: true,
+            agent_responsive,
             details: vec!["All verification checks passed".to_string()],
         }
     }
@@ -212,18 +224,38 @@ impl CompatibilityValidator {
 pub struct StateVerifier;
 
 impl StateVerifier {
-    /// Verify that the migrated state matches the original
+    /// Verify that the migrated state matches the original.
+    ///
+    /// `restored_agent`, if supplied, is consulted for an actual liveness
+    /// signal (`AgentState::is_active`) to populate
+    /// [`VerificationResult::agent_responsive`]. This function performs no
+    /// health check of its own beyond that; pass `None` when no restored
+    /// agent handle is available and the result will honestly report
+    /// `agent_responsive: false` rather than assume success.
     pub fn verify_state(
         original_state: &[u8],
         migrated_state: &[u8],
         original_checksum: u32,
+        restored_agent: Option<&Agent>,
     ) -> VerificationResult {
+        let agent_responsive = restored_agent
+            .map(|agent| agent.state().is_active())
+            .unwrap_or(false);
         let mut result = VerificationResult {
             passed: true,
             checksum_valid: false,
             size_valid: false,
-            agent_responsive: true,
-            details: Vec::new(),
+            agent_responsive,
+            details: match restored_agent {
+                Some(_) if agent_responsive => vec!["Agent liveness verified: active".to_string()],
+                Some(agent) => vec![format!(
+                    "Agent liveness check: not active (state = {:?})",
+                    agent.state()
+                )],
+                None => vec![
+                    "Agent liveness not checked: no restored agent handle supplied".to_string(),
+                ],
+            },
         };
         if original_state.len() == migrated_state.len() {
             result.size_valid = true;
@@ -252,18 +284,34 @@ impl StateVerifier {
         result
     }
 
-    /// Verify a delta snapshot can be applied correctly
+    /// Verify a delta snapshot can be applied correctly.
+    ///
+    /// See [`Self::verify_state`] for the meaning and honesty guarantee of
+    /// `restored_agent` / `agent_responsive`.
     pub fn verify_delta(
         base_state: &[u8],
         delta: &DeltaSnapshot,
         expected_checksum: u32,
+        restored_agent: Option<&Agent>,
     ) -> VerificationResult {
+        let agent_responsive = restored_agent
+            .map(|agent| agent.state().is_active())
+            .unwrap_or(false);
         let mut result = VerificationResult {
             passed: true,
             checksum_valid: false,
             size_valid: false,
-            agent_responsive: true,
-            details: Vec::new(),
+            agent_responsive,
+            details: match restored_agent {
+                Some(_) if agent_responsive => vec!["Agent liveness verified: active".to_string()],
+                Some(agent) => vec![format!(
+                    "Agent liveness check: not active (state = {:?})",
+                    agent.state()
+                )],
+                None => vec![
+                    "Agent liveness not checked: no restored agent handle supplied".to_string(),
+                ],
+            },
         };
         if delta.checksum == expected_checksum {
             result.checksum_valid = true;
@@ -353,16 +401,28 @@ impl MigrationValidator {
         Ok(())
     }
 
-    /// Verify post-migration state
+    /// Verify post-migration state.
+    ///
+    /// `restored_agent`, if supplied, must be the actual agent instance
+    /// restored on the target node; it is consulted for a real liveness
+    /// signal to populate [`VerificationResult::agent_responsive`]. Pass
+    /// `None` when no such handle is available — the result will then
+    /// honestly report `agent_responsive: false` instead of assuming it.
     pub fn verify_post_migration(
         &mut self,
         migration_id: [u8; 16],
         agent_id: [u8; 16],
         original_state: &[u8],
         migrated_state: &[u8],
+        restored_agent: Option<&Agent>,
     ) -> VerificationResult {
         let original_checksum = simple_checksum(original_state);
-        let result = StateVerifier::verify_state(original_state, migrated_state, original_checksum);
+        let result = StateVerifier::verify_state(
+            original_state,
+            migrated_state,
+            original_checksum,
+            restored_agent,
+        );
         self.audit_log
             .log_verification(migration_id, agent_id, &result);
         result

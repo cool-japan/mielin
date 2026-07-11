@@ -98,40 +98,41 @@ pub enum AgentCommands {
 pub async fn handle_agent_command(action: AgentCommands, format: OutputFormat) -> Result<()> {
     match action {
         AgentCommands::List { state: _, node: _ } => {
+            eprintln!(
+                "note: sample/mock data — `agent list` is not yet wired to a live daemon over the control plane"
+            );
             let data = mock_agent_list();
             println!("{}", render_output(&data, format)?);
         }
         AgentCommands::Deploy { wasm_path, node: _ } => {
-            let result = OperationResult {
-                success: true,
-                message: format!("Deployed agent from {}", wasm_path),
-                id: Some("new-agent-uuid".to_string()),
-            };
-            println!("{}", render_output(&result, format)?);
+            anyhow::bail!(
+                "agent deploy (from {}) requires a live daemon and is not yet supported over the control plane",
+                wasm_path
+            );
         }
         AgentCommands::Migrate {
             agent_id,
             target_node,
         } => {
-            let result = OperationResult {
-                success: true,
-                message: format!("Migrating {} to {}", agent_id, target_node),
-                id: Some("migration-uuid".to_string()),
-            };
-            println!("{}", render_output(&result, format)?);
+            anyhow::bail!(
+                "agent migrate ({} -> {}) requires a live daemon and is not yet supported over the control plane",
+                agent_id,
+                target_node
+            );
         }
         AgentCommands::Stop { agent_id } => {
-            let result = OperationResult {
-                success: true,
-                message: format!("Stopped agent {}", agent_id),
-                id: Some(agent_id),
-            };
-            println!("{}", render_output(&result, format)?);
+            anyhow::bail!(
+                "agent stop ({}) requires a live daemon and is not yet supported over the control plane",
+                agent_id
+            );
         }
         AgentCommands::Inspect { agent_id } => {
+            eprintln!(
+                "note: sample/mock data — `agent inspect` is not yet wired to a live daemon over the control plane"
+            );
             let result = OperationResult {
                 success: true,
-                message: format!("Agent {} details", agent_id),
+                message: format!("[sample/mock] Agent {} details", agent_id),
                 id: Some(agent_id),
             };
             println!("{}", render_output(&result, format)?);
@@ -141,17 +142,19 @@ pub async fn handle_agent_command(action: AgentCommands, format: OutputFormat) -
             follow: _,
             lines: _,
         } => {
-            println!("Logs for agent {}...", agent_id);
+            anyhow::bail!(
+                "agent logs ({}) requires a live daemon and is not yet supported over the control plane",
+                agent_id
+            );
         }
         AgentCommands::Create {
             wasm_path,
             name,
-            node,
+            node: _,
             env,
-            memory,
-            cpu,
+            memory: _,
+            cpu: _,
         } => {
-            use crate::progress::with_spinner;
             use std::path::Path;
 
             // Validate WASM file exists
@@ -169,68 +172,33 @@ pub async fn handle_agent_command(action: AgentCommands, format: OutputFormat) -
                 }
             }
 
-            // Create agent with spinner
-            let agent_id = with_spinner("Creating agent", async {
-                // Simulate WASM compilation and deployment
-                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                uuid::Uuid::new_v4().to_string()
-            })
-            .await;
-
-            let result = OperationResult {
-                success: true,
-                message: format!(
-                    "Created agent '{}' from {} (Memory: {}MB, CPU: {})",
-                    name, wasm_path, memory, cpu
-                ),
-                id: Some(agent_id.clone()),
-            };
-
-            if let Some(node_target) = node {
-                println!("Target node: {}", node_target);
-            }
-            if !env.is_empty() {
-                println!("Environment: {:?}", env);
-            }
-            println!("{}", render_output(&result, format)?);
+            // Input validation above is real; the actual creation step needs a
+            // live daemon connection over the control plane, which does not
+            // exist yet (the control server exposes no POST endpoint for
+            // agent creation). Report this honestly instead of fabricating a
+            // created agent id.
+            anyhow::bail!(
+                "agent create ('{}' from {}) requires a live daemon and is not yet supported over the control plane",
+                name,
+                wasm_path
+            );
         }
         AgentCommands::Exec {
             agent_id,
             command,
-            interactive,
-            tty,
+            interactive: _,
+            tty: _,
         } => {
             if command.is_empty() {
                 anyhow::bail!("No command specified");
             }
 
             let cmd_str = command.join(" ");
-
-            if interactive || tty {
-                println!(
-                    "Executing '{}' in agent {} (interactive mode)",
-                    cmd_str, agent_id
-                );
-                // In a real implementation, this would establish an interactive session
-                println!("Interactive mode not yet fully implemented");
-            } else {
-                use crate::progress::with_spinner;
-
-                let output = with_spinner("Executing command", async {
-                    // Simulate command execution
-                    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-                    "Command executed successfully".to_string()
-                })
-                .await;
-
-                let result = OperationResult {
-                    success: true,
-                    message: format!("Executed '{}' in agent {}", cmd_str, agent_id),
-                    id: Some(agent_id),
-                };
-                println!("{}", render_output(&result, format)?);
-                println!("Output: {}", output);
-            }
+            anyhow::bail!(
+                "agent exec ('{}' in {}) requires a live daemon and is not yet supported over the control plane",
+                cmd_str,
+                agent_id
+            );
         }
     }
     Ok(())

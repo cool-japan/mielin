@@ -92,13 +92,15 @@ fn main() {
 cargo run -p hello-agent
 ```
 
-Output:
+Output (real, captured from `cargo run -p hello-agent` — your UUID will differ):
 ```
-Creating a simple agent...
-Agent ID: 1b4e28ba-2fa1-11d2-883f-b9a761bde3fb
-Agent State: Created
-...
+MielinOS - Hello Agent Example
+Created agent with ID: 9250f551-4b65-4174-b324-2ba51b8357e1
+Agent state: Created
+Agent DNA hash: [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ```
+(the DNA hash is currently a length-derived placeholder — `hash[0]` is the binary length, the rest
+zero — not a cryptographic digest; see [`docs/TUTORIALS.md`](docs/TUTORIALS.md) Tutorial 1)
 
 ### 3. Run the Migration Demo
 
@@ -198,23 +200,39 @@ Fine-grained permissions for agents:
 - Camera
 - GPIO
 
-## Working with the CLI (Future)
+## Working with the CLI
+
+`mielin-cli` builds a real binary named `mielinctl` (`cargo run -p mielin-cli --`), with dozens of
+subcommands already implemented (`node`, `agent`, `mesh`, `cluster`, `migrate`, `registry`,
+`gossip`, `wasm`, `debug`, `audit`, `config`, `history`, `monitor`, `plugin`, `script`, `remote`,
+`daemon`, `completion`, `version`, `interactive`). Not every subcommand talks to a live system yet
+— some print illustrative mock fixtures so you can explore the output shape before a real daemon is
+running:
 
 ```bash
-# Node management
-mielinctl node start --role edge
+# Start the real MielinOS daemon (mesh service + HTTP control-plane API)
+mielinctl daemon --listen 0.0.0.0:9000 --role edge --control-listen 127.0.0.1:8081
+
+# Node management (all currently illustrative: canned success messages / mock fixtures,
+# not yet backed by a live daemon lookup)
+mielinctl node create --role edge
 mielinctl node list
 mielinctl node info <node-id>
+mielinctl node join <bootstrap-ip:port>
 
-# Agent deployment
+# Agent deployment (also illustrative today — see Tutorial 11 for current wiring status)
 mielinctl agent deploy agent.wasm
 mielinctl agent list
 mielinctl agent migrate <agent-id> <target-node>
 
-# Mesh inspection
-mielinctl mesh status
-mielinctl mesh peers
+# Mesh inspection (live once a daemon is running and --daemon/MIELIN_DAEMON is set)
+mielinctl mesh status --daemon 127.0.0.1:8081
+mielinctl mesh peers --daemon 127.0.0.1:8081
+mielinctl mesh status    # without --daemon: illustrative mock fixture
 ```
+
+See [`docs/TUTORIALS.md`](docs/TUTORIALS.md) (Tutorial 11) for exactly which subcommands are wired
+to a live daemon today versus which return mock data, and for a full two-node cluster walkthrough.
 
 ## Development Workflow
 

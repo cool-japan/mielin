@@ -89,6 +89,9 @@ pub enum ProtocolError {
 
     #[error("nonce mismatch: expected {expected}, got {got}")]
     NonceMismatch { expected: u64, got: u64 },
+
+    #[error("failed to generate cryptographically secure nonce: {details}")]
+    RngFailure { details: String },
 }
 
 impl From<ProtocolError> for WireError {
@@ -232,7 +235,6 @@ pub struct ProtocolHandler {
     stats: ProtocolStats,
     handshake_state: HandshakeState,
     max_extensions: usize,
-    nonce_counter: u64,
 }
 
 impl ProtocolHandler {
@@ -247,7 +249,6 @@ impl ProtocolHandler {
             stats: ProtocolStats::default(),
             handshake_state: HandshakeState::Uninitiated,
             max_extensions: DEFAULT_MAX_EXTENSIONS,
-            nonce_counter: 1,
         }
     }
 
@@ -291,8 +292,12 @@ impl ProtocolHandler {
 
     /// Build a `HelloMessage` advertising this handler's version and all
     /// registered extension capabilities.
-    pub fn build_hello(&mut self, node_id: &str) -> HelloMessage {
-        let nonce = self.next_nonce();
+    ///
+    /// The nonce is drawn from a cryptographically secure random source
+    /// (`oxicrypto-rand`) rather than a predictable counter, since it is
+    /// relied upon for handshake anti-replay/liveness guarantees.
+    pub fn build_hello(&mut self, node_id: &str) -> Result<HelloMessage, ProtocolError> {
+        let nonce = Self::next_nonce()?;
         self.handshake_state = HandshakeState::HelloSent { nonce };
         self.stats.hello_messages += 1;
 
@@ -302,13 +307,13 @@ impl ProtocolHandler {
             .map(|ext| Capability::new(ext.name(), ext.required_version()))
             .collect();
 
-        HelloMessage {
+        Ok(HelloMessage {
             protocol_version: self.version,
             node_id: node_id.to_owned(),
             capabilities,
             nonce,
             timestamp_ms: 0, // caller may fill in wall-clock time
-        }
+        })
     }
 
     /// Process an incoming `HelloMessage`; returns the ack to send back.
@@ -467,10 +472,21 @@ impl ProtocolHandler {
 
     // ── Internals ───────────────────────────────────────────────────────────
 
-    fn next_nonce(&mut self) -> u64 {
-        let n = self.nonce_counter;
-        self.nonce_counter = self.nonce_counter.wrapping_add(1);
-        n
+    /// Draw a fresh handshake nonce from a cryptographically secure random
+    /// source. Predictable (e.g. counter-based) nonces would defeat the
+    /// anti-replay/liveness purpose of the value.
+    fn next_nonce() -> Result<u64, ProtocolError> {
+        use oxicrypto_core::Rng;
+
+        let mut rng = oxicrypto_rand::OxiRng::new().map_err(|e| ProtocolError::RngFailure {
+            details: format!("OxiRng initialisation failed: {e}"),
+        })?;
+        let mut bytes = [0u8; 8];
+        rng.fill(&mut bytes)
+            .map_err(|e| ProtocolError::RngFailure {
+                details: format!("OxiRng fill failed: {e}"),
+            })?;
+        Ok(u64::from_le_bytes(bytes))
     }
 }
 
@@ -823,7 +839,7 @@ mod tests {
     fn test_build_hello_includes_capabilities() {
         let mut h = ProtocolHandler::new();
         h.register_extension(Box::new(EchoExtension)).unwrap();
-        let hello = h.build_hello("node-1");
+        let hello = h.build_hello("node-1").unwrap();
         assert_eq!(hello.node_id, "node-1");
         assert_eq!(hello.capabilities.len(), 1);
         assert_eq!(hello.capabilities[0].name, "echo");
@@ -841,7 +857,7 @@ mod tests {
             .register_extension(Box::new(EchoExtension))
             .unwrap();
 
-        let hello = initiator.build_hello("initiator");
+        let hello = initiator.build_hello("initiator").unwrap();
         let ack = responder.process_hello(&hello).unwrap();
 
         assert!(ack.accepted);
@@ -872,7 +888,7 @@ mod tests {
         let mut initiator = ProtocolHandler::new();
         let mut responder = ProtocolHandler::new();
 
-        let hello = initiator.build_hello("init");
+        let hello = initiator.build_hello("init").unwrap();
         let ack = responder.process_hello(&hello).unwrap();
         initiator.process_hello_ack(&ack).unwrap();
 
@@ -883,7 +899,7 @@ mod tests {
     #[test]
     fn test_hello_ack_rejected_fails() {
         let mut initiator = ProtocolHandler::new();
-        initiator.build_hello("init"); // set HelloSent state
+        initiator.build_hello("init").unwrap(); // set HelloSent state
 
         let ack = HelloAckMessage {
             accepted: false,
@@ -900,7 +916,7 @@ mod tests {
     #[test]
     fn test_hello_nonce_verified() {
         let mut initiator = ProtocolHandler::new();
-        initiator.build_hello("init"); // consumes nonce=1
+        initiator.build_hello("init").unwrap(); // consumes a fresh random nonce
 
         let wrong_ack = HelloAckMessage {
             accepted: true,
@@ -917,7 +933,7 @@ mod tests {
     fn test_handshake_state_transitions() {
         let mut h = ProtocolHandler::new();
         assert_eq!(h.handshake_state(), HandshakeState::Uninitiated);
-        h.build_hello("n");
+        h.build_hello("n").unwrap();
         assert!(matches!(
             h.handshake_state(),
             HandshakeState::HelloSent { .. }
@@ -973,7 +989,7 @@ mod tests {
     #[test]
     fn test_hello_stats_tracked() {
         let mut h = ProtocolHandler::new();
-        h.build_hello("n");
+        h.build_hello("n").unwrap();
         assert_eq!(h.stats().hello_messages, 1);
     }
 
@@ -1183,7 +1199,7 @@ mod tests {
             .unwrap();
         // Responder only supports echo — metadata/ping not registered
 
-        let hello = initiator.build_hello("init");
+        let hello = initiator.build_hello("init").unwrap();
         let ack = responder.process_hello(&hello).unwrap();
         initiator.process_hello_ack(&ack).unwrap();
 
@@ -1249,15 +1265,24 @@ mod tests {
     }
 
     #[test]
-    fn test_nonce_increments_on_successive_hellos() {
+    fn test_nonce_is_random_across_hellos() {
+        // The nonce is drawn from a CSPRNG (oxicrypto-rand) rather than a
+        // predictable counter; successive hellos must not collide (the
+        // probability of an accidental u64 collision is negligible) and
+        // must not simply increment by one, confirming it is not a counter.
         let mut h = ProtocolHandler::new();
-        let hello1 = h.build_hello("n");
+        let hello1 = h.build_hello("n").unwrap();
         // simulate failed handshake to reset state so we can send another hello
         h.handshake_state = HandshakeState::Uninitiated;
-        let hello2 = h.build_hello("n");
+        let hello2 = h.build_hello("n").unwrap();
         assert_ne!(
             hello1.nonce, hello2.nonce,
             "nonce must differ across hellos"
+        );
+        assert_ne!(
+            hello2.nonce,
+            hello1.nonce.wrapping_add(1),
+            "nonce must not be a predictable counter sequence"
         );
     }
 
@@ -1277,7 +1302,7 @@ mod tests {
             .unwrap();
         // responder does NOT have ping
 
-        let hello = initiator.build_hello("i");
+        let hello = initiator.build_hello("i").unwrap();
         let ack = responder.process_hello(&hello).unwrap();
 
         assert_eq!(ack.accepted_capabilities.len(), 1);

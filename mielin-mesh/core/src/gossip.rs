@@ -165,12 +165,24 @@ impl MemberInfo {
         self.last_seen.elapsed().unwrap_or_default()
     }
 
-    pub fn should_suspect(&self) -> bool {
-        self.is_alive() && self.heartbeat_age() > HEARTBEAT_TIMEOUT
+    /// Whether this member should transition from `Alive` to `Suspect`,
+    /// given the caller-supplied `heartbeat_timeout` (normally
+    /// [`GossipConfig::heartbeat_timeout`]). This does NOT read any
+    /// hard-coded default — the timeout must be threaded in by the caller
+    /// so that a runtime-configured `GossipConfig` actually governs
+    /// suspicion detection.
+    pub fn should_suspect(&self, heartbeat_timeout: Duration) -> bool {
+        self.is_alive() && self.heartbeat_age() > heartbeat_timeout
     }
 
-    pub fn should_declare_dead(&self) -> bool {
-        self.is_suspect() && self.heartbeat_age() > FAILURE_TIMEOUT
+    /// Whether this member should transition from `Suspect` to `Dead`,
+    /// given the caller-supplied `failure_timeout` (normally
+    /// [`GossipConfig::failure_timeout`]). This does NOT read any
+    /// hard-coded default — the timeout must be threaded in by the caller
+    /// so that a runtime-configured `GossipConfig` actually governs
+    /// death declaration.
+    pub fn should_declare_dead(&self, failure_timeout: Duration) -> bool {
+        self.is_suspect() && self.heartbeat_age() > failure_timeout
     }
 }
 
@@ -349,10 +361,10 @@ impl GossipState {
                     }
 
                     let age = member.heartbeat_age();
-                    if member.is_suspect() && age > failure_timeout {
+                    if member.should_declare_dead(failure_timeout) {
                         updates.push((*id, member.status, HealthStatus::Dead, member.incarnation));
                         warn!("Declaring node {} as dead (no heartbeat for {:?})", id, age);
-                    } else if member.is_alive() && age > heartbeat_timeout {
+                    } else if member.should_suspect(heartbeat_timeout) {
                         updates.push((
                             *id,
                             member.status,
