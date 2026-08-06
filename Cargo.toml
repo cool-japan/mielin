@@ -77,13 +77,13 @@ wit-bindgen = "0.58.0"
 # ring removed — replaced by oxiquic-crypto (pure-Rust QUIC provider) in mesh-wire
 # Pure-Rust OxiCrypto sub-crates (replacing direct `ring` usage; ring remains a
 # transitive dep via rustls/quinn/rcgen — that migration is tracked separately).
-oxicrypto-hash = "0.2.1"
-oxicrypto-rand = "0.2.1"
-oxicrypto-aead = "0.2.1"
-oxicrypto-sig = "0.2.1"
-oxicrypto-kex = "0.2.1"
-oxicrypto-kdf = "0.2.1"
-oxicrypto-core = "0.2.1"
+oxicrypto-hash = "0.3.0"
+oxicrypto-rand = "0.3.0"
+oxicrypto-aead = "0.3.0"
+oxicrypto-sig = "0.3.0"
+oxicrypto-kex = "0.3.0"
+oxicrypto-kdf = "0.3.0"
+oxicrypto-core = "0.3.0"
 ml-kem = "0.3"
 uuid = { version = "1.23.4", features = ["v4", "v5", "serde"] }
 postcard = { version = "1", features = ["alloc"] }
