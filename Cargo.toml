@@ -172,7 +172,7 @@ rand_core = "0.10"
 rhai = "1.25.1"
 
 # HTTP client for remote operations (reqwest removed — replaced by oxihttp-client)
-oxihttp-client = { version = "0.2.0", features = ["tls"] }
+oxihttp-client = { version = "0.2.1", features = ["tls"] }
 
 # HTTP server for control plane
 axum = "0.8.9"
