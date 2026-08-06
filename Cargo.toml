@@ -64,8 +64,8 @@ serde_json = "1.0.150"
 oxicode = { version = "0.2.6", features = ["serde"] }
 
 # Networking
-oxiquic-transport = "0.2.0"
-oxiquic-crypto = "0.2.0"
+oxiquic-transport = "0.2.1"
+oxiquic-crypto = "0.2.1"
 tokio-util = "0.7.18"
 
 # WebAssembly
