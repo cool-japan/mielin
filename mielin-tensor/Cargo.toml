@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Kernel-level tensor operations with hardware accelerator support (Arm SVE2/SME, CUDA, Metal, NPU)"
+categories = ["science", "hardware-support", "no-std"]
 keywords = ["tensor", "machine-learning", "accelerator", "simd", "gpu"]
 
 [dependencies]

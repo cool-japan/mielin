@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Core unikernel implementation providing the foundation for agent execution across heterogeneous hardware platforms"
+categories = ["os", "no-std", "embedded"]
 keywords = ["kernel", "unikernel", "embedded", "no-std", "operating-system"]
 
 [dependencies]
